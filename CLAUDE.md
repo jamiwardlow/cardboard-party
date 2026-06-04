@@ -123,6 +123,16 @@ default service account `cardboard-party@appspot.gserviceaccount.com` has
   then redeploy. `main.py`'s `app.secret_key` is still a hardcoded placeholder — move it to
   Secret Manager too before this matters for session security.
 
+## Avatar storage (GCS)
+
+Custom profile pictures live in the public-read Cloud Storage bucket
+`cardboard-party-avatars` (us-west2). `storage.py` validates/center-crops/resizes
+uploads with Pillow and writes a unique object per upload; the App Engine service
+account `cardboard-party@appspot.gserviceaccount.com` has `roles/storage.objectAdmin`
+on the bucket, and `allUsers` has `objectViewer` (avatars are public). A user's
+effective avatar = `users/<id>.avatar_url` (custom) or `.google_picture` (captured at
+login); the client-side cropper in `player.html` sends a pre-cropped 512² JPEG.
+
 ## Frontend security conventions
 
 The dynamic pages (`index.html`, `event.html`) render by building HTML strings and

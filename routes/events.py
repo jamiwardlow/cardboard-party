@@ -7,7 +7,7 @@ Permission model:
   Anyone can view events and standings.
 """
 
-from flask import Blueprint, request, jsonify, render_template, abort
+from flask import Blueprint, request, jsonify, render_template, abort, session
 from db import (create_event, get_event, save_event, list_events,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, list_users,
@@ -15,6 +15,7 @@ from db import (create_event, get_event, save_event, list_events,
 from swiss import pair_round, compute_standings, default_num_rounds
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round, post_test, is_valid_webhook
+from storage import upload_avatar, delete_object
 import datetime
 import re
 import uuid
@@ -497,15 +498,23 @@ def player_profile(google_id):
             'ogw': standing.get('ogw'),
         })
 
+    saved = get_user_profile(google_id)
     if not profile:
-        return 'Player not found', 404
+        # No event history yet — still let the user view/edit their own profile.
+        cur = get_current_user()
+        if cur and cur['id'] == google_id:
+            profile = {'name': saved.get('name') or cur.get('name', ''),
+                       'discord': saved.get('discord', '')}
+        else:
+            return 'Player not found', 404
 
     # Merge with saved user profile (display name / discord edits)
-    saved = get_user_profile(google_id)
     if saved.get('name'):
         profile['name'] = saved['name']
     if saved.get('discord'):
         profile['discord'] = saved['discord']
+    # Effective avatar: custom upload if set, else the Google picture.
+    profile['picture'] = saved.get('avatar_url') or saved.get('google_picture') or ''
 
     return render_template('player.html',
         user=get_current_user(),
@@ -578,6 +587,48 @@ def api_update_profile():
         return jsonify({'error': 'Nothing to update'}), 400
     save_user_profile(user['id'], updates)
     return jsonify({'ok': True, **updates})
+
+
+# ── Profile avatar (custom upload, overrides the Google picture) ──────────────
+
+_MAX_AVATAR_BYTES = 6 * 1024 * 1024  # 6 MB before resizing
+
+@events_bp.route('/api/profile/avatar', methods=['POST'])
+@login_required
+def api_upload_avatar():
+    user = get_current_user()
+    file = request.files.get('avatar')
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
+    raw = file.read(_MAX_AVATAR_BYTES + 1)
+    if not raw:
+        return jsonify({'error': 'The file is empty'}), 400
+    if len(raw) > _MAX_AVATAR_BYTES:
+        return jsonify({'error': 'Image too large (max 6 MB)'}), 400
+    try:
+        url, obj = upload_avatar(user['id'], raw)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    profile = get_user_profile(user['id'])
+    old_obj = profile.get('avatar_object')
+    save_user_profile(user['id'], {'avatar_url': url, 'avatar_object': obj})
+    if old_obj and old_obj != obj:
+        delete_object(old_obj)
+    session['user']['picture'] = url  # reflect in the nav this session
+    return jsonify({'avatar_url': url})
+
+@events_bp.route('/api/profile/avatar', methods=['DELETE'])
+@login_required
+def api_delete_avatar():
+    user = get_current_user()
+    profile = get_user_profile(user['id'])
+    old_obj = profile.get('avatar_object')
+    save_user_profile(user['id'], {'avatar_url': '', 'avatar_object': ''})
+    if old_obj:
+        delete_object(old_obj)
+    google_pic = profile.get('google_picture', '')
+    session['user']['picture'] = google_pic  # revert nav to Google picture
+    return jsonify({'avatar_url': google_pic})
 
 
 # ── Admin settings (Discord webhook etc.) ─────────────────────────────────────

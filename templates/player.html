@@ -3,10 +3,16 @@
 
 {% block content %}
 <div class="profile-header">
-  <div>
-    <div class="profile-name" id="profile-name-display">{{ profile.name }}</div>
-    <div class="profile-discord" id="profile-discord-display">
-      {{ profile.discord if profile.discord else '' }}
+  <div style="display:flex;align-items:center;gap:1rem">
+    <img id="profile-avatar" class="profile-avatar" src="{{ profile.picture }}" alt=""
+         {% if not profile.picture %}style="display:none"{% endif %}>
+    <div id="profile-avatar-fallback" class="profile-avatar profile-avatar-fallback"
+         {% if profile.picture %}style="display:none"{% endif %}>{{ (profile.name or '?')[:1] | upper }}</div>
+    <div>
+      <div class="profile-name" id="profile-name-display">{{ profile.name }}</div>
+      <div class="profile-discord" id="profile-discord-display">
+        {{ profile.discord if profile.discord else '' }}
+      </div>
     </div>
   </div>
   <div id="profile-owner-actions" class="hidden">
@@ -35,6 +41,17 @@
     <button class="btn btn-sm" onclick="closeEditProfile()">Cancel</button>
   </div>
   <div id="profile-save-msg" style="font-size:0.85rem"></div>
+
+  <hr style="border:none;border-top:1px solid var(--border);margin:0.25rem 0">
+  <label style="font-size:0.88rem;font-weight:500">
+    Profile picture
+    <input id="edit-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+           onchange="openCropper(event)" style="margin-top:0.25rem;display:block;font-size:0.85rem">
+  </label>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+    <button class="btn btn-sm btn-danger" type="button" onclick="removeAvatar()">Remove custom picture</button>
+  </div>
+  <div id="avatar-msg" style="font-size:0.85rem"></div>
 </div>
 
 <div class="stat-grid">
@@ -91,6 +108,24 @@
 {% else %}
 <p class="empty">No event history yet.</p>
 {% endif %}
+
+<!-- Avatar cropper -->
+<div id="cropper-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Crop your picture</h2>
+    <p class="subtitle" style="font-size:0.8rem">Drag to position · slide to zoom</p>
+    <div class="cropper-stage">
+      <canvas id="cropper-canvas" width="300" height="300"></canvas>
+    </div>
+    <input id="cropper-zoom" type="range" min="1" max="3" step="0.01" value="1"
+           style="width:100%;margin-top:0.9rem" aria-label="Zoom">
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCropper()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCrop()">Save picture</button>
+    </div>
+    <div id="cropper-msg" style="font-size:0.85rem;margin-top:0.4rem"></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -107,6 +142,135 @@ fetch('/auth/me').then(r => r.json()).then(me => {
 function openEditProfile() {
   document.getElementById('edit-profile-form').classList.remove('hidden');
   document.getElementById('profile-owner-actions').classList.add('hidden');
+}
+
+function setAvatar(url) {
+  const img = document.getElementById('profile-avatar');
+  const fb  = document.getElementById('profile-avatar-fallback');
+  if (url) { img.src = url; img.style.display = ''; if (fb) fb.style.display = 'none'; }
+  else     { img.style.display = 'none'; if (fb) fb.style.display = ''; }
+}
+
+// ── Avatar cropper (drag to pan, slider to zoom; outputs a 512² JPEG) ─────────
+let crop = null;
+const CROP_V = 300;      // on-screen viewport size
+const CROP_OUT = 512;    // exported square size
+
+function openCropper(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => startCrop(img);
+    img.onerror = () => {
+      const m = document.getElementById('avatar-msg');
+      m.style.color = 'var(--danger)'; m.textContent = 'That file is not a valid image.';
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function startCrop(img) {
+  const minScale = Math.max(CROP_V / img.width, CROP_V / img.height);
+  crop = { img, scale: minScale, minScale,
+           ox: (CROP_V - img.width * minScale) / 2,
+           oy: (CROP_V - img.height * minScale) / 2,
+           dragging: false, lastX: 0, lastY: 0 };
+  const zoom = document.getElementById('cropper-zoom');
+  zoom.min = minScale; zoom.max = minScale * 3; zoom.step = minScale / 50; zoom.value = minScale;
+  document.getElementById('cropper-msg').textContent = '';
+  document.getElementById('cropper-modal').classList.remove('hidden');
+  drawCrop();
+}
+
+function clampCrop() {
+  const iw = crop.img.width * crop.scale, ih = crop.img.height * crop.scale;
+  crop.ox = Math.min(0, Math.max(CROP_V - iw, crop.ox));
+  crop.oy = Math.min(0, Math.max(CROP_V - ih, crop.oy));
+}
+
+function drawCrop() {
+  if (!crop) return;
+  const ctx = document.getElementById('cropper-canvas').getContext('2d');
+  ctx.clearRect(0, 0, CROP_V, CROP_V);
+  ctx.drawImage(crop.img, crop.ox, crop.oy, crop.img.width * crop.scale, crop.img.height * crop.scale);
+}
+
+function setupCropperEvents() {
+  const c = document.getElementById('cropper-canvas');
+  if (!c) return;
+  c.addEventListener('pointerdown', e => {
+    if (!crop) return;
+    crop.dragging = true; crop.lastX = e.clientX; crop.lastY = e.clientY;
+    c.setPointerCapture(e.pointerId);
+  });
+  c.addEventListener('pointermove', e => {
+    if (!crop || !crop.dragging) return;
+    crop.ox += e.clientX - crop.lastX; crop.oy += e.clientY - crop.lastY;
+    crop.lastX = e.clientX; crop.lastY = e.clientY;
+    clampCrop(); drawCrop();
+  });
+  const stop = () => { if (crop) crop.dragging = false; };
+  c.addEventListener('pointerup', stop);
+  c.addEventListener('pointercancel', stop);
+  document.getElementById('cropper-zoom').addEventListener('input', e => {
+    if (!crop) return;
+    const ns = parseFloat(e.target.value);
+    // Zoom around the viewport center so it stays put.
+    const ix = (CROP_V / 2 - crop.ox) / crop.scale, iy = (CROP_V / 2 - crop.oy) / crop.scale;
+    crop.scale = ns;
+    crop.ox = CROP_V / 2 - ix * ns; crop.oy = CROP_V / 2 - iy * ns;
+    clampCrop(); drawCrop();
+  });
+}
+
+function closeCropper() {
+  document.getElementById('cropper-modal').classList.add('hidden');
+  crop = null;
+  document.getElementById('edit-avatar-file').value = '';
+}
+
+function saveCrop() {
+  if (!crop) return;
+  const f = CROP_OUT / CROP_V;
+  const out = document.createElement('canvas');
+  out.width = out.height = CROP_OUT;
+  out.getContext('2d').drawImage(
+    crop.img, crop.ox * f, crop.oy * f,
+    crop.img.width * crop.scale * f, crop.img.height * crop.scale * f);
+  const msg = document.getElementById('cropper-msg');
+  msg.style.color = 'var(--muted)'; msg.textContent = 'Uploading…';
+  out.toBlob(async (blob) => {
+    if (!blob) { msg.style.color = 'var(--danger)'; msg.textContent = 'Could not process image.'; return; }
+    const fd = new FormData();
+    fd.append('avatar', blob, 'avatar.jpg');
+    const res = await fetch('/api/profile/avatar', { method: 'POST', body: fd });
+    if (res.ok) {
+      const d = await res.json();
+      setAvatar(d.avatar_url);
+      closeCropper();
+      const am = document.getElementById('avatar-msg');
+      am.style.color = 'var(--accent)'; am.textContent = '✓ Picture updated.';
+    } else {
+      const e = await res.json().catch(() => ({}));
+      msg.style.color = 'var(--danger)'; msg.textContent = e.error || 'Upload failed.';
+    }
+  }, 'image/jpeg', 0.9);
+}
+setupCropperEvents();
+
+async function removeAvatar() {
+  const msg = document.getElementById('avatar-msg');
+  const res = await fetch('/api/profile/avatar', { method: 'DELETE' });
+  if (res.ok) {
+    const d = await res.json();
+    setAvatar(d.avatar_url);  // Google picture, or empty → fallback initial
+    msg.style.color = 'var(--accent)'; msg.textContent = '✓ Reverted to your Google picture.';
+  } else {
+    msg.style.color = 'var(--danger)'; msg.textContent = 'Could not remove the picture.';
+  }
 }
 
 function closeEditProfile() {
