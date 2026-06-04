@@ -13,7 +13,7 @@ from db import (create_event, get_event, save_event, list_events,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, list_users,
                 get_config, save_config)
-from swiss import pair_round, compute_standings, default_num_rounds
+from swiss import pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round, post_test, is_valid_webhook
 from storage import upload_avatar, delete_object
@@ -372,11 +372,22 @@ def api_edit_pairings(event_id, round_num):
     if has_results:
         return jsonify({'error': 'Cannot edit pairings after results have been entered'}), 400
     new_pairings = request.json or []
-    valid_ids = {p['id'] for p in e['players']} | {'__bye__'}
+    valid_ids = {p['id'] for p in e['players']} | {BYE_PLAYER_ID}
+    names = {p['id']: p['name'] for p in e['players']}
+    seen: set = set()
     for match in new_pairings:
         for key in ('player1_id', 'player2_id'):
             if match.get(key) not in valid_ids:
                 return jsonify({'error': f"Unknown player: {match.get(key)}"}), 400
+        p1, p2 = match.get('player1_id'), match.get('player2_id')
+        if not match.get('is_bye') and p1 == p2:
+            return jsonify({'error': 'A player cannot be paired against themselves'}), 400
+        for pid in (p1, p2):
+            if pid == BYE_PLAYER_ID:
+                continue
+            if pid in seen:
+                return jsonify({'error': f"{names.get(pid, pid)} is assigned to more than one match"}), 400
+            seen.add(pid)
     e['rounds'][idx] = new_pairings
     save_event(event_id, {'rounds': e['rounds']})
     return jsonify({'round_num': round_num, 'pairings': new_pairings})

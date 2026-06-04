@@ -587,6 +587,22 @@ async function saveEditedPairings() {
     })),
     ...round.filter(m => m.is_bye),
   ];
+
+  // A player may only be assigned to one match (and not play themselves).
+  const seen = new Set();
+  for (const m of payload) {
+    if (!m.is_bye && m.player1_id === m.player2_id) {
+      alert('A player cannot be paired against themselves.'); return;
+    }
+    for (const pid of [m.player1_id, m.player2_id]) {
+      if (pid === '__bye__') continue;
+      if (seen.has(pid)) {
+        alert(`${playerName(pid)} is assigned to more than one match.`); return;
+      }
+      seen.add(pid);
+    }
+  }
+
   const res = await fetch(`/api/events/${EVENT_ID}/rounds/${editingRound + 1}/pairings`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(payload),
