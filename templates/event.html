@@ -7,6 +7,12 @@
     <h1>{{ event.name }}</h1>
     <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}</p>
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
+    {% if event.entry_cost or event.payment_url %}
+    <p class="event-cost">
+      {% if event.entry_cost %}Entry: <strong>{{ event.entry_cost }}</strong>{% endif %}
+      {% if event.payment_url %}<a class="pay-link" href="{{ event.payment_url }}" target="_blank" rel="noopener noreferrer">Pay online ↗</a>{% endif %}
+    </p>
+    {% endif %}
     <span id="reg-status" style="margin-top:0.5rem"></span>
   </div>
   <div id="owner-actions" class="hidden action-row">
@@ -130,6 +136,12 @@
     <label>Description
       <textarea id="ee-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
     </label>
+    <label>Entry cost
+      <input id="ee-cost" type="text" placeholder="e.g. $10 or Free">
+    </label>
+    <label>Payment link
+      <input id="ee-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
+    </label>
     <label>Date
       <input id="ee-date" type="date">
     </label>
@@ -238,6 +250,8 @@ function openEditEventModal() {
   document.getElementById('ee-type').value        = state.event_type || 'One-day';
   document.getElementById('ee-format').value      = state.format || '';
   document.getElementById('ee-description').value = state.description || '';
+  document.getElementById('ee-cost').value        = state.entry_cost || '';
+  document.getElementById('ee-payment').value     = state.payment_url || '';
   document.getElementById('ee-date').value        = state.date || '';
   document.getElementById('ee-rounds').value      = state.num_rounds || '';
   document.getElementById('ee-cap').value         = state.registration_cap || '';
@@ -254,6 +268,8 @@ async function saveEventDetails() {
     event_type:       document.getElementById('ee-type').value,
     format:           document.getElementById('ee-format').value,
     description:      document.getElementById('ee-description').value,
+    entry_cost:       document.getElementById('ee-cost').value,
+    payment_url:      document.getElementById('ee-payment').value,
     date:             document.getElementById('ee-date').value,
     num_rounds:       parseInt(document.getElementById('ee-rounds').value) || 0,
     registration_cap: parseInt(document.getElementById('ee-cap').value) || 0,

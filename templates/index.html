@@ -45,6 +45,12 @@
     <label>Description
       <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
     </label>
+    <label>Entry cost
+      <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
+    </label>
+    <label>Payment link
+      <input id="e-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
+    </label>
     <label>Date
       <input id="e-date" type="date">
     </label>
@@ -120,6 +126,7 @@ function eventCard(e) {
     <div class="card-meta">${escapeHtml(e.event_type || 'One-day')} · ${escapeHtml(e.date || '')}</div>
     <div class="card-meta">${escapeHtml(e.format || '')}</div>
     ${e.description ? `<div class="card-description">${escapeHtml(e.description)}</div>` : ''}
+    ${e.entry_cost ? `<div class="card-meta">Entry: ${escapeHtml(e.entry_cost)}</div>` : ''}
     <div class="card-meta">${activePlayers} players${cap ? ' (cap: ' + e.registration_cap + ')' : ''}</div>
     <div class="card-status">${status}</div>
   </a>`;
@@ -141,6 +148,8 @@ async function submitCreateEvent() {
     event_type:       document.getElementById('e-type').value,
     format:           document.getElementById('e-format').value,
     description:      document.getElementById('e-description').value,
+    entry_cost:       document.getElementById('e-cost').value,
+    payment_url:      document.getElementById('e-payment').value,
     date:             document.getElementById('e-date').value,
     num_rounds:       numRounds,
     registration_cap: cap,

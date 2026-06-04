@@ -20,8 +20,26 @@ from storage import upload_avatar, delete_object
 import datetime
 import re
 import uuid
+from urllib.parse import urlparse
 
 events_bp = Blueprint('events', __name__)
+
+
+def _normalize_payment_url(raw) -> tuple:
+    """Validate/normalize a payment link so it's safe to render as a clickable
+    <a href>. Returns (url, error): an empty string for no link, an http(s)
+    URL (a missing scheme is assumed https), or (None, msg) if it's not a
+    valid web URL — which blocks javascript:/data: and other unsafe schemes.
+    """
+    url = (raw or '').strip()
+    if not url:
+        return '', None
+    if not urlparse(url).scheme:
+        url = 'https://' + url
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        return None, 'Payment link must be a valid http(s) URL'
+    return url, None
 
 
 # ── Permission helpers ─────────────────────────────────────────────────────────
@@ -157,11 +175,16 @@ def api_list_events():
 def api_create_event():
     user = get_current_user()
     data = request.json or {}
+    payment_url, err = _normalize_payment_url(data.get('payment_url'))
+    if err:
+        return jsonify({'error': err}), 400
     event = {
         'name':         data.get('name', 'New Event'),
         'event_type':   data.get('event_type', 'One-day'),
         'format':       data.get('format', 'Limited: Draft'),
         'description':  data.get('description', ''),
+        'entry_cost':   data.get('entry_cost', ''),
+        'payment_url':  payment_url,
         'date':         data.get('date', str(datetime.date.today())),
         'owner_id':     user['id'],
         'owner_name':   user['name'],
@@ -205,12 +228,17 @@ def api_update_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
     data = request.json or {}
-    allowed = {'name', 'event_type', 'format', 'description', 'date', 'num_rounds',
+    allowed = {'name', 'event_type', 'format', 'description', 'entry_cost',
+               'payment_url', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
                'notify_mode', 'notify_webhook_id'}
     updates = {k: v for k, v in data.items() if k in allowed}
     if updates.get('notify_mode') not in (None, 'none', 'community', 'saved'):
         return jsonify({'error': 'Invalid notify_mode'}), 400
+    if 'payment_url' in updates:
+        updates['payment_url'], err = _normalize_payment_url(updates['payment_url'])
+        if err:
+            return jsonify({'error': err}), 400
     save_event(event_id, updates)
     return jsonify({**e, **updates})
 
