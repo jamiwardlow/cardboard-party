@@ -395,9 +395,12 @@ function renderPlayers() {
   const active = state.players.filter(p => !p.dropped);
   document.getElementById('player-count').textContent = active.length;
   document.getElementById('player-list').innerHTML = state.players.map(p => {
-    const dropBtn = canManage() && !p.dropped && state.rounds.length
-      ? `<button class="btn btn-sm btn-danger drop-btn" onclick="dropPlayer('${p.id}')">Drop</button>`
-      : '';
+    let dropBtn = '';
+    if (canManage() && state.rounds.length) {
+      dropBtn = p.dropped
+        ? `<button class="btn btn-sm drop-btn" onclick="undropPlayer('${p.id}')">Un-drop</button>`
+        : `<button class="btn btn-sm btn-danger drop-btn" onclick="dropPlayer('${p.id}')">Drop</button>`;
+    }
     const discord = p.discord
       ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
     const profileLink = p.google_id
@@ -433,6 +436,11 @@ async function addSelf() {
 async function dropPlayer(playerId) {
   if (!confirm('Drop this player?')) return;
   const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/drop`, { method: 'POST' });
+  if (res.ok) await init();
+}
+
+async function undropPlayer(playerId) {
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/undrop`, { method: 'POST' });
   if (res.ok) await init();
 }
 

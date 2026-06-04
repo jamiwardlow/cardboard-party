@@ -309,6 +309,20 @@ def api_drop_player(event_id, player_id):
     save_event(event_id, {'players': e['players']})
     return jsonify({'ok': True})
 
+@events_bp.route('/api/events/<event_id>/players/<player_id>/undrop', methods=['POST'])
+@login_required
+def api_undrop_player(event_id, player_id):
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    player = next((p for p in e['players'] if p['id'] == player_id), None)
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+    player['dropped'] = False
+    save_event(event_id, {'players': e['players']})
+    return jsonify({'ok': True})
+
 
 # ── API: pairing ───────────────────────────────────────────────────────────────
 
