@@ -14,6 +14,15 @@
   </div>
 </div>
 
+<!-- Organiser-only: where round notifications are posted -->
+<div id="notify-bar" class="hidden" style="margin-bottom:1.25rem;font-size:0.9rem">
+  <label>Round notifications:
+    <select id="notify-select" onchange="updateNotify()"
+            style="padding:0.3rem 0.5rem;border:1px solid var(--border);border-radius:var(--radius)"></select>
+  </label>
+  <a href="/webhooks" style="font-size:0.82rem;margin-left:0.6rem;color:var(--accent)">Manage webhooks</a>
+</div>
+
 <!-- Registration banner (signed-in non-players) -->
 <div id="register-banner" class="banner hidden">
   <span id="register-banner-msg"></span>
@@ -131,6 +140,7 @@ function canManage() {
 function render() {
   renderStatus();
   renderOrganizer();
+  renderNotify();
   renderOwnerActions();
   renderBanners();
   renderRounds();
@@ -145,6 +155,43 @@ function renderOrganizer() {
   const name = state.owner_name || 'Unknown';
   el.innerHTML = `Organizer: <strong>${escapeHtml(name)}</strong>`
     + (state.owner_discord ? ` · Discord <strong>${escapeHtml(state.owner_discord)}</strong>` : '');
+}
+
+// Organiser-only: choose where round notifications are posted.
+function renderNotify() {
+  const bar = document.getElementById('notify-bar');
+  if (!canManage()) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+
+  const opts = ['<option value="none">No notifications</option>'];
+  if (state.community_webhook_set)
+    opts.push('<option value="community">Community channel</option>');
+  for (const w of (state.owner_webhooks || []))
+    opts.push(`<option value="saved:${w.id}">${escapeHtml(w.label)}</option>`);
+
+  const sel = document.getElementById('notify-select');
+  sel.innerHTML = opts.join('');
+
+  let current = 'none';
+  if (state.notify_mode === 'community') current = 'community';
+  else if (state.notify_mode === 'saved' && state.notify_webhook_id) current = `saved:${state.notify_webhook_id}`;
+  sel.value = current;
+  // Saved webhook was deleted, or community got turned off → show None.
+  if (sel.value !== current) sel.value = 'none';
+}
+
+async function updateNotify() {
+  const val = document.getElementById('notify-select').value;
+  let body;
+  if (val === 'community')        body = { notify_mode: 'community', notify_webhook_id: '' };
+  else if (val.startsWith('saved:')) body = { notify_mode: 'saved', notify_webhook_id: val.slice(6) };
+  else                            body = { notify_mode: 'none', notify_webhook_id: '' };
+  const res = await fetch(`/api/events/${EVENT_ID}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (res.ok) Object.assign(state, body);
+  else alert('Failed to update notifications.');
 }
 
 // Status pill shown to everyone — mirrors the color coding on the Events page.

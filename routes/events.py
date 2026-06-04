@@ -65,6 +65,18 @@ def _validate_result(match: dict, winner_id, result) -> str | None:
         return 'Winner does not match the score'
     return None
 
+def _resolve_event_webhook(event: dict) -> str:
+    """Resolve an event's notification setting to an actual webhook URL ('' = none)."""
+    mode = event.get('notify_mode', 'none')
+    if mode == 'community':
+        return get_config().get('discord_webhook', '')
+    if mode == 'saved':
+        owner = get_user_profile(event.get('owner_id', ''))
+        wid = event.get('notify_webhook_id')
+        wh = next((w for w in owner.get('webhooks', []) if w.get('id') == wid), None)
+        return wh['url'] if wh else ''
+    return ''
+
 def _mask_webhook(url: str) -> str:
     """Identify a webhook without revealing its token."""
     return (url[:38] + '…' + url[-4:]) if len(url) > 46 else url
@@ -156,6 +168,8 @@ def api_create_event():
         'status':       'setup',
         'registration': 'open',
         'registration_cap': data.get('registration_cap', 0),  # 0 = no cap
+        'notify_mode':      'none',   # none | community | saved
+        'notify_webhook_id': '',      # which saved webhook (when mode == saved)
     }
     eid = create_event(event)
     event['id'] = eid
@@ -168,8 +182,16 @@ def api_get_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     e['standings'] = compute_standings(e['players'], e['rounds'])
     e['can_manage'] = _can_manage(e)
+    owner_profile = get_user_profile(e.get('owner_id', ''))
     # Surface the organizer's discord (if known) so players know how to reach them.
-    e['owner_discord'] = get_user_profile(e.get('owner_id', '')).get('discord', '')
+    e['owner_discord'] = owner_profile.get('discord', '')
+    # Whether the "community channel" option is available (admin has set one).
+    e['community_webhook_set'] = bool(get_config().get('discord_webhook'))
+    # Managers pick the notification destination from the owner's saved webhooks
+    # (labels only — never expose the URLs, and only to people who can manage).
+    if e['can_manage']:
+        e['owner_webhooks'] = [{'id': w['id'], 'label': w.get('label', '')}
+                               for w in owner_profile.get('webhooks', [])]
     return jsonify(e)
 
 @events_bp.route('/api/events/<event_id>', methods=['PUT'])
@@ -181,8 +203,11 @@ def api_update_event(event_id):
     _require_manage(e)
     data = request.json or {}
     allowed = {'name', 'event_type', 'format', 'date', 'num_rounds',
-               'status', 'registration', 'registration_cap'}
+               'status', 'registration', 'registration_cap',
+               'notify_mode', 'notify_webhook_id'}
     updates = {k: v for k, v in data.items() if k in allowed}
+    if updates.get('notify_mode') not in (None, 'none', 'community', 'saved'):
+        return jsonify({'error': 'Invalid notify_mode'}), 400
     save_event(event_id, updates)
     return jsonify({**e, **updates})
 
@@ -311,8 +336,7 @@ def api_pair_round(event_id):
 
     round_num  = len(e['rounds'])
     standings  = compute_standings(e['players'], e['rounds'])
-    config     = get_config()
-    webhook    = config.get('discord_webhook', '')
+    webhook    = _resolve_event_webhook(e)
     if webhook:
         post_round(webhook, e, round_num, new_round, standings)
 
@@ -573,9 +597,13 @@ def api_update_settings():
     user = get_current_user()
     if not is_admin(user['id']):
         abort(403)
-    data    = request.json or {}
-    allowed = {'discord_webhook'}
-    updates = {k: v for k, v in data.items() if k in allowed}
+    data = request.json or {}
+    updates = {}
+    if 'discord_webhook' in data:
+        wh = (data.get('discord_webhook') or '').strip()
+        if wh and not is_valid_webhook(wh):
+            return jsonify({'error': 'That does not look like a Discord webhook URL'}), 400
+        updates['discord_webhook'] = wh  # '' clears it
     save_config(updates)
     return jsonify({'ok': True})
 
