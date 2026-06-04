@@ -54,6 +54,7 @@
     <ul id="player-list" class="player-list"></ul>
 
     <h2>Standings</h2>
+    <p id="organizer-info" class="text-muted" style="font-size:0.85rem;margin:0 0 0.75rem"></p>
     <table id="standings-table" class="standings">
       <thead>
         <tr>
@@ -129,11 +130,21 @@ function canManage() {
 
 function render() {
   renderStatus();
+  renderOrganizer();
   renderOwnerActions();
   renderBanners();
   renderRounds();
   renderPlayers();
   renderStandings();
+}
+
+// Show who's running the event so players know who to contact for help.
+function renderOrganizer() {
+  const el = document.getElementById('organizer-info');
+  if (!el) return;
+  const name = state.owner_name || 'Unknown';
+  el.innerHTML = `Organizer: <strong>${escapeHtml(name)}</strong>`
+    + (state.owner_discord ? ` · Discord <strong>${escapeHtml(state.owner_discord)}</strong>` : '');
 }
 
 // Status pill shown to everyone — mirrors the color coding on the Events page.

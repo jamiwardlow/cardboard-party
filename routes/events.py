@@ -163,6 +163,8 @@ def api_get_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     e['standings'] = compute_standings(e['players'], e['rounds'])
     e['can_manage'] = _can_manage(e)
+    # Surface the organizer's discord (if known) so players know how to reach them.
+    e['owner_discord'] = get_user_profile(e.get('owner_id', '')).get('discord', '')
     return jsonify(e)
 
 @events_bp.route('/api/events/<event_id>', methods=['PUT'])
