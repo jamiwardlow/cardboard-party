@@ -515,6 +515,7 @@ def player_profile(google_id):
         profile['discord'] = saved['discord']
     # Effective avatar: custom upload if set, else the Google picture.
     profile['picture'] = saved.get('avatar_url') or saved.get('google_picture') or ''
+    profile['about'] = saved.get('about', '')
 
     return render_template('player.html',
         user=get_current_user(),
@@ -571,6 +572,7 @@ def api_get_profile():
     return jsonify({
         'name':    profile.get('name', user['name']),
         'discord': profile.get('discord', ''),
+        'about':   profile.get('about', ''),
     })
 
 @events_bp.route('/api/profile', methods=['PUT'])
@@ -583,6 +585,8 @@ def api_update_profile():
         updates['name']    = data['name'].strip()
     if 'discord' in data:
         updates['discord'] = data['discord'].strip()
+    if 'about' in data:
+        updates['about'] = data['about'].strip()[:1000]
     if not updates:
         return jsonify({'error': 'Nothing to update'}), 400
     save_user_profile(user['id'], updates)

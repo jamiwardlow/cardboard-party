@@ -228,6 +228,8 @@ td.result { width: 1%; white-space: nowrap; }
                   cursor: grab; }
 .profile-name   { font-size: 1.3rem; font-weight: 700; }
 .profile-discord { font-size: 0.88rem; color: var(--muted); }
+.profile-about  { color: var(--text); font-size: 0.92rem; line-height: 1.6;
+                  white-space: pre-wrap; max-width: 600px; margin: -0.75rem 0 1.5rem; }
 .stat-grid      { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
                   gap: 1rem; margin-bottom: 1.5rem; }
 .stat-card      { background: var(--bg); border: 1px solid var(--border);
