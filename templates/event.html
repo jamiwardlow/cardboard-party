@@ -449,9 +449,9 @@ async function undropPlayer(playerId) {
 function renderStandings() {
   const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
   document.querySelector('#standings-table tbody').innerHTML =
-    (state.standings || []).map((s, i) => `<tr>
+    (state.standings || []).map((s, i) => `<tr class="${s.dropped ? 'dropped' : ''}">
       <td>${i + 1}</td>
-      <td>${escapeHtml(s.name)}</td>
+      <td>${escapeHtml(s.name)}${s.dropped ? ' <span class="drop-tag">dropped</span>' : ''}</td>
       <td>${s.points}</td>
       <td class="hide-mobile">${pct(s.omw)}</td>
       <td class="hide-mobile">${pct(s.gw)}</td>

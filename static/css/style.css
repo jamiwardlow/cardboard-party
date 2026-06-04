@@ -142,6 +142,10 @@ td.result { width: 1%; white-space: nowrap; }
 .player-name    { flex: 1; }
 .player-discord { font-size: 0.78rem; color: var(--muted); }
 .dropped .player-name { text-decoration: line-through; color: var(--muted); }
+#standings-table tr.dropped td { color: var(--muted); }
+.drop-tag { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em;
+            color: var(--muted); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 0.05rem 0.35rem; margin-left: 0.4rem; }
 
 .inline-form       { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
 .inline-form input { flex: 1; min-width: 0; padding: 0.38rem 0.6rem;

@@ -159,11 +159,14 @@ def compute_standings(players: list[dict], rounds: list[list[dict]]) -> list[dic
 
     Each entry: { id, name, points, omw, gw, ogw }
     """
-    active = [p for p in players if not p.get('dropped', False)]
-    points = _compute_points(active, rounds)
+    # Dropped players remain in the standings (ranked by their record at drop
+    # time). Computing over every player also keeps opponents' tiebreakers
+    # accurate — a dropped opponent's points/games still count toward OMW/OGW.
+    ranked = list(players)
+    points = _compute_points(ranked, rounds)
 
-    game_wins   = {p['id']: 0 for p in active}
-    game_losses = {p['id']: 0 for p in active}
+    game_wins   = {p['id']: 0 for p in ranked}
+    game_losses = {p['id']: 0 for p in ranked}
 
     for rnd in rounds:
         for match in rnd:
@@ -183,7 +186,7 @@ def compute_standings(players: list[dict], rounds: list[list[dict]]) -> list[dic
 
     # A player has "played" once they have a recorded result or a bye; until
     # then their tiebreakers are meaningless and shown as '—' (None).
-    played = {p['id']: 0 for p in active}
+    played = {p['id']: 0 for p in ranked}
     for rnd in rounds:
         for match in rnd:
             if match.get('is_bye'):
@@ -210,7 +213,7 @@ def compute_standings(players: list[dict], rounds: list[list[dict]]) -> list[dic
         return sum(gw_pct(o) for o in opps) / len(opps)
 
     standings = []
-    for p in active:
+    for p in ranked:
         pid = p['id']
         has_played = played.get(pid, 0) > 0
         standings.append({
@@ -220,6 +223,7 @@ def compute_standings(players: list[dict], rounds: list[list[dict]]) -> list[dic
             'omw':  round(omw_pct(pid), 4) if has_played else None,
             'gw':   round(gw_pct(pid), 4) if has_played else None,
             'ogw':  round(ogw_pct(pid), 4) if has_played else None,
+            'dropped': bool(p.get('dropped', False)),
         })
 
     standings.sort(key=lambda s: (-s['points'], -(s['omw'] or 0),
