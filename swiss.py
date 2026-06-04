@@ -170,11 +170,16 @@ def compute_standings(players: list[dict], rounds: list[list[dict]]) -> list[dic
 
     for rnd in rounds:
         for match in rnd:
-            if match.get('is_bye') or not match.get('result'):
+            result = match.get('result')
+            # Decisive results are stored as a two-part 'p1games-p2games'
+            # score (e.g. '2-1'). Byes and match draws ('draw') carry no
+            # per-game split, so they don't contribute to game win %.
+            if match.get('is_bye') or not result or result == 'draw':
                 continue
+            parts = str(result).split('-')
             try:
-                w, l, d = map(int, match['result'].split('-'))
-            except (ValueError, AttributeError):
+                w, l = int(parts[0]), int(parts[1])
+            except (ValueError, IndexError):
                 continue
             p1, p2 = match['player1_id'], match['player2_id']
             game_wins[p1]   = game_wins.get(p1, 0)   + w
