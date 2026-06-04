@@ -161,6 +161,7 @@ def api_create_event():
         'name':         data.get('name', 'New Event'),
         'event_type':   data.get('event_type', 'One-day'),
         'format':       data.get('format', 'Limited: Draft'),
+        'description':  data.get('description', ''),
         'date':         data.get('date', str(datetime.date.today())),
         'owner_id':     user['id'],
         'owner_name':   user['name'],
@@ -204,7 +205,7 @@ def api_update_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
     data = request.json or {}
-    allowed = {'name', 'event_type', 'format', 'date', 'num_rounds',
+    allowed = {'name', 'event_type', 'format', 'description', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
                'notify_mode', 'notify_webhook_id'}
     updates = {k: v for k, v in data.items() if k in allowed}

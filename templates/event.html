@@ -6,9 +6,11 @@
   <div>
     <h1>{{ event.name }}</h1>
     <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}</p>
+    {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     <span id="reg-status" style="margin-top:0.5rem"></span>
   </div>
   <div id="owner-actions" class="hidden action-row">
+    <button class="btn btn-sm" onclick="openEditEventModal()">Edit event</button>
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
     <button class="btn btn-primary" id="btn-pair" onclick="pairNextRound()">Pair round 1</button>
   </div>
@@ -108,6 +110,41 @@
     </div>
   </div>
 </div>
+
+<!-- Edit event modal -->
+<div id="edit-event-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Edit event</h2>
+    <label>Name
+      <input id="ee-name" type="text">
+    </label>
+    <label>Type
+      <select id="ee-type">
+        <option value="One-day">One-day</option>
+        <option value="League">League</option>
+      </select>
+    </label>
+    <label>Format
+      <input id="ee-format" type="text">
+    </label>
+    <label>Description
+      <textarea id="ee-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
+    </label>
+    <label>Date
+      <input id="ee-date" type="date">
+    </label>
+    <label>Number of rounds
+      <input id="ee-rounds" type="number" min="1" max="20" placeholder="Auto">
+    </label>
+    <label>Registration cap
+      <input id="ee-cap" type="number" min="2" max="256" placeholder="No cap">
+    </label>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeEditEventModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEventDetails()">Save changes</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -192,6 +229,43 @@ async function updateNotify() {
   });
   if (res.ok) Object.assign(state, body);
   else alert('Failed to update notifications.');
+}
+
+// ── Edit event metadata ─────────────────────────────────────────────────────────
+
+function openEditEventModal() {
+  document.getElementById('ee-name').value        = state.name || '';
+  document.getElementById('ee-type').value        = state.event_type || 'One-day';
+  document.getElementById('ee-format').value      = state.format || '';
+  document.getElementById('ee-description').value = state.description || '';
+  document.getElementById('ee-date').value        = state.date || '';
+  document.getElementById('ee-rounds').value      = state.num_rounds || '';
+  document.getElementById('ee-cap').value         = state.registration_cap || '';
+  document.getElementById('edit-event-modal').classList.remove('hidden');
+}
+
+function closeEditEventModal() {
+  document.getElementById('edit-event-modal').classList.add('hidden');
+}
+
+async function saveEventDetails() {
+  const body = {
+    name:             document.getElementById('ee-name').value,
+    event_type:       document.getElementById('ee-type').value,
+    format:           document.getElementById('ee-format').value,
+    description:      document.getElementById('ee-description').value,
+    date:             document.getElementById('ee-date').value,
+    num_rounds:       parseInt(document.getElementById('ee-rounds').value) || 0,
+    registration_cap: parseInt(document.getElementById('ee-cap').value) || 0,
+  };
+  const res = await fetch(`/api/events/${EVENT_ID}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  // The header (name/format/description) is server-rendered, so reload to
+  // re-render it rather than patching the DOM in two places.
+  if (res.ok) location.reload();
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to save event.'); }
 }
 
 // Status pill shown to everyone — mirrors the color coding on the Events page.

@@ -42,6 +42,9 @@
     <label>Format
       <input id="e-format" type="text" value="Limited: Draft">
     </label>
+    <label>Description
+      <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
+    </label>
     <label>Date
       <input id="e-date" type="date">
     </label>
@@ -116,6 +119,7 @@ function eventCard(e) {
     <div class="card-title">${escapeHtml(e.name)}</div>
     <div class="card-meta">${escapeHtml(e.event_type || 'One-day')} · ${escapeHtml(e.date || '')}</div>
     <div class="card-meta">${escapeHtml(e.format || '')}</div>
+    ${e.description ? `<div class="card-description">${escapeHtml(e.description)}</div>` : ''}
     <div class="card-meta">${activePlayers} players${cap ? ' (cap: ' + e.registration_cap + ')' : ''}</div>
     <div class="card-status">${status}</div>
   </a>`;
@@ -136,6 +140,7 @@ async function submitCreateEvent() {
     name:             document.getElementById('e-name').value,
     event_type:       document.getElementById('e-type').value,
     format:           document.getElementById('e-format').value,
+    description:      document.getElementById('e-description').value,
     date:             document.getElementById('e-date').value,
     num_rounds:       numRounds,
     registration_cap: cap,
