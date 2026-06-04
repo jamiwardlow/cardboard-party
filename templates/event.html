@@ -366,7 +366,10 @@ function renderMatch(m, roundIdx, matchIdx) {
   if (m.is_bye) {
     resultCell = '<span class="result-bye">Bye</span>';
   } else if (m.result === 'draw') {
-    resultCell = '<span class="result-draw">Draw 1–1</span>';
+    const editBtn = canManage()
+      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
+      : '';
+    resultCell = `<span class="result-draw">Draw 1–1</span>${editBtn}`;
   } else if (m.winner_id) {
     const parts = m.result.split('-').map(Number);
     const w = parts[0], l = parts[1];
@@ -374,8 +377,6 @@ function renderMatch(m, roundIdx, matchIdx) {
       ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
       : '';
     resultCell = `<span class="result-win">${escapeHtml(playerName(m.winner_id))} ${w}–${l}</span>${editBtn}`;
-  } else if (m.result === 'draw' && canManage()) {
-    resultCell = `<span class="result-draw">Draw 1–1</span> <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`;
   } else if (canReport) {
     resultCell = `<button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
   } else {
