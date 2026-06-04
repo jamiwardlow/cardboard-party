@@ -14,9 +14,10 @@ from db import (create_event, get_event, save_event, list_events,
                 get_config, save_config)
 from swiss import pair_round, compute_standings, default_num_rounds
 from routes.auth import get_current_user, login_required
-from discord_notify import post_round
+from discord_notify import post_round, post_test, is_valid_webhook
 import datetime
 import re
+import uuid
 
 events_bp = Blueprint('events', __name__)
 
@@ -63,6 +64,10 @@ def _validate_result(match: dict, winner_id, result) -> str | None:
     if winner_id != expected:
         return 'Winner does not match the score'
     return None
+
+def _mask_webhook(url: str) -> str:
+    """Identify a webhook without revealing its token."""
+    return (url[:38] + '…' + url[-4:]) if len(url) > 46 else url
 
 
 # ── Pages ──────────────────────────────────────────────────────────────────────
@@ -573,3 +578,63 @@ def api_update_settings():
     updates = {k: v for k, v in data.items() if k in allowed}
     save_config(updates)
     return jsonify({'ok': True})
+
+
+# ── Personal Discord webhooks (per organiser) ─────────────────────────────────
+# Saved on the user's profile as webhooks: [{id, label, url}]. Any signed-in user
+# can manage their own; events reference them by id via notify_webhook_id.
+
+@events_bp.route('/webhooks')
+@login_required
+def webhooks_page():
+    return render_template('webhooks.html', user=get_current_user())
+
+@events_bp.route('/api/webhooks', methods=['GET'])
+@login_required
+def api_list_webhooks():
+    user  = get_current_user()
+    hooks = get_user_profile(user['id']).get('webhooks', [])
+    # Never return full URLs to the client.
+    return jsonify([{'id': w['id'], 'label': w.get('label', ''),
+                     'masked': _mask_webhook(w.get('url', ''))} for w in hooks])
+
+@events_bp.route('/api/webhooks', methods=['POST'])
+@login_required
+def api_add_webhook():
+    user  = get_current_user()
+    data  = request.json or {}
+    label = (data.get('label') or '').strip()
+    url   = (data.get('url') or '').strip()
+    if not label:
+        return jsonify({'error': 'A label is required'}), 400
+    if not is_valid_webhook(url):
+        return jsonify({'error': 'That does not look like a Discord webhook URL'}), 400
+    profile = get_user_profile(user['id'])
+    hooks   = profile.get('webhooks', [])
+    if len(hooks) >= 25:
+        return jsonify({'error': 'You have reached the saved-webhook limit'}), 400
+    hook = {'id': uuid.uuid4().hex[:12], 'label': label, 'url': url}
+    hooks.append(hook)
+    save_user_profile(user['id'], {'webhooks': hooks})
+    return jsonify({'id': hook['id'], 'label': label, 'masked': _mask_webhook(url)}), 201
+
+@events_bp.route('/api/webhooks/<webhook_id>', methods=['DELETE'])
+@login_required
+def api_delete_webhook(webhook_id):
+    user  = get_current_user()
+    hooks = [w for w in get_user_profile(user['id']).get('webhooks', [])
+             if w.get('id') != webhook_id]
+    save_user_profile(user['id'], {'webhooks': hooks})
+    return jsonify({'ok': True})
+
+@events_bp.route('/api/webhooks/<webhook_id>/test', methods=['POST'])
+@login_required
+def api_test_webhook(webhook_id):
+    user = get_current_user()
+    wh = next((w for w in get_user_profile(user['id']).get('webhooks', [])
+               if w.get('id') == webhook_id), None)
+    if not wh:
+        return jsonify({'error': 'Webhook not found'}), 404
+    if post_test(wh['url']):
+        return jsonify({'ok': True})
+    return jsonify({'error': 'Discord did not accept the test message'}), 502

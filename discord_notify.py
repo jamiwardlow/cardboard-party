@@ -11,13 +11,41 @@ To set up:
   4. Paste it into the Admin → Settings page in Cardboard Party
 """
 
+import re
 import requests
+
+# Discord webhook URLs only. Validating the host is also our SSRF guard: the
+# server POSTs to these URLs, and organisers (not just admins) now supply them,
+# so we must never let an arbitrary URL through to requests.post().
+_WEBHOOK_RE = re.compile(
+    r'^https://(?:\w+\.)?discord(?:app)?\.com/api/webhooks/\d+/[\w-]+$'
+)
+
+def is_valid_webhook(url: str) -> bool:
+    return bool(url) and bool(_WEBHOOK_RE.match(url.strip()))
+
+
+def post_test(webhook_url: str) -> bool:
+    """Send a simple test message. Returns True on success."""
+    if not is_valid_webhook(webhook_url):
+        return False
+    try:
+        resp = requests.post(
+            webhook_url,
+            json={"content": "✅ Cardboard Party notifications are working!"},
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"Discord test error: {e}")
+        return False
 
 
 def post_round(webhook_url: str, event: dict, round_num: int,
                pairings: list, standings: list):
     """Post a new round notification to Discord."""
-    if not webhook_url:
+    if not is_valid_webhook(webhook_url):
         return
 
     event_name = event.get('name', 'Event')
