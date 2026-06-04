@@ -9,6 +9,7 @@ Permission model:
 
 from flask import Blueprint, request, jsonify, render_template, abort, session
 from db import (create_event, get_event, save_event, list_events,
+                set_player_dropped,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, list_users,
                 get_config, save_config)
@@ -260,10 +261,10 @@ def api_unregister(event_id):
     if not player:
         return jsonify({'error': 'Not registered'}), 400
     if e['rounds']:
-        player['dropped'] = True
+        set_player_dropped(event_id, player['id'], True)
     else:
         e['players'] = [p for p in e['players'] if p.get('google_id') != user['id']]
-    save_event(event_id, {'players': e['players']})
+        save_event(event_id, {'players': e['players']})
     return jsonify({'ok': True})
 
 
@@ -302,11 +303,8 @@ def api_drop_player(event_id, player_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    player = next((p for p in e['players'] if p['id'] == player_id), None)
-    if not player:
+    if not set_player_dropped(event_id, player_id, True):
         return jsonify({'error': 'Player not found'}), 404
-    player['dropped'] = True
-    save_event(event_id, {'players': e['players']})
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/undrop', methods=['POST'])
@@ -316,11 +314,8 @@ def api_undrop_player(event_id, player_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    player = next((p for p in e['players'] if p['id'] == player_id), None)
-    if not player:
+    if not set_player_dropped(event_id, player_id, False):
         return jsonify({'error': 'Player not found'}), 404
-    player['dropped'] = False
-    save_event(event_id, {'players': e['players']})
     return jsonify({'ok': True})
 
 
@@ -385,6 +380,36 @@ def api_edit_pairings(event_id, round_num):
     e['rounds'][idx] = new_pairings
     save_event(event_id, {'rounds': e['rounds']})
     return jsonify({'round_num': round_num, 'pairings': new_pairings})
+
+
+@events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/repair', methods=['POST'])
+@login_required
+def api_repair_round(event_id, round_num):
+    """Regenerate the latest round's pairings from the current active players.
+
+    Used to correct a round that was paired against a stale player list (e.g.
+    a drop hadn't taken effect yet). Only the latest round can be re-paired —
+    re-pairing an earlier round would invalidate the history later rounds were
+    built on. Any results already recorded in the round are discarded (the
+    client confirms first).
+    """
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    idx = round_num - 1
+    if idx != len(e['rounds']) - 1:
+        return jsonify({'error': 'Only the latest round can be re-paired'}), 400
+    new_round = pair_round(e['players'], e['rounds'][:idx])
+    e['rounds'][idx] = new_round
+    save_event(event_id, {'rounds': e['rounds']})
+
+    standings = compute_standings(e['players'], e['rounds'])
+    webhook   = _resolve_event_webhook(e)
+    if webhook:
+        post_round(webhook, e, round_num, new_round, standings)
+
+    return jsonify({'round_num': round_num, 'pairings': new_round})
 
 
 # ── API: results ───────────────────────────────────────────────────────────────

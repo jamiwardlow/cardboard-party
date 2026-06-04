@@ -36,6 +36,37 @@ def save_event(event_id: str, data: dict):
         stored['rounds'] = _flatten_rounds(stored['rounds'])
     get_db().collection('events').document(event_id).set(stored, merge=True)
 
+def set_player_dropped(event_id: str, player_id: str, dropped: bool):
+    """Atomically flip a single player's `dropped` flag.
+
+    Drop/un-drop otherwise read the whole event, edit one player, and write
+    the entire `players` array back. Two overlapping requests (dropping several
+    players quickly, or a drop racing an un-drop) each start from the same
+    snapshot, so the later write clobbers the earlier one — a lost update that
+    leaves a "dropped" player still active and inflates the next round's
+    pairings. Running the read-modify-write in a transaction serializes them.
+
+    Returns the updated player dict, or None if the event or player is gone.
+    """
+    db = get_db()
+    ref = db.collection('events').document(event_id)
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def _apply(txn):
+        snapshot = ref.get(transaction=txn)
+        if not snapshot.exists:
+            return None
+        players = snapshot.to_dict().get('players', [])
+        target = next((p for p in players if p['id'] == player_id), None)
+        if target is None:
+            return None
+        target['dropped'] = dropped
+        txn.update(ref, {'players': players})
+        return target
+
+    return _apply(transaction)
+
 def list_events() -> list[dict]:
     events = []
     for doc in get_db().collection('events').stream():

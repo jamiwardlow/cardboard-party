@@ -335,10 +335,16 @@ function renderRounds() {
   }
   el.innerHTML = state.rounds.map((round, i) => {
     const canEdit = canManage() && round.every(m => m.is_bye || (!m.winner_id && m.result !== 'draw'));
+    const isLatest = i === state.rounds.length - 1;
+    const repairBtn = canManage() && isLatest
+      ? `<button class="btn btn-sm" onclick="repairRound(${i + 1})">Re-pair</button>` : '';
     return `<div class="round-card">
       <div class="round-header">
         <strong>Round ${i + 1}</strong>
-        ${canEdit ? `<button class="btn btn-sm" onclick="openEditModal(${i})">Edit pairings</button>` : ''}
+        <span class="round-actions">
+          ${canEdit ? `<button class="btn btn-sm" onclick="openEditModal(${i})">Edit pairings</button>` : ''}
+          ${repairBtn}
+        </span>
       </div>
       <table class="pairings"><tbody>
         ${round.map((m, mi) => renderMatch(m, i, mi)).join('')}
@@ -442,6 +448,13 @@ async function dropPlayer(playerId) {
 async function undropPlayer(playerId) {
   const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/undrop`, { method: 'POST' });
   if (res.ok) await init();
+}
+
+async function repairRound(roundNum) {
+  if (!confirm(`Re-pair round ${roundNum} from the current active players? Any results entered in this round will be cleared.`)) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/rounds/${roundNum}/repair`, { method: 'POST' });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to re-pair round.'); }
 }
 
 // ── Standings ──────────────────────────────────────────────────────────────────
