@@ -9,7 +9,8 @@ handlers:
 
 env_variables:
   FLASK_ENV: production
-  # Public value (sent to browsers during OAuth). Replace with your rotated client ID.
-  GOOGLE_CLIENT_ID: "496917439607-geo7okoall3vpha9spepdacodqnk8msr.apps.googleusercontent.com"
+  # Public value (sent to browsers during OAuth). OAuth client lives in the
+  # cardboard-party project (matches the GOOGLE_CLIENT_SECRET in its Secret Manager).
+  GOOGLE_CLIENT_ID: "52928879537-r88u039f214kfa2kaalmm4a0hfr5a8dj.apps.googleusercontent.com"
   # GOOGLE_CLIENT_SECRET is NOT stored here — it lives in Secret Manager
   # (secret name: GOOGLE_CLIENT_SECRET) and is fetched at startup by gcp_secrets.py.
