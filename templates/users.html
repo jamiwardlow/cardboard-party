@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Users — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Users</h1>
+</div>
+
+<p style="color:var(--muted);font-size:0.9rem;margin-bottom:1.5rem;max-width:560px">
+  Everyone who has signed in or registered for an event. Email is recorded the
+  first time someone signs in, so people who haven't logged in since this was
+  added may show a blank email until their next sign-in.
+</p>
+
+{% if users %}
+<table class="standings">
+  <thead>
+    <tr><th>Name</th><th>Email</th><th>Discord</th><th>Events</th></tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>
+        {% if u.google_id %}
+        <a href="/players/{{ u.google_id }}" style="color:var(--accent)">{{ u.name or '—' }}</a>
+        {% else %}{{ u.name or '—' }}{% endif %}
+      </td>
+      <td class="text-muted">{{ u.email or '—' }}</td>
+      <td>{{ u.discord or '—' }}</td>
+      <td>{{ u.events }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="text-muted" style="font-size:0.85rem;margin-top:1rem">{{ users | length }} user{{ '' if users|length == 1 else 's' }}</p>
+{% else %}
+<p class="empty">No users yet.</p>
+{% endif %}
+{% endblock %}

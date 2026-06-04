@@ -10,7 +10,8 @@ Permission model:
 from flask import Blueprint, request, jsonify, render_template, abort
 from db import (create_event, get_event, save_event, list_events,
                 get_admins, is_admin, add_admin, remove_admin,
-                get_user_profile, save_user_profile, get_config, save_config)
+                get_user_profile, save_user_profile, list_users,
+                get_config, save_config)
 from swiss import pair_round, compute_standings, default_num_rounds
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round
@@ -84,6 +85,46 @@ def admin_page():
     if not is_admin(user['id']):
         abort(403)
     return render_template('admin.html', user=user, admins=get_admins())
+
+@events_bp.route('/admin/users')
+@login_required
+def users_page():
+    user = get_current_user()
+    if not is_admin(user['id']):
+        abort(403)
+
+    # Start from the user directory (email captured at login, profile name/discord).
+    directory = {u['google_id']: {
+        'google_id': u['google_id'],
+        'name':      u.get('name', ''),
+        'email':     u.get('email', ''),
+        'discord':   u.get('discord', ''),
+        'events':    0,
+    } for u in list_users()}
+
+    # Enrich/backfill from event registrations: count participation and fill in
+    # name/discord for anyone who registered before the directory captured them.
+    # Sort ascending by date so later events win for the "latest known" values.
+    counts: dict = {}
+    for e in sorted(list_events(), key=lambda x: x.get('date', '')):
+        for p in e.get('players', []):
+            gid = p.get('google_id')
+            if not gid:
+                continue  # organiser-added ghost player, no account
+            counts[gid] = counts.get(gid, 0) + 1
+            entry = directory.setdefault(gid, {
+                'google_id': gid, 'name': '', 'email': '', 'discord': '', 'events': 0,
+            })
+            if not entry['name'] and p.get('name'):
+                entry['name'] = p['name']
+            if not entry['discord'] and p.get('discord'):
+                entry['discord'] = p['discord']
+
+    users = list(directory.values())
+    for u in users:
+        u['events'] = counts.get(u['google_id'], 0)
+    users.sort(key=lambda u: (u['name'] or u['email']).lower())
+    return render_template('users.html', user=user, users=users)
 
 
 # ── API: events ────────────────────────────────────────────────────────────────
@@ -170,6 +211,9 @@ def api_register(event_id):
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
+    # Keep the user directory current: capture the discord handle they gave.
+    if discord:
+        save_user_profile(user['id'], {'discord': discord})
     return jsonify(player), 201
 
 @events_bp.route('/api/events/<event_id>/unregister', methods=['POST'])

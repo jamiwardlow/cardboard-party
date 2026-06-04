@@ -103,6 +103,15 @@ def get_user_profile(google_id: str) -> dict:
 def save_user_profile(google_id: str, data: dict):
     get_db().collection('users').document(google_id).set(data, merge=True)
 
+def list_users() -> list[dict]:
+    """All known user profiles, each including its google_id (the document id)."""
+    users = []
+    for doc in get_db().collection('users').stream():
+        data = doc.to_dict() or {}
+        data['google_id'] = doc.id
+        users.append(data)
+    return users
+
 
 # ── Config (Discord webhook etc.) ─────────────────────────────────────────────
 

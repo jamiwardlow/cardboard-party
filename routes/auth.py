@@ -13,7 +13,8 @@ import requests
 from urllib.parse import urlencode, urljoin, urlparse
 from flask import (Blueprint, redirect, request, session,
                    url_for, jsonify, current_app)
-from db import get_admins, add_admin, remove_admin
+from db import (get_admins, add_admin, remove_admin,
+                get_user_profile, save_user_profile)
 from gcp_secrets import get_secret
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -118,6 +119,14 @@ def callback():
 
     # Resolve any pending admin entry added by email before first sign-in
     _resolve_pending_admin(session['user'])
+
+    # Capture email into the user directory. Only set the display name if the
+    # user hasn't already customized one, so we don't clobber their choice.
+    profile = get_user_profile(session['user']['id'])
+    updates = {'email': session['user']['email']}
+    if not profile.get('name'):
+        updates['name'] = session['user']['name']
+    save_user_profile(session['user']['id'], updates)
 
     next_url = session.pop('oauth_next', None) or url_for('events.index')
     return redirect(next_url)
