@@ -6,6 +6,7 @@
   <div>
     <h1>{{ event.name }}</h1>
     <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}</p>
+    <span id="reg-status" style="margin-top:0.5rem"></span>
   </div>
   <div id="owner-actions" class="hidden action-row">
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
@@ -127,11 +128,31 @@ function canManage() {
 }
 
 function render() {
+  renderStatus();
   renderOwnerActions();
   renderBanners();
   renderRounds();
   renderPlayers();
   renderStandings();
+}
+
+// Status pill shown to everyone — mirrors the color coding on the Events page.
+function renderStatus() {
+  const el = document.getElementById('reg-status');
+  if (!el) return;
+  let cls, label;
+  if (state.status === 'finished') {
+    cls = 'reg-closed'; label = 'Finished';
+  } else if (state.rounds.length) {
+    const total = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
+    cls = 'reg-active'; label = `Round ${state.rounds.length} of ${total}`;
+  } else if (state.registration === 'open') {
+    cls = 'reg-open'; label = 'Registration open';
+  } else {
+    cls = 'reg-closed'; label = 'Registration closed';
+  }
+  el.className = cls;
+  el.textContent = label;
 }
 
 // ── Owner controls ─────────────────────────────────────────────────────────────
@@ -141,14 +162,12 @@ function renderOwnerActions() {
   document.getElementById('owner-actions').classList.remove('hidden');
   document.getElementById('player-actions').classList.remove('hidden');
 
+  // Neutral action button — the current state is conveyed by the status pill,
+  // so this just states what clicking will do.
   const regBtn = document.getElementById('btn-toggle-reg');
-  if (state.registration === 'open') {
-    regBtn.textContent = 'Close registration';
-    regBtn.classList.remove('btn-primary');
-  } else {
-    regBtn.textContent = 'Open registration';
-    regBtn.classList.add('btn-primary');
-  }
+  regBtn.textContent = state.registration === 'open'
+    ? 'Close registration'
+    : 'Open registration';
 
   const numRounds  = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
   const roundsDone = state.rounds.length;
