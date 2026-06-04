@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Cardboard Party{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav-inner">
+      <a class="site-logo" href="/">Cardboard Party</a>
+      <div class="nav-links" id="nav-admin-link" style="display:none">
+        <a href="/admin">Organisers</a>
+        <a href="/admin/settings">Settings</a>
+      </div>
+      <div class="nav-user">
+        {% if user %}
+          <a id="nav-profile-link" href="#" style="display:none;align-items:center;gap:0.5rem;text-decoration:none;color:var(--text)">
+            <img class="avatar" src="{{ user.picture }}" alt="{{ user.name }}">
+            <span class="user-name">{{ user.name }}</span>
+          </a>
+          <a href="/auth/logout" class="btn btn-sm">Sign out</a>
+        {% else %}
+          <a href="/auth/login" class="btn btn-sm btn-primary">Sign in with Google</a>
+        {% endif %}
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    fetch('/auth/me').then(r => r.json()).then(me => {
+      if (!me.signed_in) return;
+
+      // Set profile link now that we have the google ID
+      const profileLink = document.getElementById('nav-profile-link');
+      if (profileLink) {
+        profileLink.href = `/players/${me.user.id}`;
+        profileLink.style.display = 'flex';
+      }
+
+      // Show Organisers link if admin
+      fetch('/api/admins').then(r => {
+        if (r.ok) document.getElementById('nav-admin-link').style.display = '';
+      });
+    });
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

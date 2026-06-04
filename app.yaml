@@ -1,0 +1,15 @@
+runtime: python312
+
+handlers:
+  - url: /static
+    static_dir: static
+
+  - url: /.*
+    script: auto
+
+env_variables:
+  FLASK_ENV: production
+  # Public value (sent to browsers during OAuth). Replace with your rotated client ID.
+  GOOGLE_CLIENT_ID: "496917439607-geo7okoall3vpha9spepdacodqnk8msr.apps.googleusercontent.com"
+  # GOOGLE_CLIENT_SECRET is NOT stored here — it lives in Secret Manager
+  # (secret name: GOOGLE_CLIENT_SECRET) and is fetched at startup by gcp_secrets.py.

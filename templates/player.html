@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.name }} — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="profile-header">
+  <div>
+    <div class="profile-name" id="profile-name-display">{{ profile.name }}</div>
+    <div class="profile-discord" id="profile-discord-display">
+      {{ profile.discord if profile.discord else '' }}
+    </div>
+  </div>
+  <div id="profile-owner-actions" class="hidden">
+    <button class="btn btn-sm" onclick="openEditProfile()">Edit profile</button>
+  </div>
+</div>
+
+<!-- Edit profile form (hidden by default) -->
+<div id="edit-profile-form" class="hidden"
+     style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+            padding:1.25rem;margin-bottom:1.5rem;max-width:400px;display:flex;flex-direction:column;gap:0.75rem;">
+  <strong>Edit profile</strong>
+  <label style="font-size:0.88rem;font-weight:500">
+    Display name
+    <input id="edit-name" type="text" value="{{ profile.name }}"
+           style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+  </label>
+  <label style="font-size:0.88rem;font-weight:500">
+    Discord handle
+    <input id="edit-discord" type="text" value="{{ profile.discord or '' }}"
+           placeholder="e.g. username or username#1234"
+           style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+  </label>
+  <div style="display:flex;gap:0.5rem">
+    <button class="btn btn-primary btn-sm" onclick="saveProfile()">Save</button>
+    <button class="btn btn-sm" onclick="closeEditProfile()">Cancel</button>
+  </div>
+  <div id="profile-save-msg" style="font-size:0.85rem"></div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ event_history | length }}</div>
+    <div class="stat-label">Events</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_wins }}</div>
+    <div class="stat-label">Wins</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_losses }}</div>
+    <div class="stat-label">Losses</div>
+  </div>
+  {% if total_draws %}
+  <div class="stat-card">
+    <div class="stat-value">{{ total_draws }}</div>
+    <div class="stat-label">Draws</div>
+  </div>
+  {% endif %}
+  {% set total_matches = total_wins + total_losses + total_draws %}
+  {% if total_matches > 0 %}
+  <div class="stat-card">
+    <div class="stat-value">{{ "%.0f"|format(total_wins / total_matches * 100) }}%</div>
+    <div class="stat-label">Win rate</div>
+  </div>
+  {% endif %}
+</div>
+
+<h2>Event history</h2>
+{% if event_history %}
+<table class="standings">
+  <thead>
+    <tr><th>Event</th><th>Date</th><th>Finish</th><th>Record</th><th>OMW%</th><th>GW%</th><th>OGW%</th></tr>
+  </thead>
+  <tbody>
+    {% for h in event_history %}
+    <tr>
+      <td><a href="/events/{{ h.id }}" style="color:var(--accent)">{{ h.name }}</a></td>
+      <td class="text-muted">{{ h.date }}</td>
+      <td>
+        {% if h.rank %}{{ h.rank }}<span class="text-muted">/{{ h.total }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td>{{ h.wins }}–{{ h.losses }}{% if h.draws %}–{{ h.draws }}{% endif %}</td>
+      <td>{% if h.omw is not none %}{{ "%.1f"|format(h.omw * 100) }}%{% else %}—{% endif %}</td>
+      <td>{% if h.gw is not none %}{{ "%.1f"|format(h.gw * 100) }}%{% else %}—{% endif %}</td>
+      <td>{% if h.ogw is not none %}{{ "%.1f"|format(h.ogw * 100) }}%{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No event history yet.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PROFILE_GOOGLE_ID = '{{ google_id }}';
+
+// Show edit button if this is the current user's own profile
+fetch('/auth/me').then(r => r.json()).then(me => {
+  if (me.signed_in && me.user.id === PROFILE_GOOGLE_ID) {
+    document.getElementById('profile-owner-actions').classList.remove('hidden');
+  }
+});
+
+function openEditProfile() {
+  document.getElementById('edit-profile-form').classList.remove('hidden');
+  document.getElementById('profile-owner-actions').classList.add('hidden');
+}
+
+function closeEditProfile() {
+  document.getElementById('edit-profile-form').classList.add('hidden');
+  document.getElementById('profile-owner-actions').classList.remove('hidden');
+  document.getElementById('profile-save-msg').textContent = '';
+}
+
+async function saveProfile() {
+  const name    = document.getElementById('edit-name').value.trim();
+  const discord = document.getElementById('edit-discord').value.trim();
+  const msg     = document.getElementById('profile-save-msg');
+
+  if (!name) { msg.textContent = 'Name is required.'; return; }
+
+  const res = await fetch('/api/profile', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name, discord }),
+  });
+
+  if (res.ok) {
+    document.getElementById('profile-name-display').textContent = name;
+    document.getElementById('profile-discord-display').textContent = discord;
+    msg.style.color = 'var(--accent)';
+    msg.textContent = '✓ Saved!';
+    setTimeout(closeEditProfile, 1000);
+  } else {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Save failed.';
+  }
+}
+</script>
+{% endblock %}

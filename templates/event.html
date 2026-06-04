@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+{% block title %}{{ event.name }} — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ event.name }}</h1>
+    <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}</p>
+  </div>
+  <div id="owner-actions" class="hidden action-row">
+    <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
+    <button class="btn btn-primary" id="btn-pair" onclick="pairNextRound()">Pair round 1</button>
+  </div>
+</div>
+
+<!-- Registration banner (signed-in non-players) -->
+<div id="register-banner" class="banner hidden">
+  <span id="register-banner-msg"></span>
+  <div id="register-form" class="hidden" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    <input id="display-name-input" type="text" placeholder="Display name"
+           style="padding:0.35rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+    <input id="discord-input" type="text" placeholder="Discord handle (optional)"
+           style="padding:0.35rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+    <button class="btn btn-primary btn-sm" onclick="submitRegister()">Confirm</button>
+    <button class="btn btn-sm" onclick="cancelRegister()">Cancel</button>
+  </div>
+  <div id="register-buttons">
+    <button class="btn btn-primary btn-sm" onclick="showRegisterForm()">Register for this event</button>
+  </div>
+</div>
+
+<!-- Registered player banner -->
+<div id="player-banner" class="banner banner-player hidden">
+  <span>You're registered for this event.</span>
+  <button class="btn btn-sm btn-danger" onclick="unregister()">Withdraw</button>
+</div>
+
+<div class="two-col">
+  <section>
+    <h2>Rounds</h2>
+    <div id="rounds-container"></div>
+  </section>
+
+  <section>
+    <h2>Players <span id="player-count" class="badge"></span></h2>
+    <div id="player-actions" class="hidden">
+      <div class="inline-form">
+        <input id="new-player-name" type="text" placeholder="Add player by name">
+        <button class="btn btn-sm btn-primary" onclick="addPlayer()">Add</button>
+        <button class="btn btn-sm" id="btn-add-self" onclick="addSelf()">+ Add myself</button>
+      </div>
+    </div>
+    <ul id="player-list" class="player-list"></ul>
+
+    <h2>Standings</h2>
+    <table id="standings-table" class="standings">
+      <thead>
+        <tr>
+          <th>#</th><th>Player</th><th>Pts</th>
+          <th class="hide-mobile">OMW%</th>
+          <th class="hide-mobile">GW%</th>
+          <th class="hide-mobile">OGW%</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</div>
+
+<!-- Edit pairings modal -->
+<div id="edit-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="edit-modal-title">Edit pairings</h2>
+    <div id="edit-pairings-form"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeEditModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditedPairings()">Save pairings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Result entry modal -->
+<div id="result-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Enter result</h2>
+    <div class="result-modal-players">
+      <span id="rm-p1-name"></span>
+      <span class="vs-label">vs</span>
+      <span id="rm-p2-name"></span>
+    </div>
+    <p class="subtitle" style="font-size:0.8rem">
+      Games won by <strong id="rm-p1-short"></strong> — Games won by <strong id="rm-p2-short"></strong>
+    </p>
+    <div class="result-grid" id="result-grid"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeResultModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EVENT_ID = '{{ event.id }}';
+let state        = null;
+let me           = null;
+let myPlayer     = null;
+let editingRound = null;
+let pendingResult = null;
+
+async function init() {
+  const [eRes, mRes] = await Promise.all([
+    fetch(`/api/events/${EVENT_ID}`),
+    fetch('/auth/me'),
+  ]);
+  state = await eRes.json();
+  me    = await mRes.json();
+  myPlayer = me.signed_in
+    ? (state.players.find(p => p.google_id === me.user.id) || null)
+    : null;
+  render();
+}
+
+function canManage() {
+  // Mirrors backend _can_manage: the event owner OR any global admin.
+  return !!(state && state.can_manage);
+}
+
+function render() {
+  renderOwnerActions();
+  renderBanners();
+  renderRounds();
+  renderPlayers();
+  renderStandings();
+}
+
+// ── Owner controls ─────────────────────────────────────────────────────────────
+
+function renderOwnerActions() {
+  if (!canManage()) return;
+  document.getElementById('owner-actions').classList.remove('hidden');
+  document.getElementById('player-actions').classList.remove('hidden');
+
+  const regBtn = document.getElementById('btn-toggle-reg');
+  if (state.registration === 'open') {
+    regBtn.textContent = 'Close registration';
+    regBtn.classList.remove('btn-primary');
+  } else {
+    regBtn.textContent = 'Open registration';
+    regBtn.classList.add('btn-primary');
+  }
+
+  const numRounds  = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
+  const roundsDone = state.rounds.length;
+  const pairBtn    = document.getElementById('btn-pair');
+  pairBtn.textContent = roundsDone >= numRounds ? 'Event complete' : `Pair round ${roundsDone + 1}`;
+  pairBtn.disabled    = roundsDone >= numRounds;
+
+  // Hide 'Add myself' if already in the player list
+  const addSelfBtn = document.getElementById('btn-add-self');
+  if (addSelfBtn) {
+    const alreadyIn = state.players.some(p => p.google_id === me.user.id);
+    addSelfBtn.style.display = alreadyIn ? 'none' : '';
+  }
+}
+
+async function toggleRegistration() {
+  const next = state.registration === 'open' ? 'closed' : 'open';
+  const res  = await fetch(`/api/events/${EVENT_ID}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ registration: next }),
+  });
+  if (res.ok) { state.registration = next; render(); }
+}
+
+async function pairNextRound() {
+  const res = await fetch(`/api/events/${EVENT_ID}/pair`, { method: 'POST' });
+  if (res.ok) await init();
+  else { const e = await res.json(); alert(e.error || 'Pairing failed.'); }
+}
+
+// ── Registration banners ───────────────────────────────────────────────────────
+
+function renderBanners() {
+  const regBanner    = document.getElementById('register-banner');
+  const playerBanner = document.getElementById('player-banner');
+  regBanner.classList.add('hidden');
+  playerBanner.classList.add('hidden');
+
+  if (!me.signed_in || canManage()) return;
+
+  if (myPlayer && !myPlayer.dropped) {
+    playerBanner.classList.remove('hidden');
+    return;
+  }
+
+  regBanner.classList.remove('hidden');
+  if (state.registration === 'open') {
+    const cap     = state.registration_cap || 0;
+    const active  = state.players.filter(p => !p.dropped).length;
+    const capText = cap ? ` (${active}/${cap} spots taken)` : '';
+    document.getElementById('register-banner-msg').textContent = `Registration is open${capText}.`;
+    document.getElementById('register-buttons').classList.remove('hidden');
+    document.getElementById('register-form').classList.add('hidden');
+    regBanner.classList.remove('banner-closed');
+  } else {
+    document.getElementById('register-banner-msg').textContent = 'Registration is closed.';
+    document.getElementById('register-buttons').classList.add('hidden');
+    document.getElementById('register-form').classList.add('hidden');
+    regBanner.classList.add('banner-closed');
+  }
+}
+
+function showRegisterForm() {
+  document.getElementById('register-buttons').classList.add('hidden');
+  const form = document.getElementById('register-form');
+  form.classList.remove('hidden');
+  form.style.display = 'flex';
+  document.getElementById('display-name-input').value = me.user.name;
+  document.getElementById('display-name-input').focus();
+  document.getElementById('display-name-input').select();
+}
+
+function cancelRegister() {
+  document.getElementById('register-form').classList.add('hidden');
+  document.getElementById('register-buttons').classList.remove('hidden');
+}
+
+async function submitRegister() {
+  const displayName = document.getElementById('display-name-input').value.trim();
+  const discord     = document.getElementById('discord-input').value.trim();
+  if (!displayName) { document.getElementById('display-name-input').focus(); return; }
+  const res = await fetch(`/api/events/${EVENT_ID}/register`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ display_name: displayName, discord }),
+  });
+  if (res.ok) { myPlayer = await res.json(); state.players.push(myPlayer); render(); }
+  else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
+}
+
+async function unregister() {
+  if (!confirm('Withdraw from this event?')) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/unregister`, { method: 'POST' });
+  if (res.ok) {
+    if (state.rounds.length) { myPlayer.dropped = true; }
+    else { state.players = state.players.filter(p => p.google_id !== me.user.id); myPlayer = null; }
+    render();
+  }
+}
+
+// ── Rounds & matches ───────────────────────────────────────────────────────────
+
+function renderRounds() {
+  const el = document.getElementById('rounds-container');
+  if (!state.rounds.length) {
+    el.innerHTML = '<p class="empty">No rounds yet. Add players and pair the first round.</p>';
+    return;
+  }
+  el.innerHTML = state.rounds.map((round, i) => {
+    const canEdit = canManage() && round.every(m => m.is_bye || (!m.winner_id && m.result !== 'draw'));
+    return `<div class="round-card">
+      <div class="round-header">
+        <strong>Round ${i + 1}</strong>
+        ${canEdit ? `<button class="btn btn-sm" onclick="openEditModal(${i})">Edit pairings</button>` : ''}
+      </div>
+      <table class="pairings"><tbody>
+        ${round.map((m, mi) => renderMatch(m, i, mi)).join('')}
+      </tbody></table>
+    </div>`;
+  }).join('');
+}
+
+function renderMatch(m, roundIdx, matchIdx) {
+  const p1 = playerName(m.player1_id);
+  const p2 = m.is_bye ? '— Bye —' : playerName(m.player2_id);
+  const canReport = !m.is_bye && (
+    canManage() ||
+    (myPlayer && !myPlayer.dropped &&
+     (myPlayer.id === m.player1_id || myPlayer.id === m.player2_id))
+  );
+
+  let resultCell;
+  if (m.is_bye) {
+    resultCell = '<span class="result-bye">Bye</span>';
+  } else if (m.result === 'draw') {
+    resultCell = '<span class="result-draw">Draw 1–1</span>';
+  } else if (m.winner_id) {
+    const parts = m.result.split('-').map(Number);
+    const w = parts[0], l = parts[1];
+    const editBtn = canManage()
+      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
+      : '';
+    resultCell = `<span class="result-win">${escapeHtml(playerName(m.winner_id))} ${w}–${l}</span>${editBtn}`;
+  } else if (m.result === 'draw' && canManage()) {
+    resultCell = `<span class="result-draw">Draw 1–1</span> <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`;
+  } else if (canReport) {
+    resultCell = `<button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
+  } else {
+    resultCell = '<span class="result-pending">Pending</span>';
+  }
+
+  return `<tr>
+    <td>${escapeHtml(p1)}</td>
+    <td class="vs">vs</td>
+    <td>${escapeHtml(p2)}</td>
+    <td class="result">${resultCell}</td>
+  </tr>`;
+}
+
+function playerName(id) {
+  const p = state.players.find(p => p.id === id);
+  return p ? p.name : id;
+}
+
+// ── Players ────────────────────────────────────────────────────────────────────
+
+function renderPlayers() {
+  const active = state.players.filter(p => !p.dropped);
+  document.getElementById('player-count').textContent = active.length;
+  document.getElementById('player-list').innerHTML = state.players.map(p => {
+    const dropBtn = canManage() && !p.dropped && state.rounds.length
+      ? `<button class="btn btn-sm btn-danger drop-btn" onclick="dropPlayer('${p.id}')">Drop</button>`
+      : '';
+    const discord = p.discord
+      ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
+    const profileLink = p.google_id
+      ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(p.name)}</a>`
+      : `<span class="player-name">${escapeHtml(p.name)}</span>`;
+    return `<li class="${p.dropped ? 'dropped' : ''}">
+      ${profileLink}${discord}${dropBtn}
+    </li>`;
+  }).join('');
+}
+
+async function addPlayer() {
+  const input = document.getElementById('new-player-name');
+  const name  = input.value.trim();
+  if (!name) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/players`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name }),
+  });
+  if (res.ok) { input.value = ''; await init(); }
+  else alert('Failed to add player.');
+}
+
+async function addSelf() {
+  const res = await fetch(`/api/events/${EVENT_ID}/players`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name: me.user.name, self: true }),
+  });
+  if (res.ok) { await init(); }
+  else { const e = await res.json(); alert(e.error || 'Failed to add yourself.'); }
+}
+
+async function dropPlayer(playerId) {
+  if (!confirm('Drop this player?')) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/drop`, { method: 'POST' });
+  if (res.ok) await init();
+}
+
+// ── Standings ──────────────────────────────────────────────────────────────────
+
+function renderStandings() {
+  const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+  document.querySelector('#standings-table tbody').innerHTML =
+    (state.standings || []).map((s, i) => `<tr>
+      <td>${i + 1}</td>
+      <td>${escapeHtml(s.name)}</td>
+      <td>${s.points}</td>
+      <td class="hide-mobile">${pct(s.omw)}</td>
+      <td class="hide-mobile">${pct(s.gw)}</td>
+      <td class="hide-mobile">${pct(s.ogw)}</td>
+    </tr>`).join('');
+}
+
+// ── Result modal ───────────────────────────────────────────────────────────────
+
+function openResultModal(roundIdx, matchIdx, isEdit = false) {
+  const match = state.rounds[roundIdx][matchIdx];
+  pendingResult = { roundIdx, matchIdx, match, isEdit };
+
+  const p1 = playerName(match.player1_id);
+  const p2 = playerName(match.player2_id);
+  const s1 = p1.split(' ')[0];
+  const s2 = p2.split(' ')[0];
+
+  document.getElementById('rm-p1-name').textContent  = p1;
+  document.getElementById('rm-p2-name').textContent  = p2;
+  document.getElementById('rm-p1-short').textContent = s1;
+  document.getElementById('rm-p2-short').textContent = s2;
+
+  // Update modal title for edits
+  document.querySelector('#result-modal h2').textContent =
+    isEdit ? 'Edit result' : 'Enter result';
+
+  const outcomes = [
+    { score: '2-0', p1w: 2, p2w: 0, cls: 'p1-wins', label: `${s1} wins` },
+    { score: '2-1', p1w: 2, p2w: 1, cls: 'p1-wins', label: `${s1} wins` },
+    { score: '1-2', p1w: 1, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
+    { score: '0-2', p1w: 0, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
+  ];
+
+  document.getElementById('result-grid').innerHTML =
+    outcomes.map(o => `
+      <button class="result-btn ${o.cls}" onclick="selectResult('${o.score}')">
+        <span class="score">${o.p1w} – ${o.p2w}</span>
+        <span class="label">${o.label}</span>
+      </button>
+    `).join('') + `
+      <button class="result-btn draw" onclick="selectResult('1-1')">
+        <span class="score">1 – 1</span>
+        <span class="label">Draw</span>
+      </button>`;
+
+  document.getElementById('result-modal').classList.remove('hidden');
+}
+
+function closeResultModal() {
+  document.getElementById('result-modal').classList.add('hidden');
+  pendingResult = null;
+}
+
+function selectResult(score) {
+  if (!pendingResult) return;
+  const { roundIdx, matchIdx, match, isEdit } = pendingResult;
+  let winner_id, result;
+  if (score === '1-1') {
+    winner_id = null; result = 'draw';
+  } else {
+    const [w, l] = score.split('-').map(Number);
+    winner_id = w > l ? match.player1_id : match.player2_id;
+    result = score;
+  }
+
+  const url    = isEdit
+    ? `/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/results/${matchIdx}`
+    : `/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/results`;
+  const method = isEdit ? 'PUT' : 'POST';
+  const body   = isEdit
+    ? { winner_id, result }
+    : { match_index: matchIdx, winner_id, result };
+
+  fetch(url, {
+    method, headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  }).then(r => {
+    if (r.ok) { closeResultModal(); init(); }
+    else alert('Failed to save result.');
+  });
+}
+
+// ── Edit pairings modal ────────────────────────────────────────────────────────
+
+function openEditModal(roundIdx) {
+  editingRound = roundIdx;
+  document.getElementById('edit-modal-title').textContent = `Edit round ${roundIdx + 1} pairings`;
+  const round  = state.rounds[roundIdx];
+  const active = state.players.filter(p => !p.dropped);
+  document.getElementById('edit-pairings-form').innerHTML =
+    round.filter(m => !m.is_bye).map((m, mi) => `
+      <div class="pairing-row">
+        <select id="ep-p1-${mi}">
+          ${active.map(p=>`<option value="${escapeHtml(p.id)}"${p.id===m.player1_id?' selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+        </select>
+        <span>vs</span>
+        <select id="ep-p2-${mi}">
+          <option value="__bye__">— Bye —</option>
+          ${active.map(p=>`<option value="${escapeHtml(p.id)}"${p.id===m.player2_id?' selected':''}>${escapeHtml(p.name)}</option>`).join('')}
+        </select>
+      </div>`).join('');
+  document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.add('hidden');
+  editingRound = null;
+}
+
+async function saveEditedPairings() {
+  const round  = state.rounds[editingRound];
+  const nonBye = round.filter(m => !m.is_bye);
+  const payload = [
+    ...nonBye.map((m, mi) => ({
+      player1_id: document.getElementById(`ep-p1-${mi}`).value,
+      player2_id: document.getElementById(`ep-p2-${mi}`).value,
+      winner_id: null, result: null,
+      is_bye: document.getElementById(`ep-p2-${mi}`).value === '__bye__',
+    })),
+    ...round.filter(m => m.is_bye),
+  ];
+  const res = await fetch(`/api/events/${EVENT_ID}/rounds/${editingRound + 1}/pairings`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) { closeEditModal(); await init(); }
+  else { const e = await res.json(); alert(e.error || 'Save failed.'); }
+}
+
+init();
+</script>
+{% endblock %}

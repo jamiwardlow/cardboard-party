@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Settings — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Settings</h1>
+</div>
+
+<div style="max-width:520px">
+  <h2>Discord notifications</h2>
+  <p style="color:var(--muted);font-size:0.88rem;margin-bottom:1rem;line-height:1.6">
+    When a round is paired, Cardboard Party will post the pairings and standings
+    to a Discord channel via a webhook.<br><br>
+    To set up: in your Discord server, go to the channel you want →
+    <strong>Edit Channel → Integrations → Webhooks → New Webhook</strong>,
+    then copy the webhook URL and paste it below.
+  </p>
+
+  <label style="font-size:0.88rem;font-weight:500;display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem">
+    Webhook URL
+    <input id="webhook-input" type="text"
+           value="{{ config.discord_webhook or '' }}"
+           placeholder="https://discord.com/api/webhooks/..."
+           style="padding:0.45rem 0.65rem;border:1px solid var(--border);
+                  border-radius:var(--radius);font-size:0.9rem;">
+  </label>
+
+  <div style="display:flex;gap:0.75rem;align-items:center">
+    <button class="btn btn-primary btn-sm" onclick="saveWebhook()">Save</button>
+    <button class="btn btn-sm" onclick="testWebhook()">Send test message</button>
+    <span id="webhook-msg" style="font-size:0.85rem"></span>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveWebhook() {
+  const url = document.getElementById('webhook-input').value.trim();
+  const msg = document.getElementById('webhook-msg');
+  const res = await fetch('/api/settings', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ discord_webhook: url }),
+  });
+  if (res.ok) {
+    msg.style.color = 'var(--accent)';
+    msg.textContent = '✓ Saved!';
+    setTimeout(() => msg.textContent = '', 2000);
+  } else {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Save failed.';
+  }
+}
+
+async function testWebhook() {
+  const url = document.getElementById('webhook-input').value.trim();
+  const msg = document.getElementById('webhook-msg');
+  if (!url) { msg.textContent = 'Enter a webhook URL first.'; return; }
+
+  // Send a test message directly to Discord
+  try {
+    const res = await fetch(url, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ content: '✅ Cardboard Party webhook is working!' }),
+    });
+    if (res.ok) {
+      msg.style.color = 'var(--accent)';
+      msg.textContent = '✓ Test message sent!';
+    } else {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = 'Discord returned an error — check the URL.';
+    }
+  } catch(e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Could not reach Discord — check the URL.';
+  }
+  setTimeout(() => msg.textContent = '', 3000);
+}
+</script>
+{% endblock %}

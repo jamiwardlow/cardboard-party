@@ -1,0 +1,22 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local environment files / secrets — never commit these
+.env
+.env.local
+*.local
+
+# Claude Code local (machine-specific) settings
+.claude/settings.local.json
+
+# macOS / editor cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/

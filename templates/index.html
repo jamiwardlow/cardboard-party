@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Events — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Events</h1>
+  {% if user %}
+    <button class="btn btn-primary" onclick="openCreateModal()">+ New event</button>
+  {% endif %}
+</div>
+
+<!-- Signed-in sections -->
+<div id="my-sections" class="hidden">
+  <div id="section-organized" class="hidden">
+    <h2>My organized events</h2>
+    <div id="list-organized" class="card-grid"></div>
+  </div>
+  <div id="section-registered" class="hidden">
+    <h2>My registered events</h2>
+    <div id="list-registered" class="card-grid"></div>
+  </div>
+  <h2>All events</h2>
+</div>
+
+<div id="event-list" class="card-grid">
+  <p class="loading">Loading…</p>
+</div>
+
+<!-- Create event modal -->
+<div id="create-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>New event</h2>
+    <label>Name
+      <input id="e-name" type="text" placeholder="Friday Night Draft">
+    </label>
+    <label>Type
+      <select id="e-type">
+        <option value="One-day">One-day</option>
+        <option value="League">League</option>
+      </select>
+    </label>
+    <label>Format
+      <input id="e-format" type="text" value="Limited: Draft">
+    </label>
+    <label>Date
+      <input id="e-date" type="date">
+    </label>
+    <label>Number of rounds
+      <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto">
+    </label>
+    <label>Registration cap
+      <input id="e-cap" type="number" min="2" max="256" placeholder="No cap">
+    </label>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreateEvent()">Create</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let me = null;
+
+async function init() {
+  const [eventsRes, meRes] = await Promise.all([
+    fetch('/api/events'),
+    fetch('/auth/me'),
+  ]);
+  const events = await eventsRes.json();
+  me = await meRes.json();
+
+  // Sort newest first
+  events.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  if (me.signed_in) {
+    document.getElementById('my-sections').classList.remove('hidden');
+
+    const organized  = events.filter(e => e.owner_id === me.user.id);
+    // Any event you're a (non-dropped) player in counts as registered — including
+    // ones you also organize, so adding yourself shows up here as expected.
+    const registered = events.filter(e =>
+      e.players?.some(p => p.google_id === me.user.id && !p.dropped)
+    );
+
+    if (organized.length) {
+      document.getElementById('section-organized').classList.remove('hidden');
+      document.getElementById('list-organized').innerHTML = organized.map(eventCard).join('');
+    }
+    if (registered.length) {
+      document.getElementById('section-registered').classList.remove('hidden');
+      document.getElementById('list-registered').innerHTML = registered.map(eventCard).join('');
+    }
+  }
+
+  const allEl = document.getElementById('event-list');
+  if (!events.length) {
+    allEl.innerHTML = '<p class="empty">No events yet.</p>';
+  } else {
+    allEl.innerHTML = events.map(eventCard).join('');
+  }
+}
+
+function eventCard(e) {
+  const activePlayers = (e.players || []).filter(p => !p.dropped).length;
+  const cap     = e.registration_cap ? ` / ${e.registration_cap}` : '';
+  const regTag  = e.registration === 'open'
+    ? `<span class="reg-open">Registration open${cap}</span>`
+    : `<span class="reg-closed">Registration closed</span>`;
+  const status  = e.status === 'setup' ? regTag
+    : e.status === 'finished' ? '<span class="reg-closed">Finished</span>'
+    : `<span class="reg-active">Round ${e.rounds?.length ?? 0} of ${e.num_rounds || '?'}</span>`;
+
+  return `<a class="card" href="/events/${encodeURIComponent(e.id)}">
+    <div class="card-title">${escapeHtml(e.name)}</div>
+    <div class="card-meta">${escapeHtml(e.event_type || 'One-day')} · ${escapeHtml(e.date || '')}</div>
+    <div class="card-meta">${escapeHtml(e.format || '')}</div>
+    <div class="card-meta">${activePlayers} players${cap ? ' (cap: ' + e.registration_cap + ')' : ''}</div>
+    <div class="card-status">${status}</div>
+  </a>`;
+}
+
+function openCreateModal() {
+  document.getElementById('e-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('create-modal').classList.remove('hidden');
+}
+function closeCreateModal() {
+  document.getElementById('create-modal').classList.add('hidden');
+}
+
+async function submitCreateEvent() {
+  const numRounds = parseInt(document.getElementById('e-rounds').value) || 0;
+  const cap       = parseInt(document.getElementById('e-cap').value) || 0;
+  const body = {
+    name:             document.getElementById('e-name').value,
+    event_type:       document.getElementById('e-type').value,
+    format:           document.getElementById('e-format').value,
+    date:             document.getElementById('e-date').value,
+    num_rounds:       numRounds,
+    registration_cap: cap,
+  };
+  const res = await fetch('/api/events', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    const e = await res.json();
+    closeCreateModal();
+    window.location = `/events/${e.id}`;
+  } else {
+    alert('Failed to create event.');
+  }
+}
+
+init();
+</script>
+{% endblock %}

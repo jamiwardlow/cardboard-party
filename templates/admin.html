@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Admins — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Organisers</h1>
+</div>
+
+<p style="color:var(--muted);font-size:0.9rem;margin-bottom:1.5rem;max-width:520px">
+  Global organisers can manage any event. Event creators can always manage
+  their own events regardless of this list.
+</p>
+
+<div style="max-width:520px">
+  <h2>Current organisers</h2>
+  <ul id="admin-list" class="player-list">
+    {% for a in admins %}
+    <li>
+      <span class="player-name">{{ a.name }}</span>
+      <span class="player-discord">{{ a.email }}</span>
+      {% if a.id != user.id %}
+      <button class="btn btn-sm btn-danger"
+              data-admin-id="{{ a.id }}" data-admin-name="{{ a.name }}"
+              onclick="removeAdmin(this.dataset.adminId, this.dataset.adminName)">Remove</button>
+      {% else %}
+      <span class="text-muted" style="font-size:0.8rem">(you)</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <h2>Add organiser</h2>
+  <p style="color:var(--muted);font-size:0.85rem;margin-bottom:0.75rem">
+    Enter their Google account email. They'll get organiser access the next
+    time they sign in.
+  </p>
+  <div class="inline-form">
+    <input id="new-admin-email" type="email" placeholder="name@gmail.com">
+    <button class="btn btn-primary btn-sm" onclick="addAdmin()">Add</button>
+  </div>
+  <div id="admin-msg" style="font-size:0.85rem;margin-top:0.5rem"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function addAdmin() {
+  const email = document.getElementById('new-admin-email').value.trim();
+  const msg   = document.getElementById('admin-msg');
+  if (!email) return;
+  const res = await fetch('/api/admins', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ email }),
+  });
+  if (res.ok) {
+    msg.style.color = 'var(--accent)';
+    msg.textContent = `✓ ${email} will have organiser access on their next sign-in.`;
+    document.getElementById('new-admin-email').value = '';
+  } else {
+    const e = await res.json();
+    msg.style.color = 'var(--danger)';
+    msg.textContent = e.error || 'Failed to add organiser.';
+  }
+}
+
+async function removeAdmin(id, name) {
+  if (!confirm(`Remove ${name} as an organiser?`)) return;
+  const res = await fetch(`/api/admins/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (res.ok) location.reload();
+  else alert('Failed to remove organiser.');
+}
+</script>
+{% endblock %}
