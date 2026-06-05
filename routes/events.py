@@ -456,6 +456,24 @@ def api_player_search(event_id):
                 break
     return jsonify(matches)
 
+@events_bp.route('/api/events/<event_id>/players/<player_id>', methods=['DELETE'])
+@login_required
+def api_remove_player(event_id, player_id):
+    """Remove a player entirely — only before pairing has started, since once a
+    round exists the player is referenced by matches (drop them instead)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    if e['rounds']:
+        return jsonify({'error': 'Drop the player instead once rounds have started'}), 400
+    remaining = [p for p in e['players'] if p['id'] != player_id]
+    if len(remaining) == len(e['players']):
+        return jsonify({'error': 'Player not found'}), 404
+    e['players'] = remaining
+    save_event(event_id, {'players': e['players']})
+    return jsonify({'ok': True})
+
 @events_bp.route('/api/events/<event_id>/players/<player_id>/drop', methods=['POST'])
 @login_required
 def api_drop_player(event_id, player_id):

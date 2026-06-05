@@ -626,10 +626,15 @@ function renderPlayers() {
   document.getElementById('player-count').textContent = active.length;
   document.getElementById('player-list').innerHTML = state.players.map(p => {
     let dropBtn = '';
-    if (canManage() && state.rounds.length) {
-      dropBtn = p.dropped
-        ? `<button class="btn btn-sm drop-btn" onclick="undropPlayer('${p.id}')">Un-drop</button>`
-        : `<button class="btn btn-sm btn-danger drop-btn" onclick="dropPlayer('${p.id}')">Drop</button>`;
+    if (canManage()) {
+      if (!state.rounds.length) {
+        // Before pairing, remove the player outright (no match history yet).
+        dropBtn = `<button class="btn btn-sm btn-danger drop-btn" onclick="removePlayer('${p.id}')">Remove</button>`;
+      } else {
+        dropBtn = p.dropped
+          ? `<button class="btn btn-sm drop-btn" onclick="undropPlayer('${p.id}')">Un-drop</button>`
+          : `<button class="btn btn-sm btn-danger drop-btn" onclick="dropPlayer('${p.id}')">Drop</button>`;
+      }
     }
     const discord = p.discord
       ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
@@ -705,6 +710,13 @@ async function addSelf() {
   });
   if (res.ok) { await init(); }
   else { const e = await res.json(); alert(e.error || 'Failed to add yourself.'); }
+}
+
+async function removePlayer(playerId) {
+  if (!confirm('Remove this player from the event?')) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}`, { method: 'DELETE' });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to remove player.'); }
 }
 
 async function dropPlayer(playerId) {
