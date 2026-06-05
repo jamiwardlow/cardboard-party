@@ -170,6 +170,7 @@ let me           = null;
 let myPlayer     = null;
 let editingRound = null;
 let pendingResult = null;
+let roundCollapsed = {};   // round index -> explicit collapsed state (user override)
 
 async function init() {
   const [eRes, mRes] = await Promise.all([
@@ -449,20 +450,42 @@ function renderRounds() {
     const canEdit = canManage() && round.every(m => m.is_bye || (!m.winner_id && m.result !== 'draw'));
     const isLatest = i === state.rounds.length - 1;
     const repairBtn = canManage() && isLatest
-      ? `<button class="btn btn-sm" onclick="repairRound(${i + 1})">Re-pair</button>` : '';
-    return `<div class="round-card">
-      <div class="round-header">
-        <strong>Round ${i + 1}</strong>
+      ? `<button class="btn btn-sm" onclick="event.stopPropagation();repairRound(${i + 1})">Re-pair</button>` : '';
+    const finished  = roundFinished(round);
+    const collapsed = isRoundCollapsed(i, round);
+    return `<div class="round-card ${collapsed ? 'collapsed' : ''}">
+      <div class="round-header" onclick="toggleRound(${i})" role="button" tabindex="0"
+           aria-expanded="${!collapsed}">
+        <strong>Round ${i + 1}${finished ? ' <span class="round-done">✓ done</span>' : ''}</strong>
         <span class="round-actions">
-          ${canEdit ? `<button class="btn btn-sm" onclick="openEditModal(${i})">Edit pairings</button>` : ''}
+          ${canEdit ? `<button class="btn btn-sm" onclick="event.stopPropagation();openEditModal(${i})">Edit pairings</button>` : ''}
           ${repairBtn}
+          <span class="round-caret" aria-hidden="true">▾</span>
         </span>
       </div>
-      <table class="pairings"><tbody>
+      ${collapsed ? '' : `<table class="pairings"><tbody>
         ${round.map((m, mi) => renderMatch(m, i, mi)).join('')}
-      </tbody></table>
+      </tbody></table>`}
     </div>`;
   }).join('');
+}
+
+// A round is finished once every match has a result (byes count as done).
+function roundFinished(round) {
+  return round.every(m => m.is_bye || m.winner_id || m.result === 'draw');
+}
+
+// Finished rounds collapse by default, except the latest (keep current visible).
+// An explicit user toggle takes precedence.
+function isRoundCollapsed(i, round) {
+  if (i in roundCollapsed) return roundCollapsed[i];
+  const isLatest = i === state.rounds.length - 1;
+  return roundFinished(round) && !isLatest;
+}
+
+function toggleRound(i) {
+  roundCollapsed[i] = !isRoundCollapsed(i, state.rounds[i]);
+  renderRounds();
 }
 
 function renderMatch(m, roundIdx, matchIdx) {
