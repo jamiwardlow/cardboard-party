@@ -52,8 +52,9 @@
 
 <!-- Registered player banner -->
 <div id="player-banner" class="banner banner-player hidden">
-  <span>You're registered for this event.</span>
-  <button class="btn btn-sm btn-danger" onclick="unregister()">Withdraw</button>
+  <span id="player-banner-msg">You're registered for this event.</span>
+  <button class="btn btn-sm btn-danger" id="withdraw-btn" onclick="unregister()">Withdraw</button>
+  <button class="btn btn-sm" id="guest-link-btn" style="display:none" onclick="copyGuestLink(this)">Copy my private link</button>
 </div>
 
 <div class="two-col">
@@ -171,6 +172,10 @@ let myPlayer     = null;
 let editingRound = null;
 let pendingResult = null;
 let roundCollapsed = {};   // round index -> explicit collapsed state (user override)
+let guestToken   = null;   // self-report token for a non-Google (guest) player
+let guestPlayerId = null;  // which player that token maps to in this event
+
+const GUEST_KEY = `cbp_guest_${EVENT_ID}`;
 
 async function init() {
   const [eRes, mRes] = await Promise.all([
@@ -179,10 +184,30 @@ async function init() {
   ]);
   state = await eRes.json();
   me    = await mRes.json();
+  if (!me.signed_in) await resolveGuest();
   myPlayer = me.signed_in
     ? (state.players.find(p => p.google_id === me.user.id) || null)
-    : null;
+    : (guestPlayerId ? (state.players.find(p => p.id === guestPlayerId) || null) : null);
   render();
+}
+
+// Identify a returning guest from a magic-link token (?t=) or one saved in this
+// browser, and resolve it to their player in this event.
+async function resolveGuest() {
+  guestToken = null; guestPlayerId = null;
+  const url = new URL(window.location.href);
+  let token = url.searchParams.get('t');
+  if (token) {
+    localStorage.setItem(GUEST_KEY, token);
+    url.searchParams.delete('t');                       // keep the URL clean
+    history.replaceState({}, '', url);
+  } else {
+    token = localStorage.getItem(GUEST_KEY);
+  }
+  if (!token) return;
+  const r = await fetch(`/api/events/${EVENT_ID}/guest?token=${encodeURIComponent(token)}`);
+  if (r.ok) { const g = await r.json(); guestToken = token; guestPlayerId = g.player_id; }
+  else { localStorage.removeItem(GUEST_KEY); }           // stale/invalid token
 }
 
 function canManage() {
@@ -377,19 +402,30 @@ function renderBanners() {
   regBanner.classList.add('hidden');
   playerBanner.classList.add('hidden');
 
-  if (!me.signed_in || canManage()) return;
+  if (canManage()) return;
 
+  // Already a participant (Google account or guest).
   if (myPlayer && !myPlayer.dropped) {
     playerBanner.classList.remove('hidden');
+    const isGuest = !myPlayer.google_id && guestToken;
+    document.getElementById('player-banner-msg').textContent = isGuest
+      ? "You're in! Save your private link to report results from another device."
+      : "You're registered for this event.";
+    // Guests have no Google session, so they can't use the Withdraw endpoint;
+    // offer the private link instead (organiser can drop them if needed).
+    document.getElementById('withdraw-btn').style.display   = isGuest ? 'none' : '';
+    document.getElementById('guest-link-btn').style.display = isGuest ? '' : 'none';
     return;
   }
 
+  // Not yet a participant — offer to join (Google sign-in flow or guest-by-name).
   regBanner.classList.remove('hidden');
   if (state.registration === 'open') {
     const cap     = state.registration_cap || 0;
     const active  = state.players.filter(p => !p.dropped).length;
     const capText = cap ? ` (${active}/${cap} spots taken)` : '';
-    document.getElementById('register-banner-msg').textContent = `Registration is open${capText}.`;
+    document.getElementById('register-banner-msg').textContent =
+      `Registration is open${capText}.` + (me.signed_in ? '' : ' Join with your name — no account needed.');
     document.getElementById('register-buttons').classList.remove('hidden');
     document.getElementById('register-form').classList.add('hidden');
     regBanner.classList.remove('banner-closed');
@@ -406,9 +442,10 @@ function showRegisterForm() {
   const form = document.getElementById('register-form');
   form.classList.remove('hidden');
   form.style.display = 'flex';
-  document.getElementById('display-name-input').value = me.user.name;
-  document.getElementById('display-name-input').focus();
-  document.getElementById('display-name-input').select();
+  const nameInput = document.getElementById('display-name-input');
+  nameInput.value = me.signed_in ? me.user.name : '';
+  nameInput.focus();
+  nameInput.select();
 }
 
 function cancelRegister() {
@@ -420,12 +457,39 @@ async function submitRegister() {
   const displayName = document.getElementById('display-name-input').value.trim();
   const discord     = document.getElementById('discord-input').value.trim();
   if (!displayName) { document.getElementById('display-name-input').focus(); return; }
-  const res = await fetch(`/api/events/${EVENT_ID}/register`, {
+
+  // Signed-in users register against their Google account; everyone else joins
+  // as a guest and gets a self-report token.
+  if (me.signed_in) {
+    const res = await fetch(`/api/events/${EVENT_ID}/register`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ display_name: displayName, discord }),
+    });
+    if (res.ok) { myPlayer = await res.json(); state.players.push(myPlayer); render(); }
+    else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
+    return;
+  }
+
+  const res = await fetch(`/api/events/${EVENT_ID}/join`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ display_name: displayName, discord }),
   });
-  if (res.ok) { myPlayer = await res.json(); state.players.push(myPlayer); render(); }
-  else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
+  if (res.ok) {
+    const { player, token } = await res.json();
+    guestToken = token; guestPlayerId = player.id;
+    localStorage.setItem(GUEST_KEY, token);
+    await init();   // refetch so the new player shows in lists/standings
+  } else { const e = await res.json(); alert(e.error || 'Could not join.'); }
+}
+
+function copyGuestLink(btn) {
+  const link = `${window.location.origin}/events/${EVENT_ID}?t=${guestToken}`;
+  const done = () => {
+    const orig = btn.textContent;
+    btn.textContent = 'Link copied!'; btn.disabled = true;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+  };
+  navigator.clipboard.writeText(link).then(done, () => prompt('Your private link:', link));
 }
 
 async function unregister() {
@@ -677,6 +741,8 @@ function selectResult(score) {
   const body   = isEdit
     ? { winner_id, result }
     : { match_index: matchIdx, winner_id, result };
+  // Guests authorize their own report with their self-report token.
+  if (guestToken) body.guest_token = guestToken;
 
   fetch(url, {
     method, headers: {'Content-Type':'application/json'},

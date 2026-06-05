@@ -59,6 +59,35 @@ def _find_player_by_google_id(event: dict, google_id: str) -> dict | None:
     return next((p for p in event['players']
                  if p.get('google_id') == google_id), None)
 
+def _find_player_by_guest_token(event: dict, token: str) -> dict | None:
+    if not token:
+        return None
+    return next((p for p in event['players']
+                 if p.get('guest_token') and p['guest_token'] == token), None)
+
+def _redact_players(event: dict) -> None:
+    """Strip guest self-report tokens before sending an event to clients. The
+    token is a bearer secret — anyone holding it can report as that player and
+    claim their identity via the magic link — so it must never appear in any
+    public event payload. It's only ever returned once, to the joiner."""
+    for p in event.get('players', []):
+        p.pop('guest_token', None)
+
+def _can_report_match(event: dict, match: dict, data: dict) -> bool:
+    """Who may report a match result: a manager, the registered Google player
+    in the match, or a guest holding that player's self-report token."""
+    if _can_manage(event):
+        return True
+    sides = (match.get('player1_id'), match.get('player2_id'))
+    user = get_current_user()
+    if user:
+        gp = _find_player_by_google_id(event, user['id'])
+        if gp and gp['id'] in sides:
+            return True
+    token = request.headers.get('X-Guest-Token') or (data or {}).get('guest_token')
+    gp = _find_player_by_guest_token(event, token)
+    return bool(gp and gp['id'] in sides)
+
 def _slugify(name: str) -> str:
     return re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
 
@@ -168,7 +197,10 @@ def users_page():
 
 @events_bp.route('/api/events', methods=['GET'])
 def api_list_events():
-    return jsonify(list_events())
+    events = list_events()
+    for e in events:
+        _redact_players(e)
+    return jsonify(events)
 
 @events_bp.route('/api/events', methods=['POST'])
 @login_required
@@ -218,6 +250,7 @@ def api_get_event(event_id):
     if e['can_manage']:
         e['owner_webhooks'] = [{'id': w['id'], 'label': w.get('label', '')}
                                for w in owner_profile.get('webhooks', [])]
+    _redact_players(e)
     return jsonify(e)
 
 @events_bp.route('/api/events/<event_id>', methods=['PUT'])
@@ -240,6 +273,7 @@ def api_update_event(event_id):
         if err:
             return jsonify({'error': err}), 400
     save_event(event_id, updates)
+    _redact_players(e)
     return jsonify({**e, **updates})
 
 
@@ -295,6 +329,54 @@ def api_unregister(event_id):
         e['players'] = [p for p in e['players'] if p.get('google_id') != user['id']]
         save_event(event_id, {'players': e['players']})
     return jsonify({'ok': True})
+
+@events_bp.route('/api/events/<event_id>/join', methods=['POST'])
+def api_join_guest(event_id):
+    """Self-join without a Google account. Creates a guest player and returns a
+    private self-report token (also usable as a magic link) so they can report
+    their own match results. Public — anyone with the event link may join while
+    registration is open."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    if e.get('registration') != 'open':
+        return jsonify({'error': 'Registration is closed'}), 400
+    cap = e.get('registration_cap', 0)
+    active = [p for p in e['players'] if not p.get('dropped')]
+    if cap and len(active) >= cap:
+        return jsonify({'error': f'This event is full ({cap} players max)'}), 400
+    data = request.json or {}
+    name = data.get('display_name', '').strip()
+    if not name:
+        return jsonify({'error': 'Name required'}), 400
+    token = uuid.uuid4().hex
+    player = {
+        'id':          _slugify(name) + '_' + str(len(e['players'])),
+        'name':        name,
+        'google_id':   None,
+        'discord':     data.get('discord', '').strip(),
+        'dropped':     False,
+        'guest_token': token,
+    }
+    e['players'].append(player)
+    save_event(event_id, {'players': e['players']})
+    echo = {k: v for k, v in player.items() if k != 'guest_token'}
+    return jsonify({'player': echo, 'token': token}), 201
+
+@events_bp.route('/api/events/<event_id>/guest', methods=['GET'])
+def api_guest_whoami(event_id):
+    """Resolve a guest self-report token to its player (for magic-link re-entry
+    on another device). Returns only public fields, never the token itself."""
+    token = request.args.get('token', '')
+    if not token:
+        return jsonify({'error': 'Missing token'}), 400
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    p = _find_player_by_guest_token(e, token)
+    if not p:
+        return jsonify({'error': 'Unknown token'}), 404
+    return jsonify({'player_id': p['id'], 'name': p['name']})
 
 
 # ── API: organiser player management ──────────────────────────────────────────
@@ -455,12 +537,11 @@ def api_repair_round(event_id, round_num):
 # ── API: results ───────────────────────────────────────────────────────────────
 
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/results', methods=['POST'])
-@login_required
 def api_record_result(event_id, round_num):
+    # No @login_required: guests report their own matches via a self-report token.
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
-    user = get_current_user()
     idx = round_num - 1
     if idx < 0 or idx >= len(e['rounds']):
         return jsonify({'error': 'Round not found'}), 404
@@ -472,12 +553,8 @@ def api_record_result(event_id, round_num):
     if match_index is None or match_index < 0 or match_index >= len(rnd):
         return jsonify({'error': 'Invalid match_index'}), 400
     match = rnd[match_index]
-    if not _can_manage(e):
-        player = _find_player_by_google_id(e, user['id'])
-        if not player:
-            return jsonify({'error': 'Not registered for this event'}), 403
-        if player['id'] not in (match.get('player1_id'), match.get('player2_id')):
-            return jsonify({'error': 'You can only report results for your own matches'}), 403
+    if not _can_report_match(e, match, data):
+        return jsonify({'error': 'You can only report results for your own matches'}), 403
     if match.get('is_bye'):
         return jsonify({'error': 'Cannot record a result for a bye'}), 400
     err = _validate_result(match, winner_id, result)
