@@ -120,13 +120,16 @@ def callback():
     # Resolve any pending admin entry added by email before first sign-in
     _resolve_pending_admin(session['user'])
 
-    # Capture email + Google picture into the user directory. Only set the display
-    # name if the user hasn't already customized one, so we don't clobber it.
+    # Capture email + Google picture into the user directory, and refresh the
+    # display name from Google on every login — Google is the source of truth
+    # for display names (they're not editable in-app).
     profile = get_user_profile(session['user']['id'])
     google_pic = session['user'].get('picture', '')
-    updates = {'email': session['user']['email'], 'google_picture': google_pic}
-    if not profile.get('name'):
-        updates['name'] = session['user']['name']
+    updates = {
+        'email':          session['user']['email'],
+        'google_picture': google_pic,
+        'name':           session['user']['name'],
+    }
     save_user_profile(session['user']['id'], updates)
 
     # The nav shows session['user']['picture']; use the custom avatar if set.

@@ -444,9 +444,15 @@ function showRegisterForm() {
   form.classList.remove('hidden');
   form.style.display = 'flex';
   const nameInput = document.getElementById('display-name-input');
-  nameInput.value = me.signed_in ? me.user.name : '';
-  nameInput.focus();
-  nameInput.select();
+  // Signed-in users register under their Google name (not editable); only
+  // guests, who have no Google identity, type a name.
+  nameInput.style.display = me.signed_in ? 'none' : '';
+  if (me.signed_in) {
+    document.getElementById('discord-input').focus();
+  } else {
+    nameInput.value = '';
+    nameInput.focus();
+  }
 }
 
 function cancelRegister() {
@@ -455,22 +461,23 @@ function cancelRegister() {
 }
 
 async function submitRegister() {
-  const displayName = document.getElementById('display-name-input').value.trim();
-  const discord     = document.getElementById('discord-input').value.trim();
-  if (!displayName) { document.getElementById('display-name-input').focus(); return; }
+  const discord = document.getElementById('discord-input').value.trim();
 
-  // Signed-in users register against their Google account; everyone else joins
-  // as a guest and gets a self-report token.
+  // Signed-in users register against their Google account — their display name
+  // comes from Google, so we don't send one. Everyone else joins as a guest
+  // (and must supply a name) and gets a self-report token.
   if (me.signed_in) {
     const res = await fetch(`/api/events/${EVENT_ID}/register`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ display_name: displayName, discord }),
+      body: JSON.stringify({ discord }),
     });
     if (res.ok) { myPlayer = await res.json(); state.players.push(myPlayer); render(); }
     else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
     return;
   }
 
+  const displayName = document.getElementById('display-name-input').value.trim();
+  if (!displayName) { document.getElementById('display-name-input').focus(); return; }
   const res = await fetch(`/api/events/${EVENT_ID}/join`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ display_name: displayName, discord }),

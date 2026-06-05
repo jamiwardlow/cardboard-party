@@ -29,11 +29,6 @@
             padding:1.25rem;margin-bottom:1.5rem;max-width:400px;display:flex;flex-direction:column;gap:0.75rem;">
   <strong>Edit profile</strong>
   <label style="font-size:0.88rem;font-weight:500">
-    Display name
-    <input id="edit-name" type="text" value="{{ profile.name }}"
-           style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
-  </label>
-  <label style="font-size:0.88rem;font-weight:500">
     Discord handle
     <input id="edit-discord" type="text" value="{{ profile.discord or '' }}"
            placeholder="e.g. username or username#1234"
@@ -289,20 +284,16 @@ function closeEditProfile() {
 }
 
 async function saveProfile() {
-  const name    = document.getElementById('edit-name').value.trim();
   const discord = document.getElementById('edit-discord').value.trim();
   const about   = document.getElementById('edit-about').value.trim();
   const msg     = document.getElementById('profile-save-msg');
 
-  if (!name) { msg.textContent = 'Name is required.'; return; }
-
   const res = await fetch('/api/profile', {
     method: 'PUT', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ name, discord, about }),
+    body: JSON.stringify({ discord, about }),
   });
 
   if (res.ok) {
-    document.getElementById('profile-name-display').textContent = name;
     document.getElementById('profile-discord-display').textContent = discord ? 'Discord: ' + discord : '';
     const aboutEl = document.getElementById('profile-about-display');
     aboutEl.textContent = about;

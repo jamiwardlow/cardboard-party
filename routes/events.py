@@ -737,8 +737,8 @@ def api_update_profile():
     user = get_current_user()
     data = request.json or {}
     updates = {}
-    if 'name' in data:
-        updates['name']    = data['name'].strip()
+    # Display name is not editable — it comes strictly from Google (refreshed on
+    # login), so any 'name' in the request is ignored.
     if 'discord' in data:
         updates['discord'] = data['discord'].strip()
     if 'about' in data:
