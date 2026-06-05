@@ -17,7 +17,7 @@
 
 <div style="max-width:560px">
   <h2>Saved webhooks</h2>
-  <ul id="webhook-list" class="player-list"><li class="text-muted">Loading…</li></ul>
+  <ul id="webhook-list" class="webhook-list"><li class="text-muted">Loading…</li></ul>
 
   <h2>Add a webhook</h2>
   <div class="inline-form" style="flex-wrap:wrap">
@@ -41,10 +41,14 @@ async function load() {
   }
   el.innerHTML = hooks.map(w => `
     <li>
-      <span class="player-name">${escapeHtml(w.label)}</span>
-      <span class="player-discord">${escapeHtml(w.masked)}</span>
-      <button class="btn btn-sm" onclick="testWebhook('${w.id}', this)">Test</button>
-      <button class="btn btn-sm btn-danger" onclick="removeWebhook('${w.id}', ${JSON.stringify(w.label)})">Remove</button>
+      <div class="webhook-main">
+        <span class="webhook-label">${escapeHtml(w.label)}</span>
+        <span class="webhook-masked">${escapeHtml(w.masked)}</span>
+      </div>
+      <div class="webhook-actions">
+        <button class="btn btn-sm" onclick="testWebhook('${w.id}', this)">Test</button>
+        <button class="btn btn-sm btn-danger" onclick="removeWebhook('${w.id}', ${JSON.stringify(w.label)})">Remove</button>
+      </div>
     </li>`).join('');
 }
 

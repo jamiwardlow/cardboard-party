@@ -90,9 +90,11 @@
 
 <h2>Event history</h2>
 {% if event_history %}
+<div class="table-wrap">
 <table class="standings">
   <thead>
-    <tr><th>Event</th><th>Date</th><th>Finish</th><th>Record</th><th>OMW%</th><th>GW%</th><th>OGW%</th></tr>
+    <tr><th>Event</th><th>Date</th><th>Finish</th><th>Record</th>
+        <th class="hide-mobile">OMW%</th><th class="hide-mobile">GW%</th><th class="hide-mobile">OGW%</th></tr>
   </thead>
   <tbody>
     {% for h in event_history %}
@@ -104,13 +106,14 @@
         {% else %}—{% endif %}
       </td>
       <td>{{ h.wins }}–{{ h.losses }}{% if h.draws %}–{{ h.draws }}{% endif %}</td>
-      <td>{% if h.omw is not none %}{{ "%.1f"|format(h.omw * 100) }}%{% else %}—{% endif %}</td>
-      <td>{% if h.gw is not none %}{{ "%.1f"|format(h.gw * 100) }}%{% else %}—{% endif %}</td>
-      <td>{% if h.ogw is not none %}{{ "%.1f"|format(h.ogw * 100) }}%{% else %}—{% endif %}</td>
+      <td class="hide-mobile">{% if h.omw is not none %}{{ "%.1f"|format(h.omw * 100) }}%{% else %}—{% endif %}</td>
+      <td class="hide-mobile">{% if h.gw is not none %}{{ "%.1f"|format(h.gw * 100) }}%{% else %}—{% endif %}</td>
+      <td class="hide-mobile">{% if h.ogw is not none %}{{ "%.1f"|format(h.ogw * 100) }}%{% else %}—{% endif %}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="empty">No event history yet.</p>
 {% endif %}

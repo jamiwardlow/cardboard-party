@@ -13,6 +13,7 @@
 </p>
 
 {% if users %}
+<div class="table-wrap">
 <table class="standings">
   <thead>
     <tr><th>Name</th><th>Email</th><th>Discord</th><th>Events</th></tr>
@@ -32,6 +33,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 <p class="text-muted" style="font-size:0.85rem;margin-top:1rem">{{ users | length }} user{{ '' if users|length == 1 else 's' }}</p>
 {% else %}
 <p class="empty">No users yet.</p>
