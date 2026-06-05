@@ -462,11 +462,14 @@ function renderMatch(m, roundIdx, matchIdx) {
     resultCell = `<span class="result-draw">Draw 1–1</span>${editBtn}`;
   } else if (m.winner_id) {
     const parts = m.result.split('-').map(Number);
-    const w = parts[0], l = parts[1];
+    // Show the winner's game count first (e.g. "Hunter 2–1"), regardless of
+    // which player the stored 'p1-p2' score is from the perspective of.
+    const hi = Math.max(parts[0], parts[1]);
+    const lo = Math.min(parts[0], parts[1]);
     const editBtn = canManage()
       ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
       : '';
-    resultCell = `<span class="result-win">${escapeHtml(playerName(m.winner_id))} ${w}–${l}</span>${editBtn}`;
+    resultCell = `<span class="result-win">${escapeHtml(playerName(m.winner_id))} ${hi}–${lo}</span>${editBtn}`;
   } else if (canReport) {
     resultCell = `<button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
   } else {
@@ -593,7 +596,7 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
   document.getElementById('result-grid').innerHTML =
     outcomes.map(o => `
       <button class="result-btn ${o.cls}" onclick="selectResult('${o.score}')">
-        <span class="score">${o.p1w} – ${o.p2w}</span>
+        <span class="score">${Math.max(o.p1w, o.p2w)} – ${Math.min(o.p1w, o.p2w)}</span>
         <span class="label">${o.label}</span>
       </button>
     `).join('') + `
