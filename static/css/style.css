@@ -73,6 +73,10 @@ a { color: var(--accent); }
                 gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
 .page-header h1 { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600;
                   line-height: 1.15; letter-spacing: -0.01em; }
+.title-row    { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+#btn-share          { background: var(--accent-h); color: #fff;
+                      border-color: transparent; font-weight: 600; }
+#btn-share:hover    { background: #7c3aed; border-color: transparent; }
 .subtitle     { color: var(--muted); font-size: 0.88rem; margin-top: 0.25rem; }
 .event-description { color: var(--text); font-size: 0.92rem; line-height: 1.6;
                      white-space: pre-wrap; max-width: 640px; margin-top: 0.6rem; }

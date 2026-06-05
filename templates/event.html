@@ -4,7 +4,10 @@
 {% block content %}
 <div class="page-header">
   <div>
-    <h1>{{ event.name }}</h1>
+    <div class="title-row">
+      <h1>{{ event.name }}</h1>
+      <button class="btn btn-sm" id="btn-share" onclick="shareEvent(this)">Share</button>
+    </div>
     <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}</p>
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
@@ -184,6 +187,25 @@ async function init() {
 function canManage() {
   // Mirrors backend _can_manage: the event owner OR any global admin.
   return !!(state && state.can_manage);
+}
+
+// Share the event: native share sheet where available (mobile), otherwise
+// copy the link to the clipboard with brief on-button feedback.
+async function shareEvent(btn) {
+  const url = window.location.href;
+  if (navigator.share) {
+    try { await navigator.share({ title: document.title, url }); return; }
+    catch (err) { if (err.name === 'AbortError') return; }  // user dismissed
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    const orig = btn.textContent;
+    btn.textContent = 'Link copied!';
+    btn.disabled = true;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+  } catch (err) {
+    prompt('Copy this link:', url);
+  }
 }
 
 function render() {
