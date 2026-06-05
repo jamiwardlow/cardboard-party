@@ -22,6 +22,7 @@
     <button class="btn btn-sm" onclick="openEditEventModal()">Edit event</button>
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
     <button class="btn btn-primary" id="btn-pair" onclick="pairNextRound()">Pair round 1</button>
+    <button class="btn btn-sm btn-danger" id="btn-delete-event" onclick="deleteEvent()">Delete event</button>
   </div>
 </div>
 
@@ -194,6 +195,13 @@ async function init() {
     ? (state.players.find(p => p.google_id === me.user.id) || null)
     : (guestPlayerId ? (state.players.find(p => p.id === guestPlayerId) || null) : null);
   render();
+}
+
+async function deleteEvent() {
+  if (!confirm(`Permanently delete "${state.name}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/events/${EVENT_ID}`, { method: 'DELETE' });
+  if (res.ok) { window.location.href = '/'; }
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to delete event.'); }
 }
 
 // Identify a returning guest from a magic-link token (?t=) or one saved in this

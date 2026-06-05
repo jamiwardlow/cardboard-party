@@ -8,7 +8,7 @@ Permission model:
 """
 
 from flask import Blueprint, request, jsonify, render_template, abort, session
-from db import (create_event, get_event, save_event, list_events,
+from db import (create_event, get_event, save_event, list_events, delete_event,
                 set_player_dropped,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, list_users,
@@ -275,6 +275,17 @@ def api_update_event(event_id):
     save_event(event_id, updates)
     _redact_players(e)
     return jsonify({**e, **updates})
+
+@events_bp.route('/api/events/<event_id>', methods=['DELETE'])
+@login_required
+def api_delete_event(event_id):
+    """Permanently delete an event. Allowed for the event owner or a global admin."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    delete_event(event_id)
+    return jsonify({'ok': True})
 
 
 # ── API: player registration ───────────────────────────────────────────────────

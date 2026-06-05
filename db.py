@@ -36,6 +36,9 @@ def save_event(event_id: str, data: dict):
         stored['rounds'] = _flatten_rounds(stored['rounds'])
     get_db().collection('events').document(event_id).set(stored, merge=True)
 
+def delete_event(event_id: str):
+    get_db().collection('events').document(event_id).delete()
+
 def set_player_dropped(event_id: str, player_id: str, dropped: bool):
     """Atomically flip a single player's `dropped` flag.
 
