@@ -1,4 +1,5 @@
 import os
+import time
 from flask import Flask
 from routes.auth import auth_bp
 from routes.events import events_bp
@@ -21,6 +22,16 @@ app.config.update(
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(events_bp)
+
+# Cache-busting token for static assets (CSS/JS). App Engine serves /static with
+# a 10-minute default cache, so without this a CSS change can take 10 min to show
+# even on a hard refresh. GAE_VERSION changes on every deploy; locally it's unset,
+# so fall back to the process start time so a restart picks up edits.
+_ASSET_VERSION = os.environ.get('GAE_VERSION') or str(int(time.time()))
+
+@app.context_processor
+def inject_asset_version():
+    return {'asset_v': _ASSET_VERSION}
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
