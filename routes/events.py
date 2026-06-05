@@ -748,6 +748,19 @@ def api_update_profile():
     save_user_profile(user['id'], updates)
     return jsonify({'ok': True, **updates})
 
+@events_bp.route('/api/users/<google_id>/discord', methods=['PUT'])
+@login_required
+def api_admin_set_discord(google_id):
+    """Global admins can set any user's Discord handle (e.g. to help a player
+    fix or add a missing one). Limited to discord — names come from Google and
+    everything else is the user's own to edit."""
+    user = get_current_user()
+    if not is_admin(user['id']):
+        abort(403)
+    discord = (request.json or {}).get('discord', '').strip()
+    save_user_profile(google_id, {'discord': discord})
+    return jsonify({'ok': True, 'discord': discord})
+
 
 # ── Profile avatar (custom upload, overrides the Google picture) ──────────────
 

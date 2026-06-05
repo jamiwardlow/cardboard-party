@@ -34,7 +34,7 @@
            placeholder="e.g. username or username#1234"
            style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
   </label>
-  <label style="font-size:0.88rem;font-weight:500">
+  <label id="edit-about-label" style="font-size:0.88rem;font-weight:500">
     About me
     <textarea id="edit-about" rows="4" maxlength="1000"
               placeholder="A short bio — favourite formats, decks, etc."
@@ -46,16 +46,18 @@
   </div>
   <div id="profile-save-msg" style="font-size:0.85rem"></div>
 
-  <hr style="border:none;border-top:1px solid var(--border);margin:0.25rem 0">
-  <label style="font-size:0.88rem;font-weight:500">
-    Profile picture
-    <input id="edit-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
-           onchange="openCropper(event)" style="margin-top:0.25rem;display:block;font-size:0.85rem">
-  </label>
-  <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-    <button class="btn btn-sm btn-danger" type="button" onclick="removeAvatar()">Remove custom picture</button>
+  <div id="edit-avatar-section">
+    <hr style="border:none;border-top:1px solid var(--border);margin:0.25rem 0">
+    <label style="font-size:0.88rem;font-weight:500">
+      Profile picture
+      <input id="edit-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+             onchange="openCropper(event)" style="margin-top:0.25rem;display:block;font-size:0.85rem">
+    </label>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <button class="btn btn-sm btn-danger" type="button" onclick="removeAvatar()">Remove custom picture</button>
+    </div>
+    <div id="avatar-msg" style="font-size:0.85rem"></div>
   </div>
-  <div id="avatar-msg" style="font-size:0.85rem"></div>
 </div>
 
 <div class="stat-grid">
@@ -136,14 +138,28 @@
 <script>
 const PROFILE_GOOGLE_ID = '{{ google_id }}';
 
-// Show edit button if this is the current user's own profile
-fetch('/auth/me').then(r => r.json()).then(me => {
-  if (me.signed_in && me.user.id === PROFILE_GOOGLE_ID) {
+let isSelf = false;        // viewing my own profile (full edit)
+let isAdminViewer = false; // a global admin viewing someone else (discord only)
+
+// The owner edits everything; a global admin may edit another user's Discord.
+Promise.all([
+  fetch('/auth/me').then(r => r.json()),
+  fetch('/api/admins').then(r => r.ok),   // 200 only for admins
+]).then(([me, admin]) => {
+  isSelf = !!(me.signed_in && me.user.id === PROFILE_GOOGLE_ID);
+  isAdminViewer = !isSelf && !!admin;
+  if (isSelf || isAdminViewer) {
     document.getElementById('profile-owner-actions').classList.remove('hidden');
   }
 });
 
 function openEditProfile() {
+  // Admins editing someone else may only change the Discord handle.
+  const limited = isAdminViewer && !isSelf;
+  document.getElementById('edit-about-label').style.display    = limited ? 'none' : '';
+  document.getElementById('edit-avatar-section').style.display = limited ? 'none' : '';
+  document.querySelector('#edit-profile-form strong').textContent =
+    limited ? 'Edit Discord handle' : 'Edit profile';
   document.getElementById('edit-profile-form').classList.remove('hidden');
   document.getElementById('profile-owner-actions').classList.add('hidden');
 }
@@ -288,16 +304,25 @@ async function saveProfile() {
   const about   = document.getElementById('edit-about').value.trim();
   const msg     = document.getElementById('profile-save-msg');
 
-  const res = await fetch('/api/profile', {
-    method: 'PUT', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ discord, about }),
-  });
+  // Self-edit goes through /api/profile; an admin editing someone else can only
+  // change their Discord handle via the admin endpoint.
+  const res = isSelf
+    ? await fetch('/api/profile', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ discord, about }),
+      })
+    : await fetch(`/api/users/${encodeURIComponent(PROFILE_GOOGLE_ID)}/discord`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ discord }),
+      });
 
   if (res.ok) {
     document.getElementById('profile-discord-display').textContent = discord ? 'Discord: ' + discord : '';
-    const aboutEl = document.getElementById('profile-about-display');
-    aboutEl.textContent = about;
-    aboutEl.style.display = about ? '' : 'none';
+    if (isSelf) {
+      const aboutEl = document.getElementById('profile-about-display');
+      aboutEl.textContent = about;
+      aboutEl.style.display = about ? '' : 'none';
+    }
     msg.style.color = 'var(--accent)';
     msg.textContent = '✓ Saved!';
     setTimeout(closeEditProfile, 1000);
