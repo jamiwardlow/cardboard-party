@@ -67,7 +67,12 @@
     <h2>Players <span id="player-count" class="badge"></span></h2>
     <div id="player-actions" class="hidden">
       <div class="inline-form">
-        <input id="new-player-name" type="text" placeholder="Add player by name">
+        <div class="autocomplete" style="flex:1 1 200px;min-width:0">
+          <input id="new-player-name" type="text" placeholder="Add player by name"
+                 autocomplete="off" oninput="onPlayerNameInput()"
+                 onblur="setTimeout(hidePlayerSuggestions, 150)" style="width:100%">
+          <ul id="player-suggestions" class="autocomplete-list hidden"></ul>
+        </div>
         <button class="btn btn-sm btn-primary" onclick="addPlayer()">Add</button>
         <button class="btn btn-sm" id="btn-add-self" onclick="addSelf()">+ Add myself</button>
       </div>
@@ -629,16 +634,60 @@ function renderPlayers() {
   }).join('');
 }
 
+// ── Add-player typeahead (link an existing user, or add a new ghost) ──────────
+let addPlayerGoogleId = null;   // set when an existing user is picked
+let playerSearchTimer = null;
+let playerMatches = [];
+
+function onPlayerNameInput() {
+  addPlayerGoogleId = null;     // typing means "new name" until a match is picked
+  const q = document.getElementById('new-player-name').value.trim();
+  clearTimeout(playerSearchTimer);
+  if (q.length < 2) { hidePlayerSuggestions(); return; }
+  playerSearchTimer = setTimeout(() => searchPlayers(q), 200);
+}
+
+async function searchPlayers(q) {
+  const res = await fetch(`/api/events/${EVENT_ID}/player-search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) { hidePlayerSuggestions(); return; }
+  playerMatches = await res.json();
+  const ul = document.getElementById('player-suggestions');
+  if (!playerMatches.length) { hidePlayerSuggestions(); return; }
+  ul.innerHTML = playerMatches.map((m, i) => `
+    <li data-i="${i}">
+      <span class="ac-name">${escapeHtml(m.name)}</span>
+      ${m.discord ? `<span class="ac-discord">${escapeHtml(m.discord)}</span>` : ''}
+    </li>`).join('');
+  // mousedown (not click) so the pick registers before the input's blur fires.
+  ul.querySelectorAll('li').forEach(li => li.addEventListener('mousedown', ev => {
+    ev.preventDefault();
+    pickPlayer(playerMatches[+li.dataset.i]);
+  }));
+  ul.classList.remove('hidden');
+}
+
+function pickPlayer(m) {
+  document.getElementById('new-player-name').value = m.name;
+  addPlayerGoogleId = m.google_id;
+  hidePlayerSuggestions();
+}
+
+function hidePlayerSuggestions() {
+  document.getElementById('player-suggestions').classList.add('hidden');
+}
+
 async function addPlayer() {
   const input = document.getElementById('new-player-name');
   const name  = input.value.trim();
   if (!name) return;
+  const body = { name };
+  if (addPlayerGoogleId) body.google_id = addPlayerGoogleId;
   const res = await fetch(`/api/events/${EVENT_ID}/players`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(body),
   });
-  if (res.ok) { input.value = ''; await init(); }
-  else alert('Failed to add player.');
+  if (res.ok) { input.value = ''; addPlayerGoogleId = null; hidePlayerSuggestions(); await init(); }
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to add player.'); }
 }
 
 async function addSelf() {

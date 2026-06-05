@@ -393,19 +393,57 @@ def api_add_player(event_id):
     name = data.get('name', '').strip()
     if not name:
         return jsonify({'error': 'Name required'}), 400
-    # If 'self' flag is passed, attach the organiser's google_id so they
-    # get a profile link and can report their own results.
-    google_id = user['id'] if data.get('self') else None
+    # Attach a google_id when adding an existing user: 'self' for the organiser,
+    # or a google_id picked from the player search. Linking lets that person see
+    # the event on their profile and report their own results.
+    google_id = None
+    discord   = data.get('discord', '').strip()
+    if data.get('self'):
+        google_id = user['id']
+    elif data.get('google_id'):
+        google_id = data['google_id']
+        # Trust the directory, not the client, for the linked user's details.
+        profile = get_user_profile(google_id)
+        name    = profile.get('name') or name
+        discord = profile.get('discord', '')
+    if google_id and any(p.get('google_id') == google_id for p in e['players']):
+        return jsonify({'error': 'That player is already in this event'}), 400
     player = {
         'id':        _slugify(name) + '_' + str(len(e['players'])),
         'name':      name,
         'google_id': google_id,
-        'discord':   data.get('discord', ''),
+        'discord':   discord,
         'dropped':   False,
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     return jsonify(player), 201
+
+@events_bp.route('/api/events/<event_id>/player-search', methods=['GET'])
+@login_required
+def api_player_search(event_id):
+    """Manager-only typeahead over the user directory, for linking an existing
+    person when adding a player. Excludes users already in the event; returns
+    only name + discord + id (no email)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    q = request.args.get('q', '').strip().lower()
+    if len(q) < 2:
+        return jsonify([])
+    in_event = {p.get('google_id') for p in e['players'] if p.get('google_id')}
+    matches = []
+    for u in list_users():
+        gid = u.get('google_id')
+        if not gid or gid in in_event:
+            continue
+        name, discord = u.get('name', ''), u.get('discord', '')
+        if q in name.lower() or (discord and q in discord.lower()):
+            matches.append({'google_id': gid, 'name': name, 'discord': discord})
+            if len(matches) >= 8:
+                break
+    return jsonify(matches)
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/drop', methods=['POST'])
 @login_required
