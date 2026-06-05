@@ -402,9 +402,8 @@ function renderBanners() {
   regBanner.classList.add('hidden');
   playerBanner.classList.add('hidden');
 
-  if (canManage()) return;
-
-  // Already a participant (Google account or guest).
+  // Already a participant (Google account or guest) — show the participant
+  // banner even to managers, so an organiser who registered can still withdraw.
   if (myPlayer && !myPlayer.dropped) {
     playerBanner.classList.remove('hidden');
     const isGuest = !myPlayer.google_id && guestToken;
@@ -417,6 +416,8 @@ function renderBanners() {
     document.getElementById('guest-link-btn').style.display = isGuest ? '' : 'none';
     return;
   }
+
+  if (canManage()) return;  // managers who aren't playing don't register
 
   // Not yet a participant — offer to join (Google sign-in flow or guest-by-name).
   regBanner.classList.remove('hidden');
