@@ -65,34 +65,46 @@
   </section>
 
   <section>
-    <h2>Players <span id="player-count" class="badge"></span></h2>
-    <div id="player-actions" class="hidden">
-      <div class="inline-form">
-        <div class="autocomplete" style="flex:1 1 200px;min-width:0">
-          <input id="new-player-name" type="text" placeholder="Add player by name"
-                 autocomplete="off" oninput="onPlayerNameInput()"
-                 onblur="setTimeout(hidePlayerSuggestions, 150)" style="width:100%">
-          <ul id="player-suggestions" class="autocomplete-list hidden"></ul>
+    <h2 id="players-toggle" class="section-toggle" onclick="toggleSection('players')"
+        role="button" tabindex="0" aria-expanded="true">
+      Players <span id="player-count" class="badge"></span>
+      <span class="round-caret" aria-hidden="true">▾</span>
+    </h2>
+    <div id="players-body" class="section-body">
+      <div id="player-actions" class="hidden">
+        <div class="inline-form">
+          <div class="autocomplete" style="flex:1 1 200px;min-width:0">
+            <input id="new-player-name" type="text" placeholder="Add player by name"
+                   autocomplete="off" oninput="onPlayerNameInput()"
+                   onblur="setTimeout(hidePlayerSuggestions, 150)" style="width:100%">
+            <ul id="player-suggestions" class="autocomplete-list hidden"></ul>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="addPlayer()">Add</button>
+          <button class="btn btn-sm" id="btn-add-self" onclick="addSelf()">+ Add myself</button>
         </div>
-        <button class="btn btn-sm btn-primary" onclick="addPlayer()">Add</button>
-        <button class="btn btn-sm" id="btn-add-self" onclick="addSelf()">+ Add myself</button>
       </div>
+      <ul id="player-list" class="player-list"></ul>
     </div>
-    <ul id="player-list" class="player-list"></ul>
 
-    <h2>Standings</h2>
-    <p id="organizer-info" class="text-muted" style="font-size:0.85rem;margin:0 0 0.75rem"></p>
-    <table id="standings-table" class="standings">
-      <thead>
-        <tr>
-          <th>#</th><th>Player</th><th>Pts</th>
-          <th class="hide-mobile">OMW%</th>
-          <th class="hide-mobile">GW%</th>
-          <th class="hide-mobile">OGW%</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <h2 id="standings-toggle" class="section-toggle" onclick="toggleSection('standings')"
+        role="button" tabindex="0" aria-expanded="true">
+      Standings
+      <span class="round-caret" aria-hidden="true">▾</span>
+    </h2>
+    <div id="standings-body" class="section-body">
+      <p id="organizer-info" class="text-muted" style="font-size:0.85rem;margin:0 0 0.75rem"></p>
+      <table id="standings-table" class="standings">
+        <thead>
+          <tr>
+            <th>#</th><th>Player</th><th>Pts</th>
+            <th class="hide-mobile">OMW%</th>
+            <th class="hide-mobile">GW%</th>
+            <th class="hide-mobile">OGW%</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </section>
 </div>
 
@@ -571,6 +583,15 @@ function isRoundCollapsed(i, round) {
 function toggleRound(i) {
   roundCollapsed[i] = !isRoundCollapsed(i, state.rounds[i]);
   renderRounds();
+}
+
+// Collapse/expand the Players and Standings sections (header click toggles).
+function toggleSection(name) {
+  const header = document.getElementById(name + '-toggle');
+  const body   = document.getElementById(name + '-body');
+  const collapsed = body.classList.toggle('collapsed');
+  header.classList.toggle('collapsed', collapsed);
+  header.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function renderMatch(m, roundIdx, matchIdx) {
