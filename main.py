@@ -23,6 +23,17 @@ app.config.update(
 app.register_blueprint(auth_bp)
 app.register_blueprint(events_bp)
 
+@app.after_request
+def _no_store_dynamic(resp):
+    """Stop browsers caching dynamic pages and the JSON API. Without explicit
+    directives these responses carry no cache headers, and Safari in particular
+    heuristically caches fetch() GETs — serving stale event data (e.g. a finished
+    playoff that still looks unfinished, so the champion banner never shows).
+    Static assets are served by App Engine's /static handler (not Flask) and keep
+    their own cache-busted caching, so they're unaffected."""
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
 # Cache-busting token for static assets (CSS/JS). App Engine serves /static with
 # a 10-minute default cache, so without this a CSS change can take 10 min to show
 # even on a hard refresh. GAE_VERSION changes on every deploy; locally it's unset,
