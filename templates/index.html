@@ -123,11 +123,26 @@ function expectedRounds(e) {
   return e.num_rounds || Math.ceil(Math.log2(Math.max((e.players || []).length, 2)));
 }
 
-// An event is complete once every expected round has been paired (the same
-// condition that shows "Event complete" on the event page). status === 'finished'
-// is honoured too, but it's never set automatically.
+function isBracketRound(round) {
+  return !!round && round.length > 0 && round[0].stage === 'bracket';
+}
+
+function bracketRoundName(matchCount) {
+  if (matchCount === 1) return 'Finals';
+  if (matchCount === 2) return 'Semifinals';
+  if (matchCount === 4) return 'Quarterfinals';
+  return `Top ${matchCount * 2}`;
+}
+
+// An event is complete once every expected Swiss round has been paired (the
+// condition that shows "Event complete" on the event page), or — if cut to a
+// playoff — once the bracket final has a winner. status === 'finished' is
+// honoured too, but it's never set automatically.
 function isComplete(e) {
-  const done = e.rounds?.length ?? 0;
+  const rounds = e.rounds || [];
+  const last = rounds[rounds.length - 1];
+  if (isBracketRound(last)) return last.length === 1 && !!last[0].winner_id;
+  const done = rounds.length;
   return e.status === 'finished' || (done > 0 && done >= expectedRounds(e));
 }
 
@@ -137,9 +152,12 @@ function eventCard(e) {
   const regTag  = e.registration === 'open'
     ? `<span class="reg-open">Registration open${cap}</span>`
     : `<span class="reg-closed">Registration closed</span>`;
+  const rounds  = e.rounds || [];
+  const last    = rounds[rounds.length - 1];
   const status  = isComplete(e) ? '<span class="reg-done">Completed</span>'
+    : isBracketRound(last) ? `<span class="reg-active">${escapeHtml(bracketRoundName(last.length))}</span>`
     : e.status === 'setup' ? regTag
-    : `<span class="reg-active">Round ${e.rounds?.length ?? 0} of ${expectedRounds(e)}</span>`;
+    : `<span class="reg-active">Round ${rounds.length} of ${expectedRounds(e)}</span>`;
 
   return `<a class="card" href="/events/${encodeURIComponent(e.id)}">
     <div class="card-title">${escapeHtml(e.name)}</div>

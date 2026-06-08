@@ -13,7 +13,8 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, list_users,
                 get_config, save_config)
-from swiss import pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID
+from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
+                   make_bracket, next_bracket_round, CUT_SIZES)
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round, post_test, is_valid_webhook
 from storage import upload_avatar, delete_object
@@ -130,6 +131,21 @@ def _mask_webhook(url: str) -> str:
     """Identify a webhook without revealing its token."""
     return (url[:38] + '…' + url[-4:]) if len(url) > 46 else url
 
+def _is_bracket_round(rnd: list) -> bool:
+    """A round belongs to the single-elimination playoff if its matches are tagged."""
+    return bool(rnd) and rnd[0].get('stage') == 'bracket'
+
+def _swiss_complete(event: dict) -> bool:
+    """True once every Swiss round has been paired and fully scored (a playoff
+    can only start after this)."""
+    swiss = [r for r in event['rounds'] if not _is_bracket_round(r)]
+    num_rounds = event.get('num_rounds') or default_num_rounds(len(event['players']))
+    if len(swiss) < num_rounds:
+        return False
+    last = swiss[-1] if swiss else []
+    return all(m.get('is_bye') or m.get('winner_id') or m.get('result') == 'draw'
+               for m in last)
+
 
 # ── Pages ──────────────────────────────────────────────────────────────────────
 
@@ -223,6 +239,8 @@ def api_create_event():
         'players':      [],
         'rounds':       [],
         'num_rounds':   data.get('num_rounds', 0),
+        'cut_size':     0,            # 0 = no playoff cut; else 4/8/16
+        'cut_seeds':    {},           # player_id -> seed, set when the cut starts
         'status':       'setup',
         'registration': 'open',
         'registration_cap': data.get('registration_cap', 0),  # 0 = no cap
@@ -506,6 +524,27 @@ def api_pair_round(event_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
+
+    # If a playoff bracket is underway, "pair" advances it to the next round by
+    # pairing the winners. Every match needs a winner first (single elimination
+    # has no draws — a drawn match must be resolved to a decisive result).
+    if e['rounds'] and _is_bracket_round(e['rounds'][-1]):
+        last = e['rounds'][-1]
+        if len(last) <= 1:
+            return jsonify({'error': 'The playoff is already complete'}), 400
+        if any(m.get('winner_id') is None for m in last):
+            return jsonify({'error': 'Every playoff match needs a winner before advancing '
+                                     '(resolve any draws first)'}), 400
+        new_round = next_bracket_round(last)
+        e['rounds'].append(new_round)
+        save_event(event_id, {'rounds': e['rounds']})
+        round_num = len(e['rounds'])
+        standings = compute_standings(e['players'], e['rounds'])
+        webhook   = _resolve_event_webhook(e)
+        if webhook:
+            post_round(webhook, e, round_num, new_round, standings)
+        return jsonify({'round_num': round_num, 'pairings': new_round})
+
     if e['rounds'] and e.get('event_type') != 'League':
         last = e['rounds'][-1]
         unfinished = [m for m in last
@@ -531,6 +570,40 @@ def api_pair_round(event_id):
     return jsonify({'round_num': round_num, 'pairings': new_round})
 
 
+@events_bp.route('/api/events/<event_id>/cut', methods=['POST'])
+@login_required
+def api_cut_to_top(event_id):
+    """Start a single-elimination playoff for the top `cut_size` players."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    if e['rounds'] and _is_bracket_round(e['rounds'][-1]):
+        return jsonify({'error': 'A playoff bracket has already started'}), 400
+    if not _swiss_complete(e):
+        return jsonify({'error': 'Finish all rounds before cutting to a playoff'}), 400
+
+    cut_size = (request.json or {}).get('cut_size')
+    if cut_size not in CUT_SIZES:
+        return jsonify({'error': 'Cut size must be 4, 8, or 16'}), 400
+    active = [p for p in e['players'] if not p.get('dropped')]
+    if cut_size > len(active):
+        return jsonify({'error': f'Only {len(active)} active players — '
+                                 f'not enough for a top {cut_size}'}), 400
+
+    standings = compute_standings(e['players'], e['rounds'])
+    new_round, seeds = make_bracket(standings, cut_size)
+    e['rounds'].append(new_round)
+    save_event(event_id, {'rounds': e['rounds'], 'cut_size': cut_size, 'cut_seeds': seeds})
+
+    round_num = len(e['rounds'])
+    webhook   = _resolve_event_webhook(e)
+    if webhook:
+        post_round(webhook, e, round_num, new_round,
+                   compute_standings(e['players'], e['rounds']))
+    return jsonify({'round_num': round_num, 'cut_size': cut_size, 'pairings': new_round})
+
+
 # ── API: edit pairings ─────────────────────────────────────────────────────────
 
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/pairings', methods=['PUT'])
@@ -543,6 +616,8 @@ def api_edit_pairings(event_id, round_num):
     idx = round_num - 1
     if idx < 0 or idx >= len(e['rounds']):
         return jsonify({'error': 'Round not found'}), 404
+    if _is_bracket_round(e['rounds'][idx]):
+        return jsonify({'error': 'Playoff pairings are set by the bracket and cannot be edited'}), 400
     has_results = any(
         m.get('winner_id') is not None or m.get('result') == 'draw'
         for m in e['rounds'][idx] if not m.get('is_bye')
@@ -589,6 +664,8 @@ def api_repair_round(event_id, round_num):
     idx = round_num - 1
     if idx != len(e['rounds']) - 1:
         return jsonify({'error': 'Only the latest round can be re-paired'}), 400
+    if _is_bracket_round(e['rounds'][idx]):
+        return jsonify({'error': 'Playoff rounds cannot be re-paired'}), 400
     new_round = pair_round(e['players'], e['rounds'][:idx])
     e['rounds'][idx] = new_round
     save_event(event_id, {'rounds': e['rounds']})

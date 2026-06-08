@@ -22,6 +22,7 @@
     <button class="btn btn-sm" onclick="openEditEventModal()">Edit event</button>
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
     <button class="btn btn-primary" id="btn-pair" onclick="pairNextRound()">Pair round 1</button>
+    <span id="cut-controls" class="hidden"></span>
     <button class="btn btn-sm btn-danger" id="btn-delete-event" onclick="deleteEvent()">Delete event</button>
   </div>
 </div>
@@ -56,6 +57,11 @@
   <span id="player-banner-msg">You're registered for this event.</span>
   <button class="btn btn-sm btn-danger" id="withdraw-btn" onclick="unregister()">Withdraw</button>
   <button class="btn btn-sm" id="guest-link-btn" style="display:none" onclick="copyGuestLink(this)">Copy my private link</button>
+</div>
+
+<!-- Playoff champion banner (shown once the bracket final is decided) -->
+<div id="champion-banner" class="banner hidden" style="background:var(--accent-soft);border:1px solid rgba(167,139,250,0.35)">
+  <span id="champion-msg"></span>
 </div>
 
 <div class="two-col">
@@ -361,12 +367,26 @@ async function saveEventDetails() {
 function renderStatus() {
   const el = document.getElementById('reg-status');
   if (!el) return;
+  const last = state.rounds[state.rounds.length - 1] || null;
+  const champ = document.getElementById('champion-banner');
+  champ.classList.add('hidden');
+
   let cls, label;
-  if (state.status === 'finished') {
+  if (isBracketRound(last)) {
+    if (last.length === 1 && last[0].winner_id) {
+      cls = 'reg-done'; label = `Top ${state.cut_size} champion`;
+      champ.querySelector('#champion-msg').textContent =
+        `🏆 Champion: ${seededName(last[0].winner_id)}`;
+      champ.classList.remove('hidden');
+    } else {
+      cls = 'reg-active'; label = bracketRoundName(last.length);
+    }
+  } else if (state.status === 'finished') {
     cls = 'reg-closed'; label = 'Finished';
   } else if (state.rounds.length) {
     const total = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
-    cls = 'reg-active'; label = `Round ${state.rounds.length} of ${total}`;
+    if (swissComplete()) { cls = 'reg-done'; label = 'Completed'; }
+    else { cls = 'reg-active'; label = `Round ${state.rounds.length} of ${total}`; }
   } else if (state.registration === 'open') {
     cls = 'reg-open'; label = 'Registration open';
   } else {
@@ -390,11 +410,43 @@ function renderOwnerActions() {
     ? 'Close registration'
     : 'Open registration';
 
-  const numRounds  = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
-  const roundsDone = state.rounds.length;
-  const pairBtn    = document.getElementById('btn-pair');
-  pairBtn.textContent = roundsDone >= numRounds ? 'Event complete' : `Pair round ${roundsDone + 1}`;
-  pairBtn.disabled    = roundsDone >= numRounds;
+  const pairBtn = document.getElementById('btn-pair');
+  const cutEl   = document.getElementById('cut-controls');
+  pairBtn.classList.remove('hidden');
+  cutEl.classList.add('hidden');
+  cutEl.innerHTML = '';
+
+  const last = state.rounds[state.rounds.length - 1] || null;
+
+  if (isBracketRound(last)) {
+    // Playoff under way: advance by pairing the winners, or it's the final.
+    if (last.length === 1) {
+      pairBtn.textContent = 'Event complete';
+      pairBtn.disabled    = true;
+    } else {
+      pairBtn.textContent = `Pair ${bracketRoundName(last.length / 2)}`;
+      pairBtn.disabled    = false;
+    }
+  } else if (!swissComplete()) {
+    const swissDone = state.rounds.filter(r => !isBracketRound(r)).length;
+    pairBtn.textContent = `Pair round ${swissDone + 1}`;
+    pairBtn.disabled    = false;
+  } else {
+    // Swiss is done — offer a cut to playoff (sizes that fit the field), else
+    // the event is simply complete.
+    const active = state.players.filter(p => !p.dropped).length;
+    const sizes  = [4, 8, 16].filter(n => n <= active);
+    if (sizes.length) {
+      pairBtn.classList.add('hidden');
+      cutEl.innerHTML =
+        '<span style="font-size:0.85rem;color:var(--muted);margin:0 0.25rem">Cut to playoff:</span>' +
+        sizes.map(n => `<button class="btn btn-sm" onclick="cutToTop(${n})">Top ${n}</button>`).join(' ');
+      cutEl.classList.remove('hidden');
+    } else {
+      pairBtn.textContent = 'Event complete';
+      pairBtn.disabled    = true;
+    }
+  }
 
   // Hide 'Add myself' if already in the player list
   const addSelfBtn = document.getElementById('btn-add-self');
@@ -544,16 +596,20 @@ function renderRounds() {
     return;
   }
   el.innerHTML = state.rounds.map((round, i) => {
-    const canEdit = canManage() && round.every(m => m.is_bye || (!m.winner_id && m.result !== 'draw'));
+    const bracket = isBracketRound(round);
+    // Playoff pairings are set by the bracket (winners advance), so they can't
+    // be hand-edited or re-paired like Swiss rounds.
+    const canEdit = !bracket && canManage() && round.every(m => m.is_bye || (!m.winner_id && m.result !== 'draw'));
     const isLatest = i === state.rounds.length - 1;
-    const repairBtn = canManage() && isLatest
+    const repairBtn = !bracket && canManage() && isLatest
       ? `<button class="btn btn-sm" onclick="event.stopPropagation();repairRound(${i + 1})">Re-pair</button>` : '';
     const finished  = roundFinished(round);
     const collapsed = isRoundCollapsed(i, round);
+    const label = bracket ? bracketRoundName(round.length) : `Round ${i + 1}`;
     return `<div class="round-card ${collapsed ? 'collapsed' : ''}">
       <div class="round-header" onclick="toggleRound(${i})" role="button" tabindex="0"
            aria-expanded="${!collapsed}">
-        <strong>Round ${i + 1}${finished ? ' <span class="round-done">✓ done</span>' : ''}</strong>
+        <strong>${label}${finished ? ' <span class="round-done">✓ done</span>' : ''}</strong>
         <span class="round-actions">
           ${canEdit ? `<button class="btn btn-sm" onclick="event.stopPropagation();openEditModal(${i})">Edit pairings</button>` : ''}
           ${repairBtn}
@@ -595,8 +651,8 @@ function toggleSection(name) {
 }
 
 function renderMatch(m, roundIdx, matchIdx) {
-  const p1 = playerName(m.player1_id);
-  const p2 = m.is_bye ? '— Bye —' : playerName(m.player2_id);
+  const p1 = seededName(m.player1_id);
+  const p2 = m.is_bye ? '— Bye —' : seededName(m.player2_id);
   const canReport = !m.is_bye && (
     canManage() ||
     (myPlayer && !myPlayer.dropped &&
@@ -620,7 +676,7 @@ function renderMatch(m, roundIdx, matchIdx) {
     const editBtn = canManage()
       ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
       : '';
-    resultCell = `<span class="result-win">${escapeHtml(playerName(m.winner_id))} ${hi}–${lo}</span>${editBtn}`;
+    resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${hi}–${lo}</span>${editBtn}`;
   } else if (canReport) {
     resultCell = `<button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
   } else {
@@ -638,6 +694,43 @@ function renderMatch(m, roundIdx, matchIdx) {
 function playerName(id) {
   const p = state.players.find(p => p.id === id);
   return p ? p.name : id;
+}
+
+// In a playoff, prefix a player's name with their bracket seed (e.g. "#3 Alice").
+function seededName(id) {
+  const name = playerName(id);
+  const seed = state.cut_seeds && state.cut_seeds[id];
+  return seed ? `#${seed} ${name}` : name;
+}
+
+// ── Playoff bracket helpers ──────────────────────────────────────────────────
+function isBracketRound(round) {
+  return !!round && round.length > 0 && round[0].stage === 'bracket';
+}
+
+function bracketRoundName(matchCount) {
+  if (matchCount === 1) return 'Finals';
+  if (matchCount === 2) return 'Semifinals';
+  if (matchCount === 4) return 'Quarterfinals';
+  return `Top ${matchCount * 2}`;
+}
+
+// Every Swiss round paired and its last round fully scored.
+function swissComplete() {
+  const swiss = state.rounds.filter(r => !isBracketRound(r));
+  const numRounds = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
+  if (swiss.length < numRounds || !swiss.length) return false;
+  return swiss[swiss.length - 1].every(m => m.is_bye || m.winner_id || m.result === 'draw');
+}
+
+async function cutToTop(n) {
+  if (!confirm(`Cut to the Top ${n} and start a single-elimination playoff? This seeds players by the current standings.`)) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/cut`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ cut_size: n }),
+  });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Cut failed.'); }
 }
 
 // ── Players ────────────────────────────────────────────────────────────────────

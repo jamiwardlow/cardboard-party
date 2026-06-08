@@ -241,3 +241,63 @@ def default_num_rounds(num_players: int) -> int:
     if num_players < 2:
         return 1
     return math.ceil(math.log2(num_players))
+
+
+# ── Single-elimination playoff bracket ──────────────────────────────────────────
+#
+# After Swiss, the organiser may "cut to top N" (4, 8, or 16): the top N players
+# by standings are seeded into a single-elimination bracket. Bracket matches are
+# ordinary match dicts tagged with stage == 'bracket' and appended to `rounds`,
+# so the rest of the app treats them like any other round.
+
+CUT_SIZES = (4, 8, 16)
+
+
+def _bracket_match(p1_id: str, p2_id: str) -> dict:
+    return {'player1_id': p1_id, 'player2_id': p2_id,
+            'winner_id': None, 'result': None, 'is_bye': False,
+            'stage': 'bracket'}
+
+
+def bracket_seed_order(n: int) -> list[int]:
+    """Standard single-elimination seeding slots for a bracket of size n.
+
+    Returns seed numbers in slot order so that top seeds only meet late and
+    each round's adjacent winners feed the next round. e.g. n=8 ->
+    [1, 8, 4, 5, 2, 7, 3, 6], giving first-round matches (1,8) (4,5) (2,7) (3,6).
+    """
+    order = [1]
+    while len(order) < n:
+        size = len(order) * 2
+        order = [x for s in order for x in (s, size + 1 - s)]
+    return order
+
+
+def make_bracket(standings: list[dict], cut_size: int) -> tuple[list[dict], dict]:
+    """Build the first bracket round for the top `cut_size` players.
+
+    Args:
+        standings: output of compute_standings (sorted best-first; carries a
+                   'dropped' flag). Dropped players are skipped.
+        cut_size:  one of CUT_SIZES.
+
+    Returns (matches, seeds) where seeds maps player_id -> seed number (1-based).
+    """
+    seeded = [s for s in standings if not s.get('dropped')][:cut_size]
+    seeds = {s['id']: i + 1 for i, s in enumerate(seeded)}
+    by_seed = {seed: pid for pid, seed in seeds.items()}
+    order = bracket_seed_order(cut_size)
+    matches = [_bracket_match(by_seed[order[i]], by_seed[order[i + 1]])
+               for i in range(0, len(order), 2)]
+    return matches, seeds
+
+
+def next_bracket_round(prev_round: list[dict]) -> list[dict]:
+    """Pair the winners of a completed bracket round, preserving bracket order.
+
+    Every match in prev_round must already have a winner_id (draws must be
+    resolved first — single elimination needs someone to advance).
+    """
+    winners = [m['winner_id'] for m in prev_round]
+    return [_bracket_match(winners[i], winners[i + 1])
+            for i in range(0, len(winners), 2)]

@@ -42,6 +42,15 @@ def post_test(webhook_url: str) -> bool:
         return False
 
 
+def _round_label(round_num: int, pairings: list) -> str:
+    """Human label for a round: a Swiss round number, or the playoff bracket
+    stage (Finals/Semifinals/Quarterfinals/Top N) when these are bracket matches."""
+    if pairings and pairings[0].get('stage') == 'bracket':
+        return {1: 'Finals', 2: 'Semifinals', 4: 'Quarterfinals'}.get(
+            len(pairings), f"Top {len(pairings) * 2}")
+    return f"Round {round_num}"
+
+
 def post_round(webhook_url: str, event: dict, round_num: int,
                pairings: list, standings: list):
     """Post a new round notification to Discord."""
@@ -71,7 +80,7 @@ def post_round(webhook_url: str, event: dict, round_num: int,
 
     # Compose the Discord embed
     embed = {
-        "title": f"🃏 {event_name} — Round {round_num} Pairings",
+        "title": f"🃏 {event_name} — {_round_label(round_num, pairings)} Pairings",
         "url":   event_url,
         "color": 0x185fa5,
         "fields": [
