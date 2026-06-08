@@ -858,15 +858,18 @@ function openEditModal(roundIdx) {
   document.getElementById('edit-modal-title').textContent = `Edit round ${roundIdx + 1} pairings`;
   const round  = state.rounds[roundIdx];
   const active = state.players.filter(p => !p.dropped);
+  // Render every match — including any bye — as an editable row so the bye can
+  // be reassigned to a different player.
   document.getElementById('edit-pairings-form').innerHTML =
-    round.filter(m => !m.is_bye).map((m, mi) => `
+    round.map((m, mi) => `
       <div class="pairing-row">
         <select id="ep-p1-${mi}">
+          <option value="__bye__"${m.player1_id==='__bye__'?' selected':''}>— Bye —</option>
           ${active.map(p=>`<option value="${escapeHtml(p.id)}"${p.id===m.player1_id?' selected':''}>${escapeHtml(p.name)}</option>`).join('')}
         </select>
         <span>vs</span>
         <select id="ep-p2-${mi}">
-          <option value="__bye__">— Bye —</option>
+          <option value="__bye__"${m.is_bye?' selected':''}>— Bye —</option>
           ${active.map(p=>`<option value="${escapeHtml(p.id)}"${p.id===m.player2_id?' selected':''}>${escapeHtml(p.name)}</option>`).join('')}
         </select>
       </div>`).join('');
@@ -880,16 +883,26 @@ function closeEditModal() {
 
 async function saveEditedPairings() {
   const round  = state.rounds[editingRound];
-  const nonBye = round.filter(m => !m.is_bye);
-  const payload = [
-    ...nonBye.map((m, mi) => ({
-      player1_id: document.getElementById(`ep-p1-${mi}`).value,
-      player2_id: document.getElementById(`ep-p2-${mi}`).value,
-      winner_id: null, result: null,
-      is_bye: document.getElementById(`ep-p2-${mi}`).value === '__bye__',
-    })),
-    ...round.filter(m => m.is_bye),
-  ];
+  const payload = [];
+  for (let mi = 0; mi < round.length; mi++) {
+    let p1 = document.getElementById(`ep-p1-${mi}`).value;
+    let p2 = document.getElementById(`ep-p2-${mi}`).value;
+    const isBye = p1 === '__bye__' || p2 === '__bye__';
+    if (p1 === '__bye__' && p2 === '__bye__') {
+      alert('A bye must include a player.'); return;
+    }
+    // Normalise so the bye recipient is always player1 (swiss.py convention:
+    // the recipient is the winner of a 2-0-0). The Bye option sits on both
+    // sides for convenience, but storage keeps the real player on the left.
+    if (p1 === '__bye__') { [p1, p2] = [p2, p1]; }
+    payload.push({
+      player1_id: p1,
+      player2_id: p2,
+      winner_id: isBye ? p1 : null,
+      result:    isBye ? '2-0-0' : null,
+      is_bye:    isBye,
+    });
+  }
 
   // A player may only be assigned to one match (and not play themselves).
   const seen = new Set();
