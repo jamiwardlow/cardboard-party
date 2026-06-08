@@ -80,8 +80,14 @@ async function init() {
   const events = await eventsRes.json();
   me = await meRes.json();
 
-  // Sort newest first
-  events.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  // Completed events sink to the back; within each group, newest first. This
+  // keeps your active and not-yet-started events at the top of every list.
+  events.sort((a, b) => {
+    const af = isComplete(a) ? 1 : 0;
+    const bf = isComplete(b) ? 1 : 0;
+    if (af !== bf) return af - bf;
+    return (b.date || '').localeCompare(a.date || '');
+  });
 
   if (me.signed_in) {
     document.getElementById('my-sections').classList.remove('hidden');
@@ -111,15 +117,29 @@ async function init() {
   }
 }
 
+// Expected round count, mirroring the event page: explicit num_rounds, else
+// the standard Swiss ceil(log2(players)) fallback.
+function expectedRounds(e) {
+  return e.num_rounds || Math.ceil(Math.log2(Math.max((e.players || []).length, 2)));
+}
+
+// An event is complete once every expected round has been paired (the same
+// condition that shows "Event complete" on the event page). status === 'finished'
+// is honoured too, but it's never set automatically.
+function isComplete(e) {
+  const done = e.rounds?.length ?? 0;
+  return e.status === 'finished' || (done > 0 && done >= expectedRounds(e));
+}
+
 function eventCard(e) {
   const activePlayers = (e.players || []).filter(p => !p.dropped).length;
   const cap     = e.registration_cap ? ` / ${e.registration_cap}` : '';
   const regTag  = e.registration === 'open'
     ? `<span class="reg-open">Registration open${cap}</span>`
     : `<span class="reg-closed">Registration closed</span>`;
-  const status  = e.status === 'setup' ? regTag
-    : e.status === 'finished' ? '<span class="reg-closed">Finished</span>'
-    : `<span class="reg-active">Round ${e.rounds?.length ?? 0} of ${e.num_rounds || '?'}</span>`;
+  const status  = isComplete(e) ? '<span class="reg-done">Completed</span>'
+    : e.status === 'setup' ? regTag
+    : `<span class="reg-active">Round ${e.rounds?.length ?? 0} of ${expectedRounds(e)}</span>`;
 
   return `<a class="card" href="/events/${encodeURIComponent(e.id)}">
     <div class="card-title">${escapeHtml(e.name)}</div>

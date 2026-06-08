@@ -142,7 +142,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
                     -webkit-box-orient: vertical; overflow: hidden; }
 .card-status { margin-top: 0.5rem; }
 
-.reg-open, .reg-closed, .reg-active {
+.reg-open, .reg-closed, .reg-active, .reg-done {
               display: inline-block; font-size: 0.72rem; font-weight: 600;
               border-radius: 99px; padding: 0.15rem 0.65rem;
               text-transform: uppercase; letter-spacing: 0.04em; }
@@ -152,6 +152,8 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
               border: 1px solid var(--border); }
 .reg-active { background: var(--pink-soft); color: var(--pink);
               border: 1px solid rgba(244, 114, 182, 0.35); }
+.reg-done   { background: var(--accent-soft); color: var(--accent);
+              border: 1px solid rgba(167, 139, 250, 0.35); }
 
 /* ── Round cards ──────────────────────────────────────────────────────────── */
 .round-card   { background: var(--bg2); border: 1px solid var(--border);
