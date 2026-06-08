@@ -832,6 +832,12 @@ function selectResult(score) {
     result = score;
   }
 
+  // Confirm before saving — results feed standings and pairings.
+  const summary = result === 'draw'
+    ? 'a draw (1–1)'
+    : `${playerName(winner_id)} wins ${Math.max(...score.split('-').map(Number))}–${Math.min(...score.split('-').map(Number))}`;
+  if (!confirm(`${isEdit ? 'Update this result to' : 'Submit this result:'} ${summary}?`)) return;
+
   const url    = isEdit
     ? `/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/results/${matchIdx}`
     : `/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/results`;
