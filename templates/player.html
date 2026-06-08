@@ -9,7 +9,12 @@
     <div id="profile-avatar-fallback" class="profile-avatar profile-avatar-fallback"
          {% if profile.picture %}style="display:none"{% endif %}>{{ (profile.name or '?')[:1] | upper }}</div>
     <div>
-      <div class="profile-name" id="profile-name-display">{{ profile.name }}</div>
+      <div class="profile-name" id="profile-name-display">{{ profile.name }}<span
+           class="profile-pronouns" id="profile-pronouns-display">{% if profile.pronouns %} ({{ profile.pronouns }}){% endif %}</span></div>
+      <div class="profile-pronunciation" id="profile-pronunciation-display"
+           {% if not profile.pronunciation %}style="display:none"{% endif %}>
+        Pronounced: {{ profile.pronunciation }}
+      </div>
       <div class="profile-discord" id="profile-discord-display">
         {% if profile.discord %}Discord: {{ profile.discord }}{% endif %}
       </div>
@@ -34,6 +39,18 @@
            placeholder="e.g. username or username#1234"
            style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
   </label>
+  <label id="edit-pronouns-label" style="font-size:0.88rem;font-weight:500">
+    Pronouns
+    <input id="edit-pronouns" type="text" value="{{ profile.pronouns or '' }}" maxlength="40"
+           placeholder="e.g. she/her, they/them"
+           style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+  </label>
+  <label id="edit-pronunciation-label" style="font-size:0.88rem;font-weight:500">
+    Name pronunciation
+    <input id="edit-pronunciation" type="text" value="{{ profile.pronunciation or '' }}" maxlength="80"
+           placeholder="e.g. JAM-ee"
+           style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+  </label>
   <label id="edit-about-label" style="font-size:0.88rem;font-weight:500">
     About me
     <textarea id="edit-about" rows="4" maxlength="1000"
@@ -53,7 +70,7 @@
       <input id="edit-avatar-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
              onchange="openCropper(event)" style="margin-top:0.25rem;display:block;font-size:0.85rem">
     </label>
-    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">
       <button class="btn btn-sm btn-danger" type="button" onclick="removeAvatar()">Remove custom picture</button>
     </div>
     <div id="avatar-msg" style="font-size:0.85rem"></div>
@@ -159,6 +176,8 @@ Promise.all([
 function openEditProfile() {
   // Admins editing someone else may only change the Discord handle.
   const limited = isAdminViewer && !isSelf;
+  document.getElementById('edit-pronouns-label').style.display      = limited ? 'none' : '';
+  document.getElementById('edit-pronunciation-label').style.display = limited ? 'none' : '';
   document.getElementById('edit-about-label').style.display    = limited ? 'none' : '';
   document.getElementById('edit-avatar-section').style.display = limited ? 'none' : '';
   document.querySelector('#edit-profile-form strong').textContent =
@@ -304,6 +323,8 @@ function closeEditProfile() {
 
 async function saveProfile() {
   const discord = document.getElementById('edit-discord').value.trim();
+  const pronouns      = document.getElementById('edit-pronouns').value.trim();
+  const pronunciation = document.getElementById('edit-pronunciation').value.trim();
   const about   = document.getElementById('edit-about').value.trim();
   const msg     = document.getElementById('profile-save-msg');
 
@@ -312,7 +333,7 @@ async function saveProfile() {
   const res = isSelf
     ? await fetch('/api/profile', {
         method: 'PUT', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ discord, about }),
+        body: JSON.stringify({ discord, pronouns, pronunciation, about }),
       })
     : await fetch(`/api/users/${encodeURIComponent(PROFILE_GOOGLE_ID)}/discord`, {
         method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -322,6 +343,10 @@ async function saveProfile() {
   if (res.ok) {
     document.getElementById('profile-discord-display').textContent = discord ? 'Discord: ' + discord : '';
     if (isSelf) {
+      document.getElementById('profile-pronouns-display').textContent = pronouns ? ` (${pronouns})` : '';
+      const pronEl = document.getElementById('profile-pronunciation-display');
+      pronEl.textContent = pronunciation ? 'Pronounced: ' + pronunciation : '';
+      pronEl.style.display = pronunciation ? '' : 'none';
       const aboutEl = document.getElementById('profile-about-display');
       aboutEl.textContent = about;
       aboutEl.style.display = about ? '' : 'none';

@@ -362,6 +362,8 @@ td.result { width: 1%; white-space: nowrap; }
 #cropper-canvas { border-radius: 50%; background: var(--bg3); touch-action: none;
                   cursor: grab; }
 .profile-name   { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; }
+.profile-pronouns { font-family: var(--font-body); font-size: 1rem; font-weight: 400; color: var(--muted); }
+.profile-pronunciation { font-size: 0.88rem; color: var(--muted); font-style: italic; }
 .profile-discord { font-size: 0.88rem; color: var(--muted); }
 .profile-about  { color: var(--text); font-size: 0.92rem; line-height: 1.6;
                   white-space: pre-wrap; max-width: 600px; margin: -0.75rem 0 1.5rem; }
