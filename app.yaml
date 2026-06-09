@@ -20,7 +20,4 @@ env_variables:
   # redeploy. All URLs (and Discord links) will then use the custom domain, and
   # appspot/www hits 301-redirect to it. Also add the new host to the OAuth
   # client's Authorized redirect URIs (https://cardboardparty.gg/auth/callback).
-  # Temporarily OFF: Elsevier's Zscaler proxy blocks the newly-registered .gg
-  # domain's JS, so canonicalizing locks out work-network users. Re-enable once
-  # cardboardparty.gg is categorized/allowlisted in Zscaler.
-  # CANONICAL_HOST: cardboardparty.gg
+  CANONICAL_HOST: cardboardparty.gg
