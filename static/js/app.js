@@ -25,3 +25,12 @@ function fmtDate(iso) {
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+// Esc closes the top-most open modal (New event, Edit event, Enter result,
+// Edit pairings, avatar cropper — anything using .modal-backdrop). Per-modal
+// open handlers reset their state on reopen, so simply hiding is safe.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const open = document.querySelectorAll('.modal-backdrop:not(.hidden)');
+  if (open.length) open[open.length - 1].classList.add('hidden');
+});
