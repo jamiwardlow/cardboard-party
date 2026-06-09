@@ -452,6 +452,14 @@ function checkedTags(containerId) {
 }
 
 async function saveEventDetails() {
+  if (!document.getElementById('ee-name').value.trim()) {
+    alert('Event name is required.'); document.getElementById('ee-name').focus(); return;
+  }
+  const rStart = document.getElementById('ee-reg-start').value;
+  const rEnd   = document.getElementById('ee-reg-end').value;
+  if (rStart && rEnd && rEnd < rStart) {
+    alert('Registration close date is before the open date.'); return;
+  }
   const body = {
     name:             document.getElementById('ee-name').value,
     event_type:       document.getElementById('ee-type').value,

@@ -51,6 +51,7 @@
 
     <!-- Step 1: the form (shared, with advanced-only extras) -->
     <div id="create-form" class="hidden">
+      <div id="create-errors" class="form-errors hidden"></div>
       <label class="adv-only">Game
         <select id="e-game" onchange="populateFormats()"></select>
         <span class="field-help">More games coming soon.</span>
@@ -303,8 +304,14 @@ function closeCreateModal() {
   document.getElementById('create-modal').classList.add('hidden');
 }
 
+function clearCreateErrors() {
+  document.getElementById('create-errors').classList.add('hidden');
+  document.querySelectorAll('#create-form .invalid').forEach(el => el.classList.remove('invalid'));
+}
+
 function chooseMode(mode) {
   createMode = mode;
+  clearCreateErrors();
   const adv = mode === 'advanced';
   document.querySelectorAll('#create-form .adv-only')
     .forEach(el => el.classList.toggle('hidden', !adv));
@@ -349,7 +356,46 @@ function checkedTags(containerId) {
   return [...document.querySelectorAll(`#${containerId} input:checked`)].map(c => c.value);
 }
 
+// Client-side validation (Epic 11.2): block submit and show clear, per-field
+// messages. The server also rejects a blank name as a backstop.
+function validateCreate() {
+  const adv = createMode === 'advanced';
+  const errors = [];
+  const mark = id => document.getElementById(id).classList.add('invalid');
+  document.querySelectorAll('#create-form .invalid').forEach(el => el.classList.remove('invalid'));
+
+  if (!document.getElementById('e-name').value.trim()) { errors.push('Event name is required.'); mark('e-name'); }
+  if (!document.getElementById('e-date').value) { errors.push('Date is required.'); mark('e-date'); }
+
+  if (adv) {
+    if (!document.getElementById('e-game').value) { errors.push('Game is required.'); mark('e-game'); }
+    const fsel = document.getElementById('e-format-select').value;
+    if (fsel === 'Custom' && !document.getElementById('e-format-custom').value.trim()) {
+      errors.push('Enter a name for the custom format.'); mark('e-format-custom');
+    }
+    const start = document.getElementById('e-reg-start').value;
+    const end   = document.getElementById('e-reg-end').value;
+    if (start && end && end < start) {
+      errors.push('Registration close date is before the open date.'); mark('e-reg-start'); mark('e-reg-end');
+    }
+  } else if (!document.getElementById('e-format').value.trim()) {
+    errors.push('Format is required.'); mark('e-format');
+  }
+
+  const box = document.getElementById('create-errors');
+  if (errors.length) {
+    box.innerHTML = 'Please fix the following:<ul>' + errors.map(e => `<li>${escapeHtml(e)}</li>`).join('') + '</ul>';
+    box.classList.remove('hidden');
+    const first = document.querySelector('#create-form .invalid');
+    if (first) first.focus();
+    return false;
+  }
+  box.classList.add('hidden');
+  return true;
+}
+
 async function submitCreateEvent() {
+  if (!validateCreate()) return;
   const adv       = createMode === 'advanced';
   const numRounds = parseInt(document.getElementById('e-rounds').value) || 0;
   const cap       = parseInt(document.getElementById('e-cap').value) || 0;

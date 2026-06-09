@@ -276,6 +276,8 @@ def api_list_events():
 def api_create_event():
     user = get_current_user()
     data = request.json or {}
+    if not (data.get('name') or '').strip():
+        return jsonify({'error': 'Event name is required'}), 400
     payment_url, err = _normalize_payment_url(data.get('payment_url'))
     if err:
         return jsonify({'error': err}), 400
@@ -357,6 +359,8 @@ def api_update_event(event_id):
                'registration_type', 'registration_start', 'registration_end', 'unenroll_end',
                'notify_mode', 'notify_webhook_id'}
     updates = {k: v for k, v in data.items() if k in allowed}
+    if 'name' in updates and not str(updates['name']).strip():
+        return jsonify({'error': 'Event name is required'}), 400
     if 'test_mode' in updates:
         updates['test_mode'] = bool(updates['test_mode'])
     if 'registration_type' in updates and updates['registration_type'] not in REGISTRATION_TYPES:
