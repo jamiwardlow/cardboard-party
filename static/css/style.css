@@ -155,6 +155,28 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .reg-done   { background: var(--accent-soft); color: var(--accent);
               border: 1px solid rgba(167, 139, 250, 0.35); }
 
+/* ── Create flow: Simple/Advanced fork, game/test extras ──────────────────── */
+.mode-cards { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 0.5rem 0 0.25rem; }
+.mode-card  { flex: 1 1 180px; display: flex; flex-direction: column; gap: 0.3rem;
+              text-align: left; align-items: flex-start; padding: 0.9rem 1rem;
+              background: var(--bg2); border: 1px solid var(--border);
+              border-radius: var(--radius); cursor: pointer; color: var(--text);
+              font: inherit; transition: border-color 0.15s, background 0.15s; }
+.mode-card:hover   { border-color: var(--accent); background: #2d2548; }
+.mode-card strong  { font-family: var(--font-display); font-size: 1rem; font-weight: 500; color: var(--accent); }
+#create-title      { font-weight: 500; }
+.mode-card span    { font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+.field-help { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 400; margin-top: 0.2rem; }
+.modal label.checkbox-row { flex-direction: row; align-items: flex-start; gap: 0.55rem;
+              padding-top: 0.75rem; margin-top: 0.35rem; border-top: 1px solid var(--border); }
+/* Outrank `.modal input { width:100% }` so the checkbox stays its natural size
+   instead of stretching full-width and pushing the label off to the right. */
+.modal .checkbox-row input { width: auto; flex: 0 0 auto; margin-top: 0.3rem; }
+.test-badge { display: inline-block; font-size: 0.62rem; font-weight: 700; vertical-align: middle;
+              text-transform: uppercase; letter-spacing: 0.06em; color: var(--bg);
+              background: var(--accent); border-radius: 4px; padding: 0.05rem 0.35rem; }
+.card-game  { color: var(--accent); font-weight: 600; }
+
 /* ── Round cards ──────────────────────────────────────────────────────────── */
 .round-card   { background: var(--bg2); border: 1px solid var(--border);
                 border-radius: var(--radius); margin-bottom: 1rem; overflow: hidden; }

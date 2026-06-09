@@ -29,40 +29,76 @@
 <!-- Create event modal -->
 <div id="create-modal" class="modal-backdrop hidden">
   <div class="modal">
-    <h2>New event</h2>
-    <label>Name
-      <input id="e-name" type="text" placeholder="Friday Night Draft">
-    </label>
-    <label>Type
-      <select id="e-type">
-        <option value="One-day">One-day</option>
-        <option value="League">League</option>
-      </select>
-    </label>
-    <label>Format
-      <input id="e-format" type="text" value="Limited: Draft">
-    </label>
-    <label>Description
-      <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
-    </label>
-    <label>Entry cost
-      <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
-    </label>
-    <label>Payment link
-      <input id="e-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
-    </label>
-    <label>Date
-      <input id="e-date" type="date">
-    </label>
-    <label>Number of rounds
-      <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto">
-    </label>
-    <label>Registration cap
-      <input id="e-cap" type="number" min="2" max="256" placeholder="No cap">
-    </label>
-    <div class="modal-actions">
-      <button class="btn" onclick="closeCreateModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitCreateEvent()">Create</button>
+    <h2 id="create-title">New event</h2>
+
+    <!-- Step 0: choose Simple or Advanced -->
+    <div id="create-mode-choice">
+      <p class="subtitle" style="font-size:0.85rem;margin-top:0">How do you want to set this up?</p>
+      <div class="mode-cards">
+        <button type="button" class="mode-card" onclick="chooseMode('simple')">
+          <strong>Simple</strong>
+          <span>Quick start — just the essentials, ready in seconds.</span>
+        </button>
+        <button type="button" class="mode-card" onclick="chooseMode('advanced')">
+          <strong>Advanced</strong>
+          <span>More control — pick your game, formats, test mode, and more.</span>
+        </button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeCreateModal()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Step 1: the form (shared, with advanced-only extras) -->
+    <div id="create-form" class="hidden">
+      <label class="adv-only">Game
+        <select id="e-game" onchange="populateFormats()"></select>
+        <span class="field-help">More games coming soon.</span>
+      </label>
+      <label>Name
+        <input id="e-name" type="text" placeholder="Friday Night Draft">
+      </label>
+      <label>Type
+        <select id="e-type">
+          <option value="One-day">One-day</option>
+          <option value="League">League</option>
+        </select>
+      </label>
+      <label id="format-simple">Format
+        <input id="e-format" type="text" value="Limited: Draft">
+      </label>
+      <label id="format-advanced" class="hidden">Format
+        <select id="e-format-select" onchange="onFormatSelectChange()"></select>
+        <input id="e-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
+      </label>
+      <label>Description
+        <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
+      </label>
+      <label>Entry cost
+        <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
+      </label>
+      <label>Payment link
+        <input id="e-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
+      </label>
+      <label>Date
+        <input id="e-date" type="date">
+      </label>
+      <label>Number of rounds
+        <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto">
+      </label>
+      <label>Registration cap
+        <input id="e-cap" type="number" min="2" max="256" placeholder="No cap">
+      </label>
+      <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-test-mode">
+        <span>This event is in Test Mode
+          <span class="field-help">Hidden from public event discovery — only you see it.</span>
+        </span>
+      </label>
+      <div class="modal-actions">
+        <button class="btn" onclick="backToModeChoice()">← Back</button>
+        <button class="btn btn-primary" onclick="submitCreateEvent()">Create</button>
+      </div>
     </div>
   </div>
 </div>
@@ -159,8 +195,11 @@ function eventCard(e) {
     : e.status === 'setup' ? regTag
     : `<span class="reg-active">Round ${rounds.length} of ${expectedRounds(e)}</span>`;
 
+  const testBadge = e.test_mode ? ' <span class="test-badge">TEST</span>' : '';
+  const gameLine  = e.game ? `<div class="card-meta card-game">${escapeHtml(e.game)}</div>` : '';
   return `<a class="card" href="/events/${encodeURIComponent(e.id)}">
-    <div class="card-title">${escapeHtml(e.name)}</div>
+    <div class="card-title">${escapeHtml(e.name)}${testBadge}</div>
+    ${gameLine}
     <div class="card-meta">${escapeHtml(e.event_type || 'One-day')} · ${escapeHtml(e.date || '')}</div>
     <div class="card-meta">${escapeHtml(e.format || '')}</div>
     ${e.description ? `<div class="card-description">${escapeHtml(e.description)}</div>` : ''}
@@ -170,21 +209,91 @@ function eventCard(e) {
   </a>`;
 }
 
+// Game → its formats. MTG only for now; the shape lets us add TCGs later by
+// adding a key (and the backend just stores whatever game/format strings it gets).
+const GAME_FORMATS = {
+  'Magic: The Gathering': ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage',
+    'Commander', 'Pauper', 'Limited', 'Draft', 'Sealed', 'Premodern', 'Canlander', 'Custom'],
+};
+
+let createMode = null;   // 'simple' | 'advanced'
+
 function openCreateModal() {
+  createMode = null;
   document.getElementById('e-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('create-title').textContent = 'New event';
+  document.getElementById('create-mode-choice').classList.remove('hidden');
+  document.getElementById('create-form').classList.add('hidden');
+  // Populate the game list once (extensible from GAME_FORMATS).
+  const gameSel = document.getElementById('e-game');
+  if (!gameSel.options.length) {
+    gameSel.innerHTML = Object.keys(GAME_FORMATS)
+      .map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+  }
   document.getElementById('create-modal').classList.remove('hidden');
 }
 function closeCreateModal() {
   document.getElementById('create-modal').classList.add('hidden');
 }
 
+function chooseMode(mode) {
+  createMode = mode;
+  const adv = mode === 'advanced';
+  document.querySelectorAll('#create-form .adv-only')
+    .forEach(el => el.classList.toggle('hidden', !adv));
+  document.getElementById('format-simple').classList.toggle('hidden', adv);
+  document.getElementById('format-advanced').classList.toggle('hidden', !adv);
+  if (adv) populateFormats();
+  document.getElementById('create-title').textContent =
+    adv ? 'New event — Advanced' : 'New event — Simple';
+  document.getElementById('create-mode-choice').classList.add('hidden');
+  document.getElementById('create-form').classList.remove('hidden');
+}
+
+function backToModeChoice() {
+  document.getElementById('create-form').classList.add('hidden');
+  document.getElementById('create-mode-choice').classList.remove('hidden');
+  document.getElementById('create-title').textContent = 'New event';
+}
+
+// Fill the Advanced format dropdown from the selected game.
+function populateFormats() {
+  const game = document.getElementById('e-game').value;
+  const sel  = document.getElementById('e-format-select');
+  sel.innerHTML = (GAME_FORMATS[game] || [])
+    .map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+  onFormatSelectChange();
+}
+
+// "Custom" reveals a free-text field for the format name.
+function onFormatSelectChange() {
+  const isCustom = document.getElementById('e-format-select').value === 'Custom';
+  document.getElementById('e-format-custom').classList.toggle('hidden', !isCustom);
+}
+
 async function submitCreateEvent() {
+  const adv       = createMode === 'advanced';
   const numRounds = parseInt(document.getElementById('e-rounds').value) || 0;
   const cap       = parseInt(document.getElementById('e-cap').value) || 0;
+
+  let format, game = '', testMode = false;
+  if (adv) {
+    game = document.getElementById('e-game').value;
+    const sel = document.getElementById('e-format-select').value;
+    format = sel === 'Custom'
+      ? document.getElementById('e-format-custom').value.trim()
+      : sel;
+    testMode = document.getElementById('e-test-mode').checked;
+  } else {
+    format = document.getElementById('e-format').value;
+  }
+
   const body = {
     name:             document.getElementById('e-name').value,
+    game,
+    test_mode:        testMode,
     event_type:       document.getElementById('e-type').value,
-    format:           document.getElementById('e-format').value,
+    format,
     description:      document.getElementById('e-description').value,
     entry_cost:       document.getElementById('e-cost').value,
     payment_url:      document.getElementById('e-payment').value,

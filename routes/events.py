@@ -213,9 +213,18 @@ def users_page():
 
 @events_bp.route('/api/events', methods=['GET'])
 def api_list_events():
-    events = list_events()
-    for e in events:
+    # Test-mode events stay out of public discovery — only their owner (and global
+    # admins) see them listed, so organisers can rehearse setup without publishing
+    # fake events to players.
+    user  = get_current_user()
+    uid   = user['id'] if user else None
+    admin = bool(uid) and is_admin(uid)
+    events = []
+    for e in list_events():
+        if e.get('test_mode') and not admin and e.get('owner_id') != uid:
+            continue
         _redact_players(e)
+        events.append(e)
     return jsonify(events)
 
 @events_bp.route('/api/events', methods=['POST'])
@@ -228,6 +237,8 @@ def api_create_event():
         return jsonify({'error': err}), 400
     event = {
         'name':         data.get('name', 'New Event'),
+        'game':         (data.get('game') or '').strip(),     # '' for Simple (no game yet)
+        'test_mode':    bool(data.get('test_mode', False)),    # hidden from public discovery
         'event_type':   data.get('event_type', 'One-day'),
         'format':       data.get('format', 'Limited: Draft'),
         'description':  data.get('description', ''),
@@ -279,11 +290,13 @@ def api_update_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
     data = request.json or {}
-    allowed = {'name', 'event_type', 'format', 'description', 'entry_cost',
+    allowed = {'name', 'game', 'test_mode', 'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
                'notify_mode', 'notify_webhook_id'}
     updates = {k: v for k, v in data.items() if k in allowed}
+    if 'test_mode' in updates:
+        updates['test_mode'] = bool(updates['test_mode'])
     if updates.get('notify_mode') not in (None, 'none', 'community', 'saved'):
         return jsonify({'error': 'Invalid notify_mode'}), 400
     if 'payment_url' in updates:
