@@ -37,6 +37,19 @@ def _clean_tags(raw) -> list:
     chosen = set(raw or [])
     return [t for t in TOURNAMENT_TAGS if t in chosen]
 
+# Plain-text (not rich-text) player-communication fields. Stored verbatim and
+# rendered with white-space:pre-wrap + autoescape, so they're safe by default —
+# no HTML, no sanitizer needed. Capped to keep documents reasonable.
+COMMS_FIELDS = ('rules', 'schedule', 'prizes', 'contact')
+_COMMS_MAX = 5000
+
+def _clean_comms(data: dict) -> dict:
+    out = {}
+    for f in COMMS_FIELDS:
+        if f in data:
+            out[f] = str(data.get(f) or '')[:_COMMS_MAX]
+    return out
+
 
 def _normalize_payment_url(raw) -> tuple:
     """Validate/normalize a payment link so it's safe to render as a clickable
@@ -256,6 +269,12 @@ def api_create_event():
         # Intended top-cut size (4/8/16) for a Swiss + Top Cut event. This pre-fills
         # the in-event "Cut to Top N" action; the actual cut still executes later.
         'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
+        'requires_decklists': bool(data.get('requires_decklists', False)),
+        'prize_deadline_days': data.get('prize_deadline_days') if isinstance(data.get('prize_deadline_days'), int) and data.get('prize_deadline_days') >= 0 else 0,
+        'rules':        str(data.get('rules') or '')[:_COMMS_MAX],
+        'schedule':     str(data.get('schedule') or '')[:_COMMS_MAX],
+        'prizes':       str(data.get('prizes') or '')[:_COMMS_MAX],
+        'contact':      str(data.get('contact') or '')[:_COMMS_MAX],
         'event_type':   data.get('event_type', 'One-day'),
         'format':       data.get('format', 'Limited: Draft'),
         'description':  data.get('description', ''),
@@ -308,6 +327,7 @@ def api_update_event(event_id):
     _require_manage(e)
     data = request.json or {}
     allowed = {'name', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
+               'requires_decklists', 'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
@@ -315,6 +335,12 @@ def api_update_event(event_id):
     updates = {k: v for k, v in data.items() if k in allowed}
     if 'test_mode' in updates:
         updates['test_mode'] = bool(updates['test_mode'])
+    if 'requires_decklists' in updates:
+        updates['requires_decklists'] = bool(updates['requires_decklists'])
+    if 'prize_deadline_days' in updates:
+        v = updates['prize_deadline_days']
+        updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
+    updates.update(_clean_comms(updates))   # cap the long-text fields
     if 'tags' in updates:
         updates['tags'] = _clean_tags(updates['tags'])
     if 'structure' in updates and updates['structure'] not in STRUCTURES:

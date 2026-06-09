@@ -99,6 +99,21 @@
       <label>Description
         <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
       </label>
+      <label class="adv-only">Schedule
+        <textarea id="e-schedule" rows="3" placeholder="Optional — registration, check-in, rounds, breaks, top cut times"></textarea>
+      </label>
+      <label class="adv-only">Rules
+        <textarea id="e-rules" rows="3" placeholder="Optional — format rules, banned cards, deck restrictions"></textarea>
+      </label>
+      <label class="adv-only">Prizes
+        <textarea id="e-prizes" rows="3" placeholder="Optional — prize breakdown by placement"></textarea>
+      </label>
+      <label class="adv-only">Prize distribution deadline (days)
+        <input id="e-prize-deadline" type="number" min="0" max="365" placeholder="e.g. 14">
+      </label>
+      <label class="adv-only">Contact
+        <textarea id="e-contact" rows="2" placeholder="Optional — how to reach the organiser with questions"></textarea>
+      </label>
       <label>Entry cost
         <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
       </label>
@@ -113,6 +128,12 @@
       </label>
       <label>Registration cap
         <input id="e-cap" type="number" min="2" max="256" placeholder="No cap">
+      </label>
+      <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-decklists">
+        <span>Require decklists
+          <span class="field-help">Players are told a decklist is required for this event.</span>
+        </span>
       </label>
       <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-test-mode">
@@ -348,6 +369,14 @@ async function submitCreateEvent() {
     num_rounds:       numRounds,
     registration_cap: cap,
   };
+  if (adv) {
+    body.requires_decklists  = document.getElementById('e-decklists').checked;
+    body.prize_deadline_days = parseInt(document.getElementById('e-prize-deadline').value) || 0;
+    body.rules    = document.getElementById('e-rules').value;
+    body.schedule = document.getElementById('e-schedule').value;
+    body.prizes   = document.getElementById('e-prizes').value;
+    body.contact  = document.getElementById('e-contact').value;
+  }
   const res = await fetch('/api/events', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body),

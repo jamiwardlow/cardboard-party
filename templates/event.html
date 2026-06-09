@@ -12,6 +12,7 @@
     <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}</p>
     {% if event.game %}<p class="subtitle" style="margin-top:0.15rem">{{ event.game }}</p>{% endif %}
     {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
+    {% if event.requires_decklists %}<p class="event-note">📋 Decklists required</p>{% endif %}
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
     <p class="event-cost">
@@ -66,6 +67,17 @@
 <div id="champion-banner" class="banner hidden" style="background:var(--accent-soft);border:1px solid rgba(167,139,250,0.35)">
   <span id="champion-msg"></span>
 </div>
+
+{% if event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days %}
+<section class="event-comms">
+  {% if event.schedule %}<details><summary>Schedule</summary><div class="comms-body">{{ event.schedule }}</div></details>{% endif %}
+  {% if event.rules %}<details><summary>Rules</summary><div class="comms-body">{{ event.rules }}</div></details>{% endif %}
+  {% if event.prizes or event.prize_deadline_days %}<details><summary>Prizes</summary><div class="comms-body">{{ event.prizes }}{% if event.prize_deadline_days %}{% if event.prizes %}
+
+{% endif %}Prizes distributed within {{ event.prize_deadline_days }} day{{ 's' if event.prize_deadline_days != 1 }} of the event.{% endif %}</div></details>{% endif %}
+  {% if event.contact %}<details><summary>Contact</summary><div class="comms-body">{{ event.contact }}</div></details>{% endif %}
+</section>
+{% endif %}
 
 <div class="two-col">
   <section>
@@ -192,6 +204,21 @@
     <label>Description
       <textarea id="ee-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
     </label>
+    <label>Schedule
+      <textarea id="ee-schedule" rows="3" placeholder="Optional — registration, check-in, rounds, breaks, top cut times"></textarea>
+    </label>
+    <label>Rules
+      <textarea id="ee-rules" rows="3" placeholder="Optional — format rules, banned cards, deck restrictions"></textarea>
+    </label>
+    <label>Prizes
+      <textarea id="ee-prizes" rows="3" placeholder="Optional — prize breakdown by placement"></textarea>
+    </label>
+    <label>Prize distribution deadline (days)
+      <input id="ee-prize-deadline" type="number" min="0" max="365" placeholder="e.g. 14">
+    </label>
+    <label>Contact
+      <textarea id="ee-contact" rows="2" placeholder="Optional — how to reach the organiser with questions"></textarea>
+    </label>
     <label>Entry cost
       <input id="ee-cost" type="text" placeholder="e.g. $10 or Free">
     </label>
@@ -206,6 +233,12 @@
     </label>
     <label>Registration cap
       <input id="ee-cap" type="number" min="2" max="256" placeholder="No cap">
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" id="ee-decklists">
+      <span>Require decklists
+        <span class="field-help">Players are told a decklist is required for this event.</span>
+      </span>
     </label>
     <label class="checkbox-row">
       <input type="checkbox" id="ee-test-mode">
@@ -363,6 +396,12 @@ function openEditEventModal() {
   document.getElementById('ee-type').value        = state.event_type || 'One-day';
   document.getElementById('ee-format').value      = state.format || '';
   document.getElementById('ee-description').value = state.description || '';
+  document.getElementById('ee-schedule').value    = state.schedule || '';
+  document.getElementById('ee-rules').value       = state.rules || '';
+  document.getElementById('ee-prizes').value      = state.prizes || '';
+  document.getElementById('ee-prize-deadline').value = state.prize_deadline_days || '';
+  document.getElementById('ee-contact').value     = state.contact || '';
+  document.getElementById('ee-decklists').checked = !!state.requires_decklists;
   document.getElementById('ee-cost').value        = state.entry_cost || '';
   document.getElementById('ee-payment').value     = state.payment_url || '';
   document.getElementById('ee-date').value        = state.date || '';
@@ -407,6 +446,12 @@ async function saveEventDetails() {
     structure:        document.getElementById('ee-structure').value,
     planned_cut_size: document.getElementById('ee-structure').value === 'swiss_top_cut'
                         ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
+    requires_decklists: document.getElementById('ee-decklists').checked,
+    prize_deadline_days: parseInt(document.getElementById('ee-prize-deadline').value) || 0,
+    rules:            document.getElementById('ee-rules').value,
+    schedule:         document.getElementById('ee-schedule').value,
+    prizes:           document.getElementById('ee-prizes').value,
+    contact:          document.getElementById('ee-contact').value,
   };
   const res = await fetch(`/api/events/${EVENT_ID}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
