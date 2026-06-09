@@ -14,3 +14,10 @@ env_variables:
   GOOGLE_CLIENT_ID: "52928879537-r88u039f214kfa2kaalmm4a0hfr5a8dj.apps.googleusercontent.com"
   # GOOGLE_CLIENT_SECRET is NOT stored here — it lives in Secret Manager
   # (secret name: GOOGLE_CLIENT_SECRET) and is fetched at startup by gcp_secrets.py.
+  #
+  # Custom domain: once cardboardparty.gg is verified, mapped, and serving via
+  # App Engine (DNS at Google + managed SSL active), uncomment the next line and
+  # redeploy. All URLs (and Discord links) will then use the custom domain, and
+  # appspot/www hits 301-redirect to it. Also add the new host to the OAuth
+  # client's Authorized redirect URIs (https://cardboardparty.gg/auth/callback).
+  # CANONICAL_HOST: cardboardparty.gg

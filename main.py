@@ -1,6 +1,7 @@
 import os
 import time
-from flask import Flask
+from urllib.parse import urlsplit, urlunsplit
+from flask import Flask, request, redirect
 from routes.auth import auth_bp
 from routes.events import events_bp
 from gcp_secrets import get_secret
@@ -22,6 +23,22 @@ app.config.update(
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(events_bp)
+
+# Canonical host (e.g. "cardboardparty.gg"). When set, every page is served
+# under this host: requests to any other host (the appspot URL, www.*, etc.)
+# are 301-redirected so all URLs show the custom domain. Unset (local dev, or
+# before the custom domain is mapped + DNS/SSL live) → no redirect, so deploying
+# this is a safe no-op until CANONICAL_HOST is added to app.yaml.
+CANONICAL_HOST = os.environ.get('CANONICAL_HOST', '').strip()
+
+@app.before_request
+def _redirect_to_canonical_host():
+    if not CANONICAL_HOST or request.method not in ('GET', 'HEAD'):
+        return None
+    if request.host == CANONICAL_HOST:
+        return None
+    parts = urlsplit(request.url)._replace(netloc=CANONICAL_HOST, scheme='https')
+    return redirect(urlunsplit(parts), code=301)
 
 @app.after_request
 def _no_store_dynamic(resp):

@@ -11,8 +11,15 @@ To set up:
   4. Paste it into the Admin → Settings page in Cardboard Party
 """
 
+import os
 import re
 import requests
+
+def _base_url() -> str:
+    """Public base URL for links in notifications. Uses the canonical custom
+    domain when configured, else the default appspot URL."""
+    host = os.environ.get('CANONICAL_HOST', '').strip()
+    return f"https://{host}" if host else "https://cardboard-party.wl.r.appspot.com"
 
 # Discord webhook URLs only. Validating the host is also our SSRF guard: the
 # server POSTs to these URLs, and organisers (not just admins) now supply them,
@@ -58,7 +65,7 @@ def post_round(webhook_url: str, event: dict, round_num: int,
         return
 
     event_name = event.get('name', 'Event')
-    event_url  = f"https://cardboard-party.wl.r.appspot.com/events/{event['id']}"
+    event_url  = f"{_base_url()}/events/{event['id']}"
 
     # Build pairings text
     player_map = {p['id']: p['name'] for p in event.get('players', [])}
