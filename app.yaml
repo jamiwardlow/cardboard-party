@@ -20,4 +20,4 @@ env_variables:
   # redeploy. All URLs (and Discord links) will then use the custom domain, and
   # appspot/www hits 301-redirect to it. Also add the new host to the OAuth
   # client's Authorized redirect URIs (https://cardboardparty.gg/auth/callback).
-  # CANONICAL_HOST: cardboardparty.gg
+  CANONICAL_HOST: cardboardparty.gg
