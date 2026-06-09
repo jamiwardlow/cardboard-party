@@ -71,6 +71,31 @@
         <select id="e-format-select" onchange="onFormatSelectChange()"></select>
         <input id="e-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
       </label>
+      <label class="adv-only">Structure
+        <select id="e-structure" onchange="onStructureChange('e')">
+          <option value="">— Select —</option>
+          <option value="swiss">Swiss only</option>
+          <option value="swiss_top_cut">Swiss + Top Cut</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label id="e-topcut-wrap" class="hidden">Top cut size
+        <select id="e-topcut">
+          <option value="8">Top 8</option>
+          <option value="4">Top 4</option>
+          <option value="16">Top 16</option>
+        </select>
+        <span class="field-help">Seeds the playoff bracket; you confirm the cut when Swiss ends.</span>
+      </label>
+      <div class="adv-only field-group">
+        <span class="field-label">Tags</span>
+        <div class="chip-options" id="e-tags">
+          <label class="chip"><input type="checkbox" value="Weekly Play"> Weekly Play</label>
+          <label class="chip"><input type="checkbox" value="Prerelease"> Prerelease</label>
+          <label class="chip"><input type="checkbox" value="Regional Championship Qualifier"> Regional Championship Qualifier</label>
+          <label class="chip"><input type="checkbox" value="Spotlight Series"> Spotlight Series</label>
+        </div>
+      </div>
       <label>Description
         <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
       </label>
@@ -197,6 +222,9 @@ function eventCard(e) {
 
   const testBadge = e.test_mode ? ' <span class="test-badge">TEST</span>' : '';
   const gameLine  = e.game ? `<div class="card-meta card-game">${escapeHtml(e.game)}</div>` : '';
+  const tagChips  = (e.tags && e.tags.length)
+    ? `<div class="card-tags">${e.tags.map(t => `<span class="tag-chip">${escapeHtml(t)}</span>`).join('')}</div>`
+    : '';
   return `<a class="card" href="/events/${encodeURIComponent(e.id)}">
     <div class="card-title">${escapeHtml(e.name)}${testBadge}</div>
     ${gameLine}
@@ -205,6 +233,7 @@ function eventCard(e) {
     ${e.description ? `<div class="card-description">${escapeHtml(e.description)}</div>` : ''}
     ${e.entry_cost ? `<div class="card-meta">Entry: ${escapeHtml(e.entry_cost)}</div>` : ''}
     <div class="card-meta">${activePlayers} players${cap ? ' (cap: ' + e.registration_cap + ')' : ''}</div>
+    ${tagChips}
     <div class="card-status">${status}</div>
   </a>`;
 }
@@ -243,7 +272,7 @@ function chooseMode(mode) {
     .forEach(el => el.classList.toggle('hidden', !adv));
   document.getElementById('format-simple').classList.toggle('hidden', adv);
   document.getElementById('format-advanced').classList.toggle('hidden', !adv);
-  if (adv) populateFormats();
+  if (adv) { populateFormats(); onStructureChange('e'); }
   document.getElementById('create-title').textContent =
     adv ? 'New event — Advanced' : 'New event — Simple';
   document.getElementById('create-mode-choice').classList.add('hidden');
@@ -271,12 +300,23 @@ function onFormatSelectChange() {
   document.getElementById('e-format-custom').classList.toggle('hidden', !isCustom);
 }
 
+// The Top Cut size only applies to a "Swiss + Top Cut" structure. Prefix is
+// 'e' on the create modal and 'ee' on the edit modal (shared logic).
+function onStructureChange(prefix) {
+  const isTopCut = document.getElementById(`${prefix}-structure`).value === 'swiss_top_cut';
+  document.getElementById(`${prefix}-topcut-wrap`).classList.toggle('hidden', !isTopCut);
+}
+
+function checkedTags(containerId) {
+  return [...document.querySelectorAll(`#${containerId} input:checked`)].map(c => c.value);
+}
+
 async function submitCreateEvent() {
   const adv       = createMode === 'advanced';
   const numRounds = parseInt(document.getElementById('e-rounds').value) || 0;
   const cap       = parseInt(document.getElementById('e-cap').value) || 0;
 
-  let format, game = '', testMode = false;
+  let format, game = '', testMode = false, tags = [], structure = '', plannedCut = 0;
   if (adv) {
     game = document.getElementById('e-game').value;
     const sel = document.getElementById('e-format-select').value;
@@ -284,6 +324,10 @@ async function submitCreateEvent() {
       ? document.getElementById('e-format-custom').value.trim()
       : sel;
     testMode = document.getElementById('e-test-mode').checked;
+    tags = checkedTags('e-tags');
+    structure = document.getElementById('e-structure').value;
+    if (structure === 'swiss_top_cut')
+      plannedCut = parseInt(document.getElementById('e-topcut').value) || 0;
   } else {
     format = document.getElementById('e-format').value;
   }
@@ -292,6 +336,9 @@ async function submitCreateEvent() {
     name:             document.getElementById('e-name').value,
     game,
     test_mode:        testMode,
+    tags,
+    structure,
+    planned_cut_size: plannedCut,
     event_type:       document.getElementById('e-type').value,
     format,
     description:      document.getElementById('e-description').value,

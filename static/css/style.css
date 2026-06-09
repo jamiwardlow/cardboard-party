@@ -176,6 +176,27 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
               text-transform: uppercase; letter-spacing: 0.06em; color: var(--bg);
               background: var(--accent); border-radius: 4px; padding: 0.05rem 0.35rem; }
 .card-game  { color: var(--accent); font-weight: 600; }
+/* Field group with its own label (used for the tag multi-select) */
+.field-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.field-label { font-size: 0.88rem; font-weight: 500; }
+.chip-options { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip-options .chip { display: inline-flex; align-items: center; cursor: pointer; user-select: none;
+              font-size: 0.8rem; font-weight: 400; padding: 0.3rem 0.7rem; background: var(--bg2);
+              border: 1px solid var(--border); border-radius: 99px;
+              transition: border-color 0.12s, background 0.12s, color 0.12s; }
+.chip-options .chip:hover { border-color: var(--accent); }
+/* Hide the native checkbox but keep it focusable/accessible; selection is shown
+   by highlighting the chip itself. */
+.chip-options .chip input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.chip-options .chip:has(input:checked) { border-color: var(--accent); background: var(--accent-soft);
+              color: var(--accent); font-weight: 500; }
+.chip-options .chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Read-only tag chips on cards and the event page */
+.card-tags, .event-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.15rem; }
+.event-tags { margin-top: 0.5rem; }
+.tag-chip { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+              white-space: nowrap; color: var(--muted); background: var(--bg3); border: 1px solid var(--border);
+              border-radius: 99px; padding: 0.1rem 0.5rem; }
 
 /* ── Round cards ──────────────────────────────────────────────────────────── */
 .round-card   { background: var(--bg2); border: 1px solid var(--border);

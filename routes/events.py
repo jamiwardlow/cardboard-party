@@ -25,6 +25,18 @@ from urllib.parse import urlparse
 
 events_bp = Blueprint('events', __name__)
 
+# Advanced-creation vocabularies. Kept server-side so the stored values are
+# validated against an allow-list rather than trusting whatever the client sends.
+TOURNAMENT_TAGS = ['Weekly Play', 'Prerelease', 'Regional Championship Qualifier',
+                   'Spotlight Series']
+STRUCTURES = ['swiss', 'swiss_top_cut', 'custom']
+
+
+def _clean_tags(raw) -> list:
+    """Keep only recognised tags, preserving the canonical order."""
+    chosen = set(raw or [])
+    return [t for t in TOURNAMENT_TAGS if t in chosen]
+
 
 def _normalize_payment_url(raw) -> tuple:
     """Validate/normalize a payment link so it's safe to render as a clickable
@@ -239,6 +251,11 @@ def api_create_event():
         'name':         data.get('name', 'New Event'),
         'game':         (data.get('game') or '').strip(),     # '' for Simple (no game yet)
         'test_mode':    bool(data.get('test_mode', False)),    # hidden from public discovery
+        'tags':         _clean_tags(data.get('tags')),
+        'structure':    data.get('structure') if data.get('structure') in STRUCTURES else '',
+        # Intended top-cut size (4/8/16) for a Swiss + Top Cut event. This pre-fills
+        # the in-event "Cut to Top N" action; the actual cut still executes later.
+        'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
         'event_type':   data.get('event_type', 'One-day'),
         'format':       data.get('format', 'Limited: Draft'),
         'description':  data.get('description', ''),
@@ -290,13 +307,20 @@ def api_update_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
     data = request.json or {}
-    allowed = {'name', 'game', 'test_mode', 'event_type', 'format', 'description', 'entry_cost',
+    allowed = {'name', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
+               'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
                'notify_mode', 'notify_webhook_id'}
     updates = {k: v for k, v in data.items() if k in allowed}
     if 'test_mode' in updates:
         updates['test_mode'] = bool(updates['test_mode'])
+    if 'tags' in updates:
+        updates['tags'] = _clean_tags(updates['tags'])
+    if 'structure' in updates and updates['structure'] not in STRUCTURES:
+        updates['structure'] = ''
+    if 'planned_cut_size' in updates and updates['planned_cut_size'] not in (4, 8, 16):
+        updates['planned_cut_size'] = 0
     if updates.get('notify_mode') not in (None, 'none', 'community', 'saved'):
         return jsonify({'error': 'Invalid notify_mode'}), 400
     if 'payment_url' in updates:

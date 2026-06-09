@@ -9,7 +9,9 @@
       {% if event.test_mode %}<span class="test-badge">TEST</span>{% endif %}
       <button class="btn btn-sm" id="btn-share" onclick="shareEvent(this)">Share</button>
     </div>
-    <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}</p>
+    <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}</p>
+    {% if event.game %}<p class="subtitle" style="margin-top:0.15rem">{{ event.game }}</p>{% endif %}
+    {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
     <p class="event-cost">
@@ -162,6 +164,31 @@
     <label>Format
       <input id="ee-format" type="text">
     </label>
+    <label>Structure
+      <select id="ee-structure" onchange="onStructureChange('ee')">
+        <option value="">— Select —</option>
+        <option value="swiss">Swiss only</option>
+        <option value="swiss_top_cut">Swiss + Top Cut</option>
+        <option value="custom">Custom</option>
+      </select>
+    </label>
+    <label id="ee-topcut-wrap" class="hidden">Top cut size
+      <select id="ee-topcut">
+        <option value="8">Top 8</option>
+        <option value="4">Top 4</option>
+        <option value="16">Top 16</option>
+      </select>
+      <span class="field-help">Seeds the playoff bracket; you confirm the cut when Swiss ends.</span>
+    </label>
+    <div class="field-group">
+      <span class="field-label">Tags</span>
+      <div class="chip-options" id="ee-tags">
+        <label class="chip"><input type="checkbox" value="Weekly Play"> Weekly Play</label>
+        <label class="chip"><input type="checkbox" value="Prerelease"> Prerelease</label>
+        <label class="chip"><input type="checkbox" value="Regional Championship Qualifier"> Regional Championship Qualifier</label>
+        <label class="chip"><input type="checkbox" value="Spotlight Series"> Spotlight Series</label>
+      </div>
+    </div>
     <label>Description
       <textarea id="ee-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
     </label>
@@ -342,11 +369,26 @@ function openEditEventModal() {
   document.getElementById('ee-rounds').value      = state.num_rounds || '';
   document.getElementById('ee-cap').value         = state.registration_cap || '';
   document.getElementById('ee-test-mode').checked = !!state.test_mode;
+  document.getElementById('ee-structure').value   = state.structure || '';
+  document.getElementById('ee-topcut').value      = String(state.planned_cut_size || 8);
+  onStructureChange('ee');
+  const tags = state.tags || [];
+  document.querySelectorAll('#ee-tags input').forEach(c => { c.checked = tags.includes(c.value); });
   document.getElementById('edit-event-modal').classList.remove('hidden');
 }
 
 function closeEditEventModal() {
   document.getElementById('edit-event-modal').classList.add('hidden');
+}
+
+// Top Cut size only applies to a "Swiss + Top Cut" structure.
+function onStructureChange(prefix) {
+  const isTopCut = document.getElementById(`${prefix}-structure`).value === 'swiss_top_cut';
+  document.getElementById(`${prefix}-topcut-wrap`).classList.toggle('hidden', !isTopCut);
+}
+
+function checkedTags(containerId) {
+  return [...document.querySelectorAll(`#${containerId} input:checked`)].map(c => c.value);
 }
 
 async function saveEventDetails() {
@@ -361,6 +403,10 @@ async function saveEventDetails() {
     num_rounds:       parseInt(document.getElementById('ee-rounds').value) || 0,
     registration_cap: parseInt(document.getElementById('ee-cap').value) || 0,
     test_mode:        document.getElementById('ee-test-mode').checked,
+    tags:             checkedTags('ee-tags'),
+    structure:        document.getElementById('ee-structure').value,
+    planned_cut_size: document.getElementById('ee-structure').value === 'swiss_top_cut'
+                        ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
   };
   const res = await fetch(`/api/events/${EVENT_ID}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -447,9 +493,12 @@ function renderOwnerActions() {
     const sizes  = [4, 8, 16].filter(n => n <= active);
     if (sizes.length) {
       pairBtn.classList.add('hidden');
+      // Highlight the size planned at creation (Swiss + Top N), if any, so the
+      // organiser just confirms it.
+      const planned = state.planned_cut_size || 0;
       cutEl.innerHTML =
         '<span style="font-size:0.85rem;color:var(--muted);margin:0 0.25rem">Cut to playoff:</span>' +
-        sizes.map(n => `<button class="btn btn-sm" onclick="cutToTop(${n})">Top ${n}</button>`).join(' ');
+        sizes.map(n => `<button class="btn btn-sm ${n === planned ? 'btn-primary' : ''}" onclick="cutToTop(${n})">Top ${n}</button>`).join(' ');
       cutEl.classList.remove('hidden');
     } else {
       pairBtn.textContent = 'Event complete';
