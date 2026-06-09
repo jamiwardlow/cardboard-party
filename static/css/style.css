@@ -1,6 +1,9 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  /* Render native controls (date pickers, their mm/dd/yyyy placeholders, selects,
+     scrollbars) in dark mode so they match the theme and aren't dark-on-dark. */
+  color-scheme: dark;
   /* Dark surfaces (deep purple-tinted near-black → progressively lighter) */
   --bg:       #14111f;
   --bg2:      #1d1830;
@@ -167,7 +170,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 #create-title      { font-weight: 500; }
 .mode-card span    { font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
 .field-help { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 400; margin-top: 0.2rem; }
-.modal label.checkbox-row { flex-direction: row; align-items: flex-start; gap: 0.55rem;
+.modal label.checkbox-row { flex-direction: row; align-items: flex-start; gap: 0.55rem; text-indent: 0;
               padding-top: 0.75rem; margin-top: 0.35rem; border-top: 1px solid var(--border); }
 /* Outrank `.modal input { width:100% }` so the checkbox stays its natural size
    instead of stretching full-width and pushing the label off to the right. */
@@ -181,11 +184,16 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
               border-radius: var(--radius); padding: 0.6rem 0.8rem; font-size: 0.85rem; }
 .form-errors ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
 .modal .invalid, .modal .invalid:focus { border-color: var(--danger); outline-color: var(--danger); }
+/* Even, slightly roomy spacing between every field in the create form (its
+   labels are plain children, so without this they'd butt right up against the
+   next field's heading). */
+#create-form { display: flex; flex-direction: column; gap: 1.15rem; }
 /* Field group with its own label (used for the tag multi-select) */
-.field-group { display: flex; flex-direction: column; gap: 0.4rem; }
-.field-label { font-size: 0.88rem; font-weight: 500; }
+.field-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.field-label { font-size: 0.88rem; font-weight: 500; padding-left: 0.4rem; }
 .chip-options { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.chip-options .chip { display: inline-flex; align-items: center; cursor: pointer; user-select: none;
+.chip-options .chip { display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+              user-select: none; text-indent: 0;
               font-size: 0.8rem; font-weight: 400; padding: 0.3rem 0.7rem; background: var(--bg2);
               border: 1px solid var(--border); border-radius: 99px;
               transition: border-color 0.12s, background 0.12s, color 0.12s; }
@@ -341,17 +349,21 @@ td.result { width: 1%; white-space: nowrap; }
 .modal          { background: var(--bg2); border: 1px solid var(--border);
                   border-radius: var(--radius); padding: 1.5rem;
                   width: min(460px, 100%); display: flex; flex-direction: column;
-                  gap: 1rem; max-height: 90vh; overflow-y: auto;
+                  gap: 1rem; max-height: 90vh; overflow-x: hidden; overflow-y: auto;
                   box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
 .modal h2       { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600;
                   text-transform: none; letter-spacing: 0; color: var(--text); margin: 0; }
 .modal .subtitle { font-size: 0.88rem; color: var(--muted); margin-top: -0.5rem; }
-.modal label    { display: flex; flex-direction: column; gap: 0.3rem;
-                  font-size: 0.88rem; font-weight: 500; }
+.modal label    { display: flex; flex-direction: column; gap: 0.5rem;
+                  font-size: 0.88rem; font-weight: 500; min-width: 0; text-indent: 0.4rem; }
+/* text-indent nudges only the heading text right; reset it on the controls so
+   they stay full width with normal text. */
+.modal label > input, .modal label > select, .modal label > textarea { text-indent: 0; }
 .modal input, .modal select, .modal textarea
                 { padding: 0.45rem 0.65rem; background: var(--bg); color: var(--text);
                   border: 1px solid var(--border); font-family: var(--font-body);
-                  border-radius: var(--radius); font-size: 0.9rem; width: 100%; }
+                  border-radius: var(--radius); font-size: 0.9rem;
+                  width: 100%; min-width: 0; max-width: 100%; }
 .modal textarea { resize: vertical; line-height: 1.5; }
 .modal input:focus, .modal select:focus, .modal textarea:focus
                 { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
@@ -449,7 +461,20 @@ td.result { width: 1%; white-space: nowrap; }
   .page-header { gap: 0.75rem; }
   .page-header h1 { font-size: 1.4rem; }
   .card-grid { grid-template-columns: 1fr; }
-  .modal { padding: 1.25rem; }
+  /* On mobile, let the fixed full-screen backdrop be the scroll container (with
+     scroll-chaining contained) so the page behind can't hijack the gesture, and
+     the modal grows naturally inside it. Also drop the blurred backdrop, whose
+     per-frame repaint reads as a "wobble". */
+  .modal-backdrop { align-items: flex-start; padding: 0.75rem;
+                    overflow-y: auto; overscroll-behavior: contain;
+                    -webkit-overflow-scrolling: touch;
+                    backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .modal { width: 100%; padding: 1.25rem; max-height: none; overflow: visible; }
+  /* iOS Safari ignores width:100% on date inputs and overflows the form; and
+     appearance:none hides the empty mm/dd/yyyy placeholder. So keep the native
+     control, but let it size to its (small) content and cap it at the form width
+     so it can't overflow — this keeps the placeholder visible AND fits. */
+  .modal input[type="date"] { width: auto; max-width: 100%; align-self: flex-start; }
 
   /* Let the nav wrap to a second line rather than overflow (admins have extra
      links: Organisers / Users / Settings + Webhooks + Sign out). */
@@ -462,6 +487,19 @@ td.result { width: 1%; white-space: nowrap; }
 @media (max-width: 380px) {
   :root { --page-pad: 0.75rem; }
   .btn { font-size: 0.84rem; padding: 0.45rem 0.75rem; }
+}
+
+/* Desktop only: replace the native select arrow (pinned to the edge) with a
+   custom chevron positioned with a gap to its right. Mobile keeps its native
+   picker UI. */
+@media (min-width: 701px) {
+  .modal select {
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%239b93bd' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+    padding-right: 2.1rem;
+  }
 }
 
 /* ── Misc ─────────────────────────────────────────────────────────────────── */

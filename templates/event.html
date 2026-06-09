@@ -70,12 +70,12 @@
 
 {% if event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days %}
 <section class="event-comms">
-  {% if event.schedule %}<details><summary>Schedule</summary><div class="comms-body">{{ event.schedule }}</div></details>{% endif %}
-  {% if event.rules %}<details><summary>Rules</summary><div class="comms-body">{{ event.rules }}</div></details>{% endif %}
-  {% if event.prizes or event.prize_deadline_days %}<details><summary>Prizes</summary><div class="comms-body">{{ event.prizes }}{% if event.prize_deadline_days %}{% if event.prizes %}
+  {% if event.schedule %}<details open><summary>Schedule</summary><div class="comms-body">{{ event.schedule }}</div></details>{% endif %}
+  {% if event.rules %}<details open><summary>Rules</summary><div class="comms-body">{{ event.rules }}</div></details>{% endif %}
+  {% if event.prizes or event.prize_deadline_days %}<details open><summary>Prizes</summary><div class="comms-body">{{ event.prizes }}{% if event.prize_deadline_days %}{% if event.prizes %}
 
 {% endif %}Prizes distributed within {{ event.prize_deadline_days }} day{{ 's' if event.prize_deadline_days != 1 }} of the event.{% endif %}</div></details>{% endif %}
-  {% if event.contact %}<details><summary>Contact</summary><div class="comms-body">{{ event.contact }}</div></details>{% endif %}
+  {% if event.contact %}<details open><summary>Contact</summary><div class="comms-body">{{ event.contact }}</div></details>{% endif %}
 </section>
 {% endif %}
 
