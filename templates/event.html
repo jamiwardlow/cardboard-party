@@ -234,6 +234,23 @@
     <label>Registration cap
       <input id="ee-cap" type="number" min="2" max="256" placeholder="No cap">
     </label>
+    <label>Registration type
+      <select id="ee-reg-type">
+        <option value="open">Open</option>
+        <option value="invite_only">Invite only</option>
+      </select>
+      <span class="field-help">Invite only disables self sign-up — you add players yourself.</span>
+    </label>
+    <label>Registration opens
+      <input id="ee-reg-start" type="date">
+    </label>
+    <label>Registration closes
+      <input id="ee-reg-end" type="date">
+    </label>
+    <label>Unenrollment deadline
+      <input id="ee-unenroll-end" type="date">
+      <span class="field-help">After this date, players can't withdraw themselves.</span>
+    </label>
     <label class="checkbox-row">
       <input type="checkbox" id="ee-decklists">
       <span>Require decklists
@@ -407,6 +424,10 @@ function openEditEventModal() {
   document.getElementById('ee-date').value        = state.date || '';
   document.getElementById('ee-rounds').value      = state.num_rounds || '';
   document.getElementById('ee-cap').value         = state.registration_cap || '';
+  document.getElementById('ee-reg-type').value    = state.registration_type || 'open';
+  document.getElementById('ee-reg-start').value   = state.registration_start || '';
+  document.getElementById('ee-reg-end').value     = state.registration_end || '';
+  document.getElementById('ee-unenroll-end').value = state.unenroll_end || '';
   document.getElementById('ee-test-mode').checked = !!state.test_mode;
   document.getElementById('ee-structure').value   = state.structure || '';
   document.getElementById('ee-topcut').value      = String(state.planned_cut_size || 8);
@@ -452,6 +473,10 @@ async function saveEventDetails() {
     schedule:         document.getElementById('ee-schedule').value,
     prizes:           document.getElementById('ee-prizes').value,
     contact:          document.getElementById('ee-contact').value,
+    registration_type:  document.getElementById('ee-reg-type').value,
+    registration_start: document.getElementById('ee-reg-start').value,
+    registration_end:   document.getElementById('ee-reg-end').value,
+    unenroll_end:       document.getElementById('ee-unenroll-end').value,
   };
   const res = await fetch(`/api/events/${EVENT_ID}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -488,7 +513,8 @@ function renderStatus() {
     if (swissComplete()) { cls = 'reg-done'; label = 'Completed'; }
     else { cls = 'reg-active'; label = `Round ${state.rounds.length} of ${total}`; }
   } else if (state.registration === 'open') {
-    cls = 'reg-open'; label = 'Registration open';
+    if (state.registration_type === 'invite_only') { cls = 'reg-closed'; label = 'Invite only'; }
+    else { cls = 'reg-open'; label = 'Registration open'; }
   } else {
     cls = 'reg-closed'; label = 'Registration closed';
   }
@@ -601,21 +627,37 @@ function renderBanners() {
 
   // Not yet a participant — offer to join (Google sign-in flow or guest-by-name).
   regBanner.classList.remove('hidden');
-  if (state.registration === 'open') {
+  const blocked = selfRegBlockedReason();
+  if (!blocked) {
     const cap     = state.registration_cap || 0;
     const active  = state.players.filter(p => !p.dropped).length;
     const capText = cap ? ` (${active}/${cap} spots taken)` : '';
-    document.getElementById('register-banner-msg').textContent =
-      `Registration is open${capText}.` + (me.signed_in ? '' : ' Join with your name — no account needed.');
+    let msg = `Registration is open${capText}.`;
+    if (state.registration_end) msg += ` Closes ${state.registration_end}.`;
+    msg += (me.signed_in ? '' : ' Join with your name — no account needed.');
+    document.getElementById('register-banner-msg').textContent = msg;
     document.getElementById('register-buttons').classList.remove('hidden');
     document.getElementById('register-form').classList.add('hidden');
     regBanner.classList.remove('banner-closed');
   } else {
-    document.getElementById('register-banner-msg').textContent = 'Registration is closed.';
+    document.getElementById('register-banner-msg').textContent = blocked;
     document.getElementById('register-buttons').classList.add('hidden');
     document.getElementById('register-form').classList.add('hidden');
     regBanner.classList.add('banner-closed');
   }
+}
+
+// Mirrors the backend gate: why self-registration is unavailable, or null if open.
+function selfRegBlockedReason() {
+  if (state.registration !== 'open') return 'Registration is closed.';
+  if (state.registration_type === 'invite_only')
+    return 'This event is by invitation — contact the organiser to be added.';
+  const today = new Date().toISOString().slice(0, 10);
+  if (state.registration_start && today < state.registration_start)
+    return `Registration opens on ${state.registration_start}.`;
+  if (state.registration_end && today > state.registration_end)
+    return `Registration closed on ${state.registration_end}.`;
+  return null;
 }
 
 function showRegisterForm() {
@@ -687,6 +729,9 @@ async function unregister() {
     if (state.rounds.length) { myPlayer.dropped = true; }
     else { state.players = state.players.filter(p => p.google_id !== me.user.id); myPlayer = null; }
     render();
+  } else {
+    const e = await res.json().catch(() => ({}));
+    alert(e.error || 'Could not withdraw.');
   }
 }
 

@@ -50,6 +50,25 @@ def _clean_comms(data: dict) -> dict:
             out[f] = str(data.get(f) or '')[:_COMMS_MAX]
     return out
 
+REGISTRATION_TYPES = ('open', 'invite_only')
+
+def _self_registration_blocked(event: dict) -> str | None:
+    """Why a player can't self-register right now, or None if they can. Covers the
+    manual open/closed toggle, invite-only type, and the scheduled date window.
+    (Organisers adding players bypass this — it gates self-service only.)"""
+    if event.get('registration') != 'open':
+        return 'Registration is closed'
+    if event.get('registration_type') == 'invite_only':
+        return 'This event is by invitation — contact the organiser to be added'
+    today = datetime.date.today().isoformat()
+    start = event.get('registration_start')
+    end   = event.get('registration_end')
+    if start and today < start:
+        return f'Registration opens on {start}'
+    if end and today > end:
+        return f'Registration closed on {end}'
+    return None
+
 
 def _normalize_payment_url(raw) -> tuple:
     """Validate/normalize a payment link so it's safe to render as a clickable
@@ -290,6 +309,10 @@ def api_create_event():
         'cut_seeds':    {},           # player_id -> seed, set when the cut starts
         'status':       'setup',
         'registration': 'open',
+        'registration_type':  data.get('registration_type') if data.get('registration_type') in REGISTRATION_TYPES else 'open',
+        'registration_start': (data.get('registration_start') or '').strip(),
+        'registration_end':   (data.get('registration_end') or '').strip(),
+        'unenroll_end':       (data.get('unenroll_end') or '').strip(),
         'registration_cap': data.get('registration_cap', 0),  # 0 = no cap
         'notify_mode':      'none',   # none | community | saved
         'notify_webhook_id': '',      # which saved webhook (when mode == saved)
@@ -331,10 +354,13 @@ def api_update_event(event_id):
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
+               'registration_type', 'registration_start', 'registration_end', 'unenroll_end',
                'notify_mode', 'notify_webhook_id'}
     updates = {k: v for k, v in data.items() if k in allowed}
     if 'test_mode' in updates:
         updates['test_mode'] = bool(updates['test_mode'])
+    if 'registration_type' in updates and updates['registration_type'] not in REGISTRATION_TYPES:
+        updates['registration_type'] = 'open'
     if 'requires_decklists' in updates:
         updates['requires_decklists'] = bool(updates['requires_decklists'])
     if 'prize_deadline_days' in updates:
@@ -377,8 +403,9 @@ def api_register(event_id):
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
-    if e.get('registration') != 'open':
-        return jsonify({'error': 'Registration is closed'}), 400
+    blocked = _self_registration_blocked(e)
+    if blocked:
+        return jsonify({'error': blocked}), 400
 
     # Enforce registration cap
     cap = e.get('registration_cap', 0)
@@ -415,6 +442,9 @@ def api_unregister(event_id):
     player = _find_player_by_google_id(e, user['id'])
     if not player:
         return jsonify({'error': 'Not registered'}), 400
+    unenroll_end = e.get('unenroll_end')
+    if unenroll_end and datetime.date.today().isoformat() > unenroll_end:
+        return jsonify({'error': 'The unenrollment deadline has passed — contact the organiser'}), 400
     if e['rounds']:
         set_player_dropped(event_id, player['id'], True)
     else:
@@ -431,8 +461,9 @@ def api_join_guest(event_id):
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
-    if e.get('registration') != 'open':
-        return jsonify({'error': 'Registration is closed'}), 400
+    blocked = _self_registration_blocked(e)
+    if blocked:
+        return jsonify({'error': blocked}), 400
     cap = e.get('registration_cap', 0)
     active = [p for p in e['players'] if not p.get('dropped')]
     if cap and len(active) >= cap:

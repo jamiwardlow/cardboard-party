@@ -129,6 +129,23 @@
       <label>Registration cap
         <input id="e-cap" type="number" min="2" max="256" placeholder="No cap">
       </label>
+      <label class="adv-only">Registration type
+        <select id="e-reg-type">
+          <option value="open">Open</option>
+          <option value="invite_only">Invite only</option>
+        </select>
+        <span class="field-help">Invite only disables self sign-up — you add players yourself.</span>
+      </label>
+      <label class="adv-only">Registration opens
+        <input id="e-reg-start" type="date">
+      </label>
+      <label class="adv-only">Registration closes
+        <input id="e-reg-end" type="date">
+      </label>
+      <label class="adv-only">Unenrollment deadline
+        <input id="e-unenroll-end" type="date">
+        <span class="field-help">After this date, players can't withdraw themselves.</span>
+      </label>
       <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-decklists">
         <span>Require decklists
@@ -376,6 +393,10 @@ async function submitCreateEvent() {
     body.schedule = document.getElementById('e-schedule').value;
     body.prizes   = document.getElementById('e-prizes').value;
     body.contact  = document.getElementById('e-contact').value;
+    body.registration_type  = document.getElementById('e-reg-type').value;
+    body.registration_start = document.getElementById('e-reg-start').value;
+    body.registration_end   = document.getElementById('e-reg-end').value;
+    body.unenroll_end        = document.getElementById('e-unenroll-end').value;
   }
   const res = await fetch('/api/events', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
