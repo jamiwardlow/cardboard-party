@@ -247,6 +247,62 @@ def default_num_rounds(num_players: int) -> int:
     return math.ceil(math.log2(num_players))
 
 
+def id_safe_players(players: list[dict], rounds: list[list[dict]],
+                    num_rounds: int, cut_size: int) -> set:
+    """Player ids who can intentionally draw their current match and still be
+    GUARANTEED a Top-`cut_size` finish. Only applies during the final Swiss round
+    of an event with a top cut; returns an empty set otherwise.
+
+    A player is "safe" only if fewer than cut_size *other* players can possibly
+    finish with at least the player's post-draw points — so at most cut_size-1
+    can sit at or above them, a locked top-cut slot. This is deliberately
+    conservative: pairing constraints (rivals play each other, so they can't all
+    win) and same-point tiebreakers can only help the player, never hurt, so a
+    "safe" answer never misleads.
+    """
+    if not cut_size or not rounds:
+        return set()
+    swiss = [r for r in rounds if not (r and r[0].get('stage') == 'bracket')]
+    if not swiss or len(swiss) != num_rounds:   # only the final Swiss round
+        return set()
+    active = [p for p in players if not p.get('dropped')]
+    if len(active) <= cut_size:
+        return {p['id'] for p in active}         # whole field makes the cut
+
+    last = swiss[-1]
+    points = _compute_points(active, swiss[:-1])  # standing before this round
+    opponent = {}
+    for m in last:
+        if m.get('is_bye'):
+            continue
+        opponent[m['player1_id']] = m['player2_id']
+        opponent[m['player2_id']] = m['player1_id']
+
+    safe = set()
+    for p in active:
+        pid = p['id']
+        # Needs a still-open (no result, non-bye) match this round to draw.
+        match = next((m for m in last
+                      if not m.get('is_bye')
+                      and pid in (m.get('player1_id'), m.get('player2_id'))), None)
+        if not match or match.get('winner_id') or match.get('result') in DRAW_RESULTS:
+            continue
+        p_final = points.get(pid, 0) + 1          # a draw adds 1 point
+        opp_id  = opponent.get(pid)
+        ahead = 0
+        for q in active:
+            if q['id'] == pid:
+                continue
+            # P's opponent must also draw (a draw is mutual) → +1; anyone else
+            # could win their match → +3.
+            gain = 1 if q['id'] == opp_id else 3
+            if points.get(q['id'], 0) + gain >= p_final:
+                ahead += 1
+        if ahead < cut_size:
+            safe.add(pid)
+    return safe
+
+
 # ── Single-elimination playoff bracket ──────────────────────────────────────────
 #
 # After Swiss, the organiser may "cut to top N" (4, 8, or 16): the top N players

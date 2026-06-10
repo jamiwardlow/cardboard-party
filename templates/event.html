@@ -65,6 +65,11 @@
   <button class="btn btn-sm" id="guest-link-btn" style="display:none" onclick="copyGuestLink(this)">Copy my private link</button>
 </div>
 
+<!-- "You can ID into the cut" banner (final Swiss round, top-cut events) -->
+<div id="id-banner" class="banner hidden" style="background:var(--green-soft);border:1px solid rgba(74,222,128,0.35)">
+  <span id="id-banner-msg"></span>
+</div>
+
 <!-- Playoff champion banner (shown once the bracket final is decided) -->
 <div id="champion-banner" class="banner hidden" style="background:var(--accent-soft);border:1px solid rgba(167,139,250,0.35)">
   <span id="champion-msg"></span>
@@ -366,6 +371,7 @@ function render() {
   renderNotify();
   renderOwnerActions();
   renderBanners();
+  renderIdBanner();
   renderRounds();
   renderPlayers();
   renderStandings();
@@ -681,6 +687,17 @@ function selfRegBlockedReason() {
   if (state.registration_end && today > state.registration_end)
     return `Registration closed on ${state.registration_end}.`;
   return null;
+}
+
+// Tell a registered player when an intentional draw this round locks their cut.
+function renderIdBanner() {
+  const el = document.getElementById('id-banner');
+  el.classList.add('hidden');
+  if (myPlayer && !myPlayer.dropped && (state.id_safe_ids || []).includes(myPlayer.id)) {
+    document.getElementById('id-banner-msg').textContent =
+      `You can intentionally draw this round and make the Top ${state.planned_cut_size}. You legend!`;
+    el.classList.remove('hidden');
+  }
 }
 
 function showRegisterForm() {

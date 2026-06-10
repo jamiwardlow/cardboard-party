@@ -14,7 +14,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 get_user_profile, save_user_profile, list_users,
                 get_config, save_config)
 from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
-                   make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS)
+                   make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players)
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round, post_test, is_valid_webhook
 from storage import upload_avatar, delete_object
@@ -342,6 +342,11 @@ def api_get_event(event_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     e['standings'] = compute_standings(e['players'], e['rounds'])
+    # Players who can intentionally draw the final Swiss round and still lock a
+    # top-cut spot (empty unless this is the final round of a Swiss + Top Cut event).
+    _num_rounds = e.get('num_rounds') or default_num_rounds(len(e['players']))
+    e['id_safe_ids'] = list(id_safe_players(e['players'], e['rounds'],
+                                            _num_rounds, e.get('planned_cut_size') or 0))
     e['can_manage'] = _can_manage(e)
     owner_profile = get_user_profile(e.get('owner_id', ''))
     # Surface the organizer's discord (if known) so players know how to reach them.
