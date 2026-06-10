@@ -48,6 +48,8 @@
            style="padding:0.35rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
     <input id="discord-input" type="text" placeholder="Discord handle (optional)"
            style="padding:0.35rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+    <input id="entry-code-input" type="text" placeholder="Entry code" class="hidden"
+           style="padding:0.35rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
     <button class="btn btn-primary btn-sm" onclick="submitRegister()">Confirm</button>
     <button class="btn btn-sm" onclick="cancelRegister()">Cancel</button>
   </div>
@@ -251,6 +253,15 @@
       <input id="ee-unenroll-end" type="date">
       <span class="field-help">After this date, players can't withdraw themselves.</span>
     </label>
+    <label>Entry code
+      <input id="ee-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" id="ee-draws-frowned">
+      <span>Intentional draws are frowned upon
+        <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
+      </span>
+    </label>
     <label class="checkbox-row">
       <input type="checkbox" id="ee-decklists">
       <span>Require decklists
@@ -428,6 +439,8 @@ function openEditEventModal() {
   document.getElementById('ee-reg-start').value   = state.registration_start || '';
   document.getElementById('ee-reg-end').value     = state.registration_end || '';
   document.getElementById('ee-unenroll-end').value = state.unenroll_end || '';
+  document.getElementById('ee-entry-code').value  = state.entry_code || '';
+  document.getElementById('ee-draws-frowned').checked = !!state.intentional_draws_frowned;
   document.getElementById('ee-test-mode').checked = !!state.test_mode;
   document.getElementById('ee-structure').value   = state.structure || '';
   document.getElementById('ee-topcut').value      = String(state.planned_cut_size || 8);
@@ -485,6 +498,8 @@ async function saveEventDetails() {
     registration_start: document.getElementById('ee-reg-start').value,
     registration_end:   document.getElementById('ee-reg-end').value,
     unenroll_end:       document.getElementById('ee-unenroll-end').value,
+    entry_code:                document.getElementById('ee-entry-code').value,
+    intentional_draws_frowned: document.getElementById('ee-draws-frowned').checked,
   };
   const res = await fetch(`/api/events/${EVENT_ID}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -677,6 +692,8 @@ function showRegisterForm() {
   // Signed-in users register under their Google name (not editable); only
   // guests, who have no Google identity, type a name.
   nameInput.style.display = me.signed_in ? 'none' : '';
+  // Show the entry-code box only when the event requires one.
+  document.getElementById('entry-code-input').classList.toggle('hidden', !state.entry_code_required);
   if (me.signed_in) {
     document.getElementById('discord-input').focus();
   } else {
@@ -692,6 +709,7 @@ function cancelRegister() {
 
 async function submitRegister() {
   const discord = document.getElementById('discord-input').value.trim();
+  const entry_code = document.getElementById('entry-code-input').value.trim();
 
   // Signed-in users register against their Google account — their display name
   // comes from Google, so we don't send one. Everyone else joins as a guest
@@ -699,7 +717,7 @@ async function submitRegister() {
   if (me.signed_in) {
     const res = await fetch(`/api/events/${EVENT_ID}/register`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ discord }),
+      body: JSON.stringify({ discord, entry_code }),
     });
     if (res.ok) { myPlayer = await res.json(); state.players.push(myPlayer); render(); }
     else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
@@ -710,7 +728,7 @@ async function submitRegister() {
   if (!displayName) { document.getElementById('display-name-input').focus(); return; }
   const res = await fetch(`/api/events/${EVENT_ID}/join`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ display_name: displayName, discord }),
+    body: JSON.stringify({ display_name: displayName, discord, entry_code }),
   });
   if (res.ok) {
     const { player, token } = await res.json();
@@ -755,7 +773,7 @@ function renderRounds() {
     const bracket = isBracketRound(round);
     // Playoff pairings are set by the bracket (winners advance), so they can't
     // be hand-edited or re-paired like Swiss rounds.
-    const canEdit = !bracket && canManage() && round.every(m => m.is_bye || (!m.winner_id && m.result !== 'draw'));
+    const canEdit = !bracket && canManage() && round.every(m => m.is_bye || (!m.winner_id && !isDrawResult(m.result)));
     const isLatest = i === state.rounds.length - 1;
     const repairBtn = !bracket && canManage() && isLatest
       ? `<button class="btn btn-sm" onclick="event.stopPropagation();repairRound(${i + 1})">Re-pair</button>` : '';
@@ -779,9 +797,12 @@ function renderRounds() {
   }).join('');
 }
 
+// Results that mean a match is done with no winner (ordinary + intentional draw).
+function isDrawResult(r) { return r === 'draw' || r === '0-0-3'; }
+
 // A round is finished once every match has a result (byes count as done).
 function roundFinished(round) {
-  return round.every(m => m.is_bye || m.winner_id || m.result === 'draw');
+  return round.every(m => m.is_bye || m.winner_id || isDrawResult(m.result));
 }
 
 // Finished rounds collapse by default, except the latest (keep current visible).
@@ -818,11 +839,12 @@ function renderMatch(m, roundIdx, matchIdx) {
   let resultCell;
   if (m.is_bye) {
     resultCell = '<span class="result-bye">Bye</span>';
-  } else if (m.result === 'draw') {
+  } else if (m.result === 'draw' || m.result === '0-0-3') {
     const editBtn = canManage()
       ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
       : '';
-    resultCell = `<span class="result-draw">Draw 1–1</span>${editBtn}`;
+    const drawLabel = m.result === '0-0-3' ? 'Intentional draw 0–0–3' : 'Draw 1–1';
+    resultCell = `<span class="result-draw">${drawLabel}</span>${editBtn}`;
   } else if (m.winner_id) {
     const parts = m.result.split('-').map(Number);
     // Show the winner's game count first (e.g. "Hunter 2–1"), regardless of
@@ -876,7 +898,7 @@ function swissComplete() {
   const swiss = state.rounds.filter(r => !isBracketRound(r));
   const numRounds = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
   if (swiss.length < numRounds || !swiss.length) return false;
-  return swiss[swiss.length - 1].every(m => m.is_bye || m.winner_id || m.result === 'draw');
+  return swiss[swiss.length - 1].every(m => m.is_bye || m.winner_id || isDrawResult(m.result));
 }
 
 async function cutToTop(n) {
@@ -1049,17 +1071,27 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
     { score: '0-2', p1w: 0, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
   ];
 
+  // The plain "Draw 1–1" (an unintentional draw) is always available. Advanced
+  // events also offer "0-0-3 Intentional draw", hidden when those are frowned.
+  let drawBtns = `
+      <button class="result-btn draw" onclick="selectResult('1-1')">
+        <span class="score">1 – 1</span>
+        <span class="label">Draw</span>
+      </button>`;
+  if (state.advanced && !state.intentional_draws_frowned) {
+    drawBtns += `
+      <button class="result-btn draw" onclick="selectResult('0-0-3')">
+        <span class="score">0 – 0 – 3</span>
+        <span class="label">Intentional draw</span>
+      </button>`;
+  }
   document.getElementById('result-grid').innerHTML =
     outcomes.map(o => `
       <button class="result-btn ${o.cls}" onclick="selectResult('${o.score}')">
         <span class="score">${Math.max(o.p1w, o.p2w)} – ${Math.min(o.p1w, o.p2w)}</span>
         <span class="label">${o.label}</span>
       </button>
-    `).join('') + `
-      <button class="result-btn draw" onclick="selectResult('1-1')">
-        <span class="score">1 – 1</span>
-        <span class="label">Draw</span>
-      </button>`;
+    `).join('') + drawBtns;
 
   document.getElementById('result-modal').classList.remove('hidden');
 }
@@ -1075,6 +1107,8 @@ function selectResult(score) {
   let winner_id, result;
   if (score === '1-1') {
     winner_id = null; result = 'draw';
+  } else if (score === '0-0-3') {
+    winner_id = null; result = '0-0-3';
   } else {
     const [w, l] = score.split('-').map(Number);
     winner_id = w > l ? match.player1_id : match.player2_id;
@@ -1082,8 +1116,8 @@ function selectResult(score) {
   }
 
   // Confirm before saving — results feed standings and pairings.
-  const summary = result === 'draw'
-    ? 'a draw (1–1)'
+  const summary = result === 'draw' ? 'a draw (1–1)'
+    : result === '0-0-3' ? 'an intentional draw (0–0–3)'
     : `${playerName(winner_id)} wins ${Math.max(...score.split('-').map(Number))}–${Math.min(...score.split('-').map(Number))}`;
   if (!confirm(`${isEdit ? 'Update this result to' : 'Submit this result:'} ${summary}?`)) return;
 

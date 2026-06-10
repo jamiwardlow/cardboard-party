@@ -16,6 +16,10 @@ from typing import Optional
 
 BYE_PLAYER_ID = '__bye__'
 
+# Result values that count as a drawn match (1 match point each, no game wins):
+# 'draw' = an ordinary 1–1 draw; '0-0-3' = an intentional draw (Advanced events).
+DRAW_RESULTS = ('draw', '0-0-3')
+
 
 def pair_round(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
     """
@@ -120,7 +124,7 @@ def _compute_points(players: list[dict], rounds: list[list[dict]]) -> dict:
                 pts[match['player1_id']] = pts.get(match['player1_id'], 0) + 3
             elif match.get('winner_id'):
                 pts[match['winner_id']] = pts.get(match['winner_id'], 0) + 3
-            elif match.get('result') == 'draw':
+            elif match.get('result') in DRAW_RESULTS:
                 pts[match['player1_id']] = pts.get(match['player1_id'], 0) + 1
                 pts[match['player2_id']] = pts.get(match['player2_id'], 0) + 1
     return pts
@@ -172,9 +176,9 @@ def compute_standings(players: list[dict], rounds: list[list[dict]]) -> list[dic
         for match in rnd:
             result = match.get('result')
             # Decisive results are stored as a two-part 'p1games-p2games'
-            # score (e.g. '2-1'). Byes and match draws ('draw') carry no
-            # per-game split, so they don't contribute to game win %.
-            if match.get('is_bye') or not result or result == 'draw':
+            # score (e.g. '2-1'). Byes and draws (ordinary or intentional) carry
+            # no per-game split, so they don't contribute to game win %.
+            if match.get('is_bye') or not result or result in DRAW_RESULTS:
                 continue
             parts = str(result).split('-')
             try:

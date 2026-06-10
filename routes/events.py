@@ -14,7 +14,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 get_user_profile, save_user_profile, list_users,
                 get_config, save_config)
 from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
-                   make_bracket, next_bracket_round, CUT_SIZES)
+                   make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS)
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round, post_test, is_valid_webhook
 from storage import upload_avatar, delete_object
@@ -67,6 +67,13 @@ def _self_registration_blocked(event: dict) -> str | None:
         return f'Registration opens on {start}'
     if end and today > end:
         return f'Registration closed on {end}'
+    return None
+
+def _entry_code_error(event: dict, data: dict) -> str | None:
+    """If the event requires an entry code, check the supplied one. None if OK."""
+    code = event.get('entry_code')
+    if code and str((data or {}).get('entry_code') or '').strip() != code:
+        return 'Incorrect entry code'
     return None
 
 
@@ -146,7 +153,7 @@ def _validate_result(match: dict, winner_id, result) -> str | None:
     score for one player while crediting the win to the other.
     """
     p1, p2 = match.get('player1_id'), match.get('player2_id')
-    if result == 'draw':
+    if result in DRAW_RESULTS:
         return None if winner_id is None else 'A draw cannot have a winner'
     m = _RESULT_RE.match(str(result or ''))
     if not m:
@@ -187,7 +194,7 @@ def _swiss_complete(event: dict) -> bool:
     if len(swiss) < num_rounds:
         return False
     last = swiss[-1] if swiss else []
-    return all(m.get('is_bye') or m.get('winner_id') or m.get('result') == 'draw'
+    return all(m.get('is_bye') or m.get('winner_id') or m.get('result') in DRAW_RESULTS
                for m in last)
 
 
@@ -267,6 +274,7 @@ def api_list_events():
     for e in list_events():
         if e.get('test_mode') and not admin and e.get('owner_id') != uid:
             continue
+        e.pop('entry_code', None)   # secret — not needed for the listing
         _redact_players(e)
         events.append(e)
     return jsonify(events)
@@ -291,6 +299,11 @@ def api_create_event():
         # the in-event "Cut to Top N" action; the actual cut still executes later.
         'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
         'requires_decklists': bool(data.get('requires_decklists', False)),
+        'entry_code':   str(data.get('entry_code') or '').strip()[:64],  # '' = none required
+        'advanced':     bool(data.get('advanced', False)),   # created via the Advanced flow
+        # When True, the "0-0-3 Intentional draw" result option is hidden/rejected
+        # (Advanced events only). Default False = intentional draws allowed.
+        'intentional_draws_frowned': bool(data.get('intentional_draws_frowned', False)),
         'prize_deadline_days': data.get('prize_deadline_days') if isinstance(data.get('prize_deadline_days'), int) and data.get('prize_deadline_days') >= 0 else 0,
         'rules':        str(data.get('rules') or '')[:_COMMS_MAX],
         'schedule':     str(data.get('schedule') or '')[:_COMMS_MAX],
@@ -340,6 +353,11 @@ def api_get_event(event_id):
     if e['can_manage']:
         e['owner_webhooks'] = [{'id': w['id'], 'label': w.get('label', '')}
                                for w in owner_profile.get('webhooks', [])]
+    # Expose only whether a code is needed; the code itself is a secret the
+    # organiser shares out-of-band, so never send it to non-managers.
+    e['entry_code_required'] = bool(e.get('entry_code'))
+    if not e['can_manage']:
+        e.pop('entry_code', None)
     _redact_players(e)
     return jsonify(e)
 
@@ -352,7 +370,8 @@ def api_update_event(event_id):
     _require_manage(e)
     data = request.json or {}
     allowed = {'name', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
-               'requires_decklists', 'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
+               'requires_decklists', 'entry_code', 'intentional_draws_frowned',
+               'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
@@ -363,6 +382,10 @@ def api_update_event(event_id):
         return jsonify({'error': 'Event name is required'}), 400
     if 'test_mode' in updates:
         updates['test_mode'] = bool(updates['test_mode'])
+    if 'entry_code' in updates:
+        updates['entry_code'] = str(updates['entry_code'] or '').strip()[:64]
+    if 'intentional_draws_frowned' in updates:
+        updates['intentional_draws_frowned'] = bool(updates['intentional_draws_frowned'])
     if 'registration_type' in updates and updates['registration_type'] not in REGISTRATION_TYPES:
         updates['registration_type'] = 'open'
     if 'requires_decklists' in updates:
@@ -410,6 +433,9 @@ def api_register(event_id):
     blocked = _self_registration_blocked(e)
     if blocked:
         return jsonify({'error': blocked}), 400
+    code_err = _entry_code_error(e, request.json or {})
+    if code_err:
+        return jsonify({'error': code_err}), 400
 
     # Enforce registration cap
     cap = e.get('registration_cap', 0)
@@ -468,6 +494,9 @@ def api_join_guest(event_id):
     blocked = _self_registration_blocked(e)
     if blocked:
         return jsonify({'error': blocked}), 400
+    code_err = _entry_code_error(e, request.json or {})
+    if code_err:
+        return jsonify({'error': code_err}), 400
     cap = e.get('registration_cap', 0)
     active = [p for p in e['players'] if not p.get('dropped')]
     if cap and len(active) >= cap:
@@ -648,7 +677,7 @@ def api_pair_round(event_id):
         unfinished = [m for m in last
                       if not m.get('is_bye')
                       and m.get('winner_id') is None
-                      and m.get('result') != 'draw']
+                      and m.get('result') not in DRAW_RESULTS]
         if unfinished:
             return jsonify({'error': 'Previous round has unrecorded results'}), 400
     num_rounds = e['num_rounds'] or default_num_rounds(len(e['players']))
@@ -717,7 +746,7 @@ def api_edit_pairings(event_id, round_num):
     if _is_bracket_round(e['rounds'][idx]):
         return jsonify({'error': 'Playoff pairings are set by the bracket and cannot be edited'}), 400
     has_results = any(
-        m.get('winner_id') is not None or m.get('result') == 'draw'
+        m.get('winner_id') is not None or m.get('result') in DRAW_RESULTS
         for m in e['rounds'][idx] if not m.get('is_bye')
     )
     if has_results:
@@ -799,6 +828,8 @@ def api_record_result(event_id, round_num):
         return jsonify({'error': 'You can only report results for your own matches'}), 403
     if match.get('is_bye'):
         return jsonify({'error': 'Cannot record a result for a bye'}), 400
+    if result == '0-0-3' and e.get('intentional_draws_frowned'):
+        return jsonify({'error': 'Intentional draws are not allowed for this event'}), 400
     err = _validate_result(match, winner_id, result)
     if err:
         return jsonify({'error': err}), 400
@@ -879,7 +910,7 @@ def player_profile(google_id):
                     continue
                 if not m.get('result'):
                     continue
-                if m.get('result') == 'draw':
+                if m.get('result') in DRAW_RESULTS:
                     draws += 1
                 elif m.get('winner_id') == player['id']:
                     wins += 1
@@ -952,6 +983,8 @@ def api_edit_result(event_id, round_num, match_index):
 
     if rnd[match_index].get('is_bye'):
         return jsonify({'error': 'Cannot edit a bye result'}), 400
+    if result == '0-0-3' and e.get('intentional_draws_frowned'):
+        return jsonify({'error': 'Intentional draws are not allowed for this event'}), 400
     err = _validate_result(rnd[match_index], winner_id, result)
     if err:
         return jsonify({'error': err}), 400

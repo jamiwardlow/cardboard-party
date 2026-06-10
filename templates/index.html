@@ -146,6 +146,15 @@
         <input id="e-unenroll-end" type="date">
         <span class="field-help">After this date, players can't withdraw themselves.</span>
       </label>
+      <label class="adv-only">Entry code
+        <input id="e-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
+      </label>
+      <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-draws-frowned">
+        <span>Intentional draws are frowned upon
+          <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
+        </span>
+      </label>
       <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-decklists">
         <span>Require decklists
@@ -417,6 +426,7 @@ async function submitCreateEvent() {
 
   const body = {
     name:             document.getElementById('e-name').value,
+    advanced:         adv,
     game,
     test_mode:        testMode,
     tags,
@@ -442,6 +452,8 @@ async function submitCreateEvent() {
     body.registration_start = document.getElementById('e-reg-start').value;
     body.registration_end   = document.getElementById('e-reg-end').value;
     body.unenroll_end        = document.getElementById('e-unenroll-end').value;
+    body.entry_code                  = document.getElementById('e-entry-code').value;
+    body.intentional_draws_frowned   = document.getElementById('e-draws-frowned').checked;
   }
   const res = await fetch('/api/events', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
