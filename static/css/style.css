@@ -71,6 +71,11 @@ a { color: var(--accent); }
 /* ── Main layout ──────────────────────────────────────────────────────────── */
 .page-main    { max-width: 1100px; margin: 0 auto;
                 padding: 1.5rem var(--page-pad) 3rem; }
+.site-footer  { max-width: 1100px; margin: 0 auto; padding: 1.5rem var(--page-pad) 2.5rem;
+                border-top: 1px solid var(--border); text-align: center; }
+.site-footer a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
+.site-footer a:hover { color: var(--accent); }
+.about-text   { max-width: 640px; font-size: 1rem; line-height: 1.7; color: var(--text); }
 
 .page-header  { display: flex; justify-content: space-between; align-items: flex-start;
                 gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }

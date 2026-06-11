@@ -37,6 +37,10 @@
     {% block content %}{% endblock %}
   </main>
 
+  <footer class="site-footer">
+    <a href="/about">About Cardboard Party</a>
+  </footer>
+
   <script src="/static/js/app.js?v={{ asset_v }}"></script>
   <script>
     fetch('/auth/me').then(r => r.json()).then(me => {

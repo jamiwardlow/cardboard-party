@@ -204,6 +204,10 @@ def _swiss_complete(event: dict) -> bool:
 def index():
     return render_template('index.html', user=get_current_user())
 
+@events_bp.route('/about')
+def about():
+    return render_template('about.html', user=get_current_user())
+
 @events_bp.route('/events/<event_id>')
 def event_detail(event_id):
     event = get_event(event_id)
