@@ -149,6 +149,10 @@
       <label class="adv-only">Entry code
         <input id="e-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
       </label>
+      <label class="adv-only">Round timer (minutes)
+        <input id="e-round-timer" type="number" min="0" max="180" placeholder="No timer">
+        <span class="field-help">Shows a countdown to players each round.</span>
+      </label>
       <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-draws-frowned">
         <span>Intentional draws are frowned upon
@@ -454,6 +458,7 @@ async function submitCreateEvent() {
     body.unenroll_end        = document.getElementById('e-unenroll-end').value;
     body.entry_code                  = document.getElementById('e-entry-code').value;
     body.intentional_draws_frowned   = document.getElementById('e-draws-frowned').checked;
+    body.round_timer_minutes         = parseInt(document.getElementById('e-round-timer').value) || 0;
   }
   const res = await fetch('/api/events', {
     method: 'POST', headers: {'Content-Type': 'application/json'},

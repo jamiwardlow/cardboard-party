@@ -75,6 +75,13 @@
   <span id="champion-msg"></span>
 </div>
 
+<!-- Round timer (shown while a round is in progress when a timer is configured) -->
+<div id="round-timer" class="hidden">
+  <span class="timer-label">Round time</span>
+  <span id="timer-text" class="timer-text">—</span>
+  <button class="btn btn-sm" id="timer-restart" style="display:none" onclick="restartTimer()">Restart</button>
+</div>
+
 {% if event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days %}
 <section class="event-comms">
   {% if event.schedule %}<details open><summary>Schedule</summary><div class="comms-body">{{ event.schedule }}</div></details>{% endif %}
@@ -262,6 +269,10 @@
     <label>Entry code
       <input id="ee-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
     </label>
+    <label>Round timer (minutes)
+      <input id="ee-round-timer" type="number" min="0" max="180" placeholder="No timer">
+      <span class="field-help">Shows a countdown to players each round.</span>
+    </label>
     <label class="checkbox-row">
       <input type="checkbox" id="ee-draws-frowned">
       <span>Intentional draws are frowned upon
@@ -373,6 +384,7 @@ function render() {
   renderOwnerActions();
   renderBanners();
   renderIdBanner();
+  renderRoundTimer();
   renderRounds();
   renderPlayers();
   renderStandings();
@@ -447,6 +459,7 @@ function openEditEventModal() {
   document.getElementById('ee-reg-end').value     = state.registration_end || '';
   document.getElementById('ee-unenroll-end').value = state.unenroll_end || '';
   document.getElementById('ee-entry-code').value  = state.entry_code || '';
+  document.getElementById('ee-round-timer').value = state.round_timer_minutes || '';
   document.getElementById('ee-draws-frowned').checked = !!state.intentional_draws_frowned;
   document.getElementById('ee-test-mode').checked = !!state.test_mode;
   document.getElementById('ee-structure').value   = state.structure || '';
@@ -507,6 +520,7 @@ async function saveEventDetails() {
     unenroll_end:       document.getElementById('ee-unenroll-end').value,
     entry_code:                document.getElementById('ee-entry-code').value,
     intentional_draws_frowned: document.getElementById('ee-draws-frowned').checked,
+    round_timer_minutes:       parseInt(document.getElementById('ee-round-timer').value) || 0,
   };
   const res = await fetch(`/api/events/${EVENT_ID}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -688,6 +702,42 @@ function selfRegBlockedReason() {
   if (state.registration_end && today > state.registration_end)
     return `Registration closed on ${state.registration_end}.`;
   return null;
+}
+
+// Live round-timer countdown. Shown while the latest round is in progress and a
+// timer length is configured; counts down from when the round was paired.
+let roundTimerInterval = null;
+function renderRoundTimer() {
+  const el = document.getElementById('round-timer');
+  if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
+  const mins = state.round_timer_minutes || 0;
+  const last = state.rounds[state.rounds.length - 1] || null;
+  // Only while configured, started, and the current round isn't fully scored.
+  if (!mins || !state.round_started_at || !last || roundFinished(last)) {
+    el.classList.add('hidden'); return;
+  }
+  document.getElementById('timer-restart').style.display = canManage() ? '' : 'none';
+  const endMs = new Date(state.round_started_at).getTime() + mins * 60000;
+  const tick = () => {
+    const remaining = endMs - Date.now();
+    const txt = document.getElementById('timer-text');
+    if (remaining > 0) {
+      const m = Math.floor(remaining / 60000), s = Math.floor((remaining % 60000) / 1000);
+      txt.textContent = `${m}:${String(s).padStart(2, '0')}`;
+      el.classList.remove('timer-up');
+    } else {
+      txt.textContent = "Time!";
+      el.classList.add('timer-up');
+    }
+  };
+  tick();
+  roundTimerInterval = setInterval(tick, 1000);
+  el.classList.remove('hidden');
+}
+
+async function restartTimer() {
+  const res = await fetch(`/api/events/${EVENT_ID}/timer`, { method: 'POST' });
+  if (res.ok) { const d = await res.json(); state.round_started_at = d.round_started_at; renderRoundTimer(); }
 }
 
 // Tell a registered player when an intentional draw this round locks their cut.
