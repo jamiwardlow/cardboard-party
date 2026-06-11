@@ -8,12 +8,15 @@ caches don't serve a stale image; the previous object is deleted by the caller.
 """
 
 import io
+import os
 import uuid
 
 from google.cloud import storage as gcs
 from PIL import Image
 
-BUCKET_NAME = 'cardboard-party-avatars'
+# Per-environment bucket (staging sets AVATARS_BUCKET to its own bucket); defaults
+# to the production bucket so prod config is unchanged.
+BUCKET_NAME = os.environ.get('AVATARS_BUCKET', 'cardboard-party-avatars')
 _MAX_DIM = 512
 _client = None
 

@@ -28,11 +28,20 @@ GOOGLE_CLOUD_PROJECT=cardboard-party python bootstrap_admin.py your@gmail.com "Y
 # Deploy to App Engine (project cardboard-party → cardboard-party.wl.r.appspot.com)
 gcloud app deploy --project=cardboard-party
 gcloud app browse --project=cardboard-party
+
+# Staging (separate project, isolated Firestore/bucket) — see DEPLOYING.md
+gcloud app deploy staging.yaml --project=cardboard-party-staging
 ```
 
 There is **no test suite, linter, or build step**. The app runs directly from source.
 Local runs hit live Firestore unless you set `FIRESTORE_EMULATOR_HOST` and run the
 Firestore emulator.
+
+**Environments:** prod and staging run the *same code*, differing only by
+environment config — `AVATARS_BUCKET` (GCS bucket, `storage.py`), `CANONICAL_HOST`
+(set only in prod's `app.yaml`), and the per-project OAuth client + Secret Manager
+secrets. Never hardcode environment-specific values; read them from the environment.
+See **DEPLOYING.md** for the full setup and the `--no-promote` safe-deploy flow.
 
 ## Architecture
 

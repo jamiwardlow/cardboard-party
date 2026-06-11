@@ -1,0 +1,27 @@
+runtime: python312
+
+# Staging config. Deploy with:
+#   gcloud app deploy staging.yaml --project=cardboard-party-staging
+# Differences from production (app.yaml):
+#   - NO CANONICAL_HOST  → staging serves on its own appspot URL and never
+#     redirects to cardboardparty.gg.
+#   - AVATARS_BUCKET     → staging's own GCS bucket (isolated images).
+#   - GOOGLE_CLIENT_ID   → staging's own OAuth client (fill in below).
+# The staging project needs its own Secret Manager entries (GOOGLE_CLIENT_SECRET,
+# FLASK_SECRET_KEY) — see DEPLOYING.md.
+
+handlers:
+  - url: /static
+    static_dir: static
+
+  - url: /.*
+    script: auto
+
+env_variables:
+  FLASK_ENV: production            # keep secure cookies (staging is HTTPS via appspot)
+  AVATARS_BUCKET: "cardboard-party-staging-avatars"
+  # Replace with the staging project's OAuth 2.0 client ID once created, and add
+  # https://cardboard-party-staging.<region>.r.appspot.com/auth/callback to its
+  # Authorized redirect URIs.
+  GOOGLE_CLIENT_ID: "REPLACE_WITH_STAGING_OAUTH_CLIENT_ID"
+  # No CANONICAL_HOST on purpose — staging must not redirect to the prod domain.
