@@ -154,6 +154,18 @@
         <span class="field-help">Shows a countdown to players each round.</span>
       </label>
       <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-delay-pairings">
+        <span>Delay pairings
+          <span class="field-help">New pairings stay hidden from players until you release them.</span>
+        </span>
+      </label>
+      <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-delay-standings">
+        <span>Delay standings
+          <span class="field-help">Standings stay hidden from players until you release them.</span>
+        </span>
+      </label>
+      <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-draws-frowned">
         <span>Intentional draws are frowned upon
           <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
@@ -459,6 +471,8 @@ async function submitCreateEvent() {
     body.entry_code                  = document.getElementById('e-entry-code').value;
     body.intentional_draws_frowned   = document.getElementById('e-draws-frowned').checked;
     body.round_timer_minutes         = parseInt(document.getElementById('e-round-timer').value) || 0;
+    body.delay_pairings              = document.getElementById('e-delay-pairings').checked;
+    body.delay_standings             = document.getElementById('e-delay-standings').checked;
   }
   const res = await fetch('/api/events', {
     method: 'POST', headers: {'Content-Type': 'application/json'},

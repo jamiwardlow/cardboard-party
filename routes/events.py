@@ -186,6 +186,17 @@ def _now_iso() -> str:
     """Current UTC time as an ISO string (used to stamp round-timer starts)."""
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+def _new_round_updates(event: dict) -> dict:
+    """Fields to set whenever a new round is created: restart the round timer and,
+    where delivery is delayed, re-hide pairings/standings until the organiser
+    releases them."""
+    u = {'round_started_at': _now_iso()}
+    if event.get('delay_pairings'):
+        u['pairings_released'] = False
+    if event.get('delay_standings'):
+        u['standings_released'] = False
+    return u
+
 def _is_bracket_round(rnd: list) -> bool:
     """A round belongs to the single-elimination playoff if its matches are tagged."""
     return bool(rnd) and rnd[0].get('stage') == 'bracket'
@@ -283,6 +294,12 @@ def api_list_events():
         if e.get('test_mode') and not admin and e.get('owner_id') != uid:
             continue
         e.pop('entry_code', None)   # secret — not needed for the listing
+        # Don't leak delayed pairings here either — hide the latest round from
+        # non-managers until it's released.
+        if (not _can_manage(e) and e.get('delay_pairings')
+                and not e.get('pairings_released', True) and e['rounds']):
+            e['rounds'] = e['rounds'][:-1]
+            e['pairings_hidden'] = True
         _redact_players(e)
         events.append(e)
     return jsonify(events)
@@ -309,6 +326,12 @@ def api_create_event():
         'requires_decklists': bool(data.get('requires_decklists', False)),
         'round_timer_minutes': data.get('round_timer_minutes') if isinstance(data.get('round_timer_minutes'), int) and data.get('round_timer_minutes') >= 0 else 0,
         'round_started_at': '',   # ISO time the current round's timer started
+        # Delayed delivery: hide newly-paired pairings / fresh standings from
+        # players until the organiser releases them (prevents stream spoilers).
+        'delay_pairings':  bool(data.get('delay_pairings', False)),
+        'delay_standings': bool(data.get('delay_standings', False)),
+        'pairings_released':  True,
+        'standings_released': True,
         'entry_code':   str(data.get('entry_code') or '').strip()[:64],  # '' = none required
         'advanced':     bool(data.get('advanced', False)),   # created via the Advanced flow
         # When True, the "0-0-3 Intentional draw" result option is hidden/rejected
@@ -373,6 +396,15 @@ def api_get_event(event_id):
     e['entry_code_required'] = bool(e.get('entry_code'))
     if not e['can_manage']:
         e.pop('entry_code', None)
+        # Delayed delivery: hide the latest round's pairings / the standings from
+        # players until released. Managers always see everything.
+        if e.get('delay_pairings') and not e.get('pairings_released', True) and e['rounds']:
+            e['pairings_hidden'] = True
+            e['rounds'] = e['rounds'][:-1]
+            e['id_safe_ids'] = []
+        if e.get('delay_standings') and not e.get('standings_released', True):
+            e['standings_hidden'] = True
+            e['standings'] = []
     _redact_players(e)
     return jsonify(e)
 
@@ -386,7 +418,7 @@ def api_update_event(event_id):
     data = request.json or {}
     allowed = {'name', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
                'requires_decklists', 'entry_code', 'intentional_draws_frowned',
-               'round_timer_minutes',
+               'round_timer_minutes', 'delay_pairings', 'delay_standings',
                'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
@@ -409,6 +441,9 @@ def api_update_event(event_id):
     if 'round_timer_minutes' in updates:
         v = updates['round_timer_minutes']
         updates['round_timer_minutes'] = v if isinstance(v, int) and v >= 0 else 0
+    for f in ('delay_pairings', 'delay_standings'):
+        if f in updates:
+            updates[f] = bool(updates[f])
     if 'prize_deadline_days' in updates:
         v = updates['prize_deadline_days']
         updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
@@ -685,7 +720,7 @@ def api_pair_round(event_id):
                                      '(resolve any draws first)'}), 400
         new_round = next_bracket_round(last)
         e['rounds'].append(new_round)
-        save_event(event_id, {'rounds': e['rounds'], 'round_started_at': _now_iso()})
+        save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
         round_num = len(e['rounds'])
         standings = compute_standings(e['players'], e['rounds'])
         webhook   = _resolve_event_webhook(e)
@@ -707,7 +742,7 @@ def api_pair_round(event_id):
     new_round = pair_round(e['players'], e['rounds'])
     e['rounds'].append(new_round)
     updates = {'rounds': e['rounds'], 'status': 'active', 'registration': 'closed',
-               'round_started_at': _now_iso()}
+               **_new_round_updates(e)}
     save_event(event_id, updates)
 
     round_num  = len(e['rounds'])
@@ -744,7 +779,7 @@ def api_cut_to_top(event_id):
     new_round, seeds = make_bracket(standings, cut_size)
     e['rounds'].append(new_round)
     save_event(event_id, {'rounds': e['rounds'], 'cut_size': cut_size, 'cut_seeds': seeds,
-                          'round_started_at': _now_iso()})
+                          **_new_round_updates(e)})
 
     round_num = len(e['rounds'])
     webhook   = _resolve_event_webhook(e)
@@ -765,6 +800,22 @@ def api_restart_timer(event_id):
     now = _now_iso()
     save_event(event_id, {'round_started_at': now})
     return jsonify({'round_started_at': now})
+
+
+@events_bp.route('/api/events/<event_id>/release', methods=['POST'])
+@login_required
+def api_release_delivery(event_id):
+    """Reveal delayed pairings or standings to players."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    what = (request.json or {}).get('what')
+    field = {'pairings': 'pairings_released', 'standings': 'standings_released'}.get(what)
+    if not field:
+        return jsonify({'error': 'Specify what to release: pairings or standings'}), 400
+    save_event(event_id, {field: True})
+    return jsonify({'ok': True, field: True})
 
 
 # ── API: edit pairings ─────────────────────────────────────────────────────────
@@ -849,7 +900,7 @@ def api_repair_round(event_id, round_num):
         return jsonify({'error': 'Playoff rounds cannot be re-paired'}), 400
     new_round = pair_round(e['players'], e['rounds'][:idx])
     e['rounds'][idx] = new_round
-    save_event(event_id, {'rounds': e['rounds'], 'round_started_at': _now_iso()})
+    save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
 
     standings = compute_standings(e['players'], e['rounds'])
     webhook   = _resolve_event_webhook(e)

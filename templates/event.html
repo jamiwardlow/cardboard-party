@@ -27,6 +27,8 @@
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
     <button class="btn btn-primary" id="btn-pair" onclick="pairNextRound()">Pair round 1</button>
     <span id="cut-controls" class="hidden"></span>
+    <button class="btn btn-sm hidden" id="btn-release-pairings" onclick="releaseDelivery('pairings')">Release pairings</button>
+    <button class="btn btn-sm hidden" id="btn-release-standings" onclick="releaseDelivery('standings')">Release standings</button>
     <button class="btn btn-sm btn-danger" id="btn-delete-event" onclick="deleteEvent()">Delete event</button>
   </div>
 </div>
@@ -274,6 +276,18 @@
       <span class="field-help">Shows a countdown to players each round.</span>
     </label>
     <label class="checkbox-row">
+      <input type="checkbox" id="ee-delay-pairings">
+      <span>Delay pairings
+        <span class="field-help">New pairings stay hidden from players until you release them.</span>
+      </span>
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" id="ee-delay-standings">
+      <span>Delay standings
+        <span class="field-help">Standings stay hidden from players until you release them.</span>
+      </span>
+    </label>
+    <label class="checkbox-row">
       <input type="checkbox" id="ee-draws-frowned">
       <span>Intentional draws are frowned upon
         <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
@@ -460,6 +474,8 @@ function openEditEventModal() {
   document.getElementById('ee-unenroll-end').value = state.unenroll_end || '';
   document.getElementById('ee-entry-code').value  = state.entry_code || '';
   document.getElementById('ee-round-timer').value = state.round_timer_minutes || '';
+  document.getElementById('ee-delay-pairings').checked  = !!state.delay_pairings;
+  document.getElementById('ee-delay-standings').checked = !!state.delay_standings;
   document.getElementById('ee-draws-frowned').checked = !!state.intentional_draws_frowned;
   document.getElementById('ee-test-mode').checked = !!state.test_mode;
   document.getElementById('ee-structure').value   = state.structure || '';
@@ -521,6 +537,8 @@ async function saveEventDetails() {
     entry_code:                document.getElementById('ee-entry-code').value,
     intentional_draws_frowned: document.getElementById('ee-draws-frowned').checked,
     round_timer_minutes:       parseInt(document.getElementById('ee-round-timer').value) || 0,
+    delay_pairings:            document.getElementById('ee-delay-pairings').checked,
+    delay_standings:           document.getElementById('ee-delay-standings').checked,
   };
   const res = await fetch(`/api/events/${EVENT_ID}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -627,6 +645,22 @@ function renderOwnerActions() {
     const alreadyIn = state.players.some(p => p.google_id === me.user.id);
     addSelfBtn.style.display = alreadyIn ? 'none' : '';
   }
+
+  // Release buttons: shown when delivery is delayed and not yet released, and
+  // there's something to reveal (a round / standings exist).
+  document.getElementById('btn-release-pairings').classList.toggle(
+    'hidden', !(state.delay_pairings && state.pairings_released === false && state.rounds.length));
+  document.getElementById('btn-release-standings').classList.toggle(
+    'hidden', !(state.delay_standings && state.standings_released === false && state.rounds.length));
+}
+
+async function releaseDelivery(what) {
+  const res = await fetch(`/api/events/${EVENT_ID}/release`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ what }),
+  });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Release failed.'); }
 }
 
 async function toggleRegistration() {
@@ -837,8 +871,14 @@ async function unregister() {
 
 function renderRounds() {
   const el = document.getElementById('rounds-container');
+  // When pairings are delayed and not yet released, players see a placeholder
+  // in place of the latest (hidden) round.
+  const hiddenCard = state.pairings_hidden
+    ? `<div class="round-card"><div class="round-header"><strong>Next round</strong></div>
+         <p class="empty" style="padding:0.75rem 1rem">Pairings haven't been posted yet — check back soon.</p></div>`
+    : '';
   if (!state.rounds.length) {
-    el.innerHTML = '<p class="empty">No rounds yet. Add players and pair the first round.</p>';
+    el.innerHTML = hiddenCard || '<p class="empty">No rounds yet. Add players and pair the first round.</p>';
     return;
   }
   el.innerHTML = state.rounds.map((round, i) => {
@@ -866,7 +906,7 @@ function renderRounds() {
         ${round.map((m, mi) => renderMatch(m, i, mi)).join('')}
       </tbody></table>`}
     </div>`;
-  }).join('');
+  }).join('') + hiddenCard;
 }
 
 // Results that mean a match is done with no winner (ordinary + intentional draw).
@@ -1104,8 +1144,13 @@ async function repairRound(roundNum) {
 // ── Standings ──────────────────────────────────────────────────────────────────
 
 function renderStandings() {
+  const tbody = document.querySelector('#standings-table tbody');
+  if (state.standings_hidden) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty" style="padding:0.85rem 0">Standings haven't been posted yet — check back soon.</td></tr>`;
+    return;
+  }
   const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
-  document.querySelector('#standings-table tbody').innerHTML =
+  tbody.innerHTML =
     (state.standings || []).map((s, i) => `<tr class="${s.dropped ? 'dropped' : ''}">
       <td>${i + 1}</td>
       <td>${escapeHtml(s.name)}${s.dropped ? ' <span class="drop-tag">dropped</span>' : ''}</td>
