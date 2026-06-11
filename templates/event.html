@@ -288,6 +288,12 @@
       </span>
     </label>
     <label class="checkbox-row">
+      <input type="checkbox" id="ee-require-checkin">
+      <span>Require check-in
+        <span class="field-help">Only players you check in get paired.</span>
+      </span>
+    </label>
+    <label class="checkbox-row">
       <input type="checkbox" id="ee-draws-frowned">
       <span>Intentional draws are frowned upon
         <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
@@ -476,6 +482,7 @@ function openEditEventModal() {
   document.getElementById('ee-round-timer').value = state.round_timer_minutes || '';
   document.getElementById('ee-delay-pairings').checked  = !!state.delay_pairings;
   document.getElementById('ee-delay-standings').checked = !!state.delay_standings;
+  document.getElementById('ee-require-checkin').checked  = !!state.require_check_in;
   document.getElementById('ee-draws-frowned').checked = !!state.intentional_draws_frowned;
   document.getElementById('ee-test-mode').checked = !!state.test_mode;
   document.getElementById('ee-structure').value   = state.structure || '';
@@ -539,6 +546,7 @@ async function saveEventDetails() {
     round_timer_minutes:       parseInt(document.getElementById('ee-round-timer').value) || 0,
     delay_pairings:            document.getElementById('ee-delay-pairings').checked,
     delay_standings:           document.getElementById('ee-delay-standings').checked,
+    require_check_in:          document.getElementById('ee-require-checkin').checked,
   };
   const res = await fetch(`/api/events/${EVENT_ID}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
@@ -1027,7 +1035,9 @@ async function cutToTop(n) {
 
 function renderPlayers() {
   const active = state.players.filter(p => !p.dropped);
-  document.getElementById('player-count').textContent = active.length;
+  document.getElementById('player-count').textContent = state.require_check_in
+    ? `${active.filter(p => p.checked_in).length}/${active.length} checked in`
+    : active.length;
   document.getElementById('player-list').innerHTML = state.players.map(p => {
     let dropBtn = '';
     if (canManage()) {
@@ -1040,15 +1050,37 @@ function renderPlayers() {
           : `<button class="btn btn-sm btn-danger drop-btn" onclick="dropPlayer('${p.id}')">Drop</button>`;
       }
     }
+    // Check-in status + manager toggle (only when the event requires check-in).
+    let checkTag = '', checkBtn = '';
+    if (state.require_check_in && !p.dropped) {
+      checkTag = `<span class="checkin-tag ${p.checked_in ? 'in' : 'out'}">${p.checked_in ? 'checked in' : 'not checked in'}</span>`;
+      if (canManage()) {
+        checkBtn = p.checked_in
+          ? `<button class="btn btn-sm checkin-btn" onclick="setCheckIn('${p.id}', false)">Undo</button>`
+          : `<button class="btn btn-sm btn-primary checkin-btn" onclick="setCheckIn('${p.id}', true)">Check in</button>`;
+      }
+    }
     const discord = p.discord
       ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
     const profileLink = p.google_id
       ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(p.name)}</a>`
       : `<span class="player-name">${escapeHtml(p.name)}</span>`;
     return `<li class="${p.dropped ? 'dropped' : ''}">
-      ${profileLink}${discord}${dropBtn}
+      ${profileLink}${discord}${checkTag}${checkBtn}${dropBtn}
     </li>`;
   }).join('');
+}
+
+async function setCheckIn(playerId, value) {
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(playerId)}/checkin`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ checked_in: value }),
+  });
+  if (res.ok) {
+    const p = state.players.find(x => x.id === playerId);
+    if (p) p.checked_in = value;
+    render();
+  } else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to update check-in.'); }
 }
 
 // ── Add-player typeahead (link an existing user, or add a new ghost) ──────────

@@ -9,7 +9,7 @@ Permission model:
 
 from flask import Blueprint, request, jsonify, render_template, abort, session
 from db import (create_event, get_event, save_event, list_events, delete_event,
-                set_player_dropped,
+                set_player_dropped, set_player_field,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, list_users,
                 get_config, save_config)
@@ -332,6 +332,8 @@ def api_create_event():
         'delay_standings': bool(data.get('delay_standings', False)),
         'pairings_released':  True,
         'standings_released': True,
+        # When True, only checked-in players are paired (attendance gate).
+        'require_check_in': bool(data.get('require_check_in', False)),
         'entry_code':   str(data.get('entry_code') or '').strip()[:64],  # '' = none required
         'advanced':     bool(data.get('advanced', False)),   # created via the Advanced flow
         # When True, the "0-0-3 Intentional draw" result option is hidden/rejected
@@ -418,7 +420,7 @@ def api_update_event(event_id):
     data = request.json or {}
     allowed = {'name', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
                'requires_decklists', 'entry_code', 'intentional_draws_frowned',
-               'round_timer_minutes', 'delay_pairings', 'delay_standings',
+               'round_timer_minutes', 'delay_pairings', 'delay_standings', 'require_check_in',
                'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
@@ -441,7 +443,7 @@ def api_update_event(event_id):
     if 'round_timer_minutes' in updates:
         v = updates['round_timer_minutes']
         updates['round_timer_minutes'] = v if isinstance(v, int) and v >= 0 else 0
-    for f in ('delay_pairings', 'delay_standings'):
+    for f in ('delay_pairings', 'delay_standings', 'require_check_in'):
         if f in updates:
             updates[f] = bool(updates[f])
     if 'prize_deadline_days' in updates:
@@ -510,6 +512,7 @@ def api_register(event_id):
         'google_id': user['id'],
         'discord':   discord,
         'dropped':   False,
+        'checked_in': False,
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
@@ -568,6 +571,7 @@ def api_join_guest(event_id):
         'google_id':   None,
         'discord':     data.get('discord', '').strip(),
         'dropped':     False,
+        'checked_in':  False,
         'guest_token': token,
     }
     e['players'].append(player)
@@ -626,6 +630,7 @@ def api_add_player(event_id):
         'google_id': google_id,
         'discord':   discord,
         'dropped':   False,
+        'checked_in': True,   # organiser added them, so they're present
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
@@ -697,6 +702,20 @@ def api_undrop_player(event_id, player_id):
         return jsonify({'error': 'Player not found'}), 404
     return jsonify({'ok': True})
 
+@events_bp.route('/api/events/<event_id>/players/<player_id>/checkin', methods=['POST'])
+@login_required
+def api_check_in(event_id, player_id):
+    """Organiser marks a player checked in (or not) for attendance gating."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    value = bool((request.json or {}).get('checked_in', True))
+    player = set_player_field(event_id, player_id, 'checked_in', value)
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+    return jsonify(player)
+
 
 # ── API: pairing ───────────────────────────────────────────────────────────────
 
@@ -739,7 +758,13 @@ def api_pair_round(event_id):
     num_rounds = e['num_rounds'] or default_num_rounds(len(e['players']))
     if len(e['rounds']) >= num_rounds:
         return jsonify({'error': 'All rounds already paired'}), 400
-    new_round = pair_round(e['players'], e['rounds'])
+    # When check-in is required, only checked-in players are paired.
+    players_to_pair = e['players']
+    if e.get('require_check_in'):
+        players_to_pair = [p for p in e['players'] if p.get('checked_in')]
+        if len([p for p in players_to_pair if not p.get('dropped')]) < 2:
+            return jsonify({'error': 'Need at least 2 checked-in players to pair'}), 400
+    new_round = pair_round(players_to_pair, e['rounds'])
     e['rounds'].append(new_round)
     updates = {'rounds': e['rounds'], 'status': 'active', 'registration': 'closed',
                **_new_round_updates(e)}

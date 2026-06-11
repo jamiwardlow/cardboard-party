@@ -166,6 +166,12 @@
         </span>
       </label>
       <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-require-checkin">
+        <span>Require check-in
+          <span class="field-help">Only players you check in get paired.</span>
+        </span>
+      </label>
+      <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-draws-frowned">
         <span>Intentional draws are frowned upon
           <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
@@ -473,6 +479,7 @@ async function submitCreateEvent() {
     body.round_timer_minutes         = parseInt(document.getElementById('e-round-timer').value) || 0;
     body.delay_pairings              = document.getElementById('e-delay-pairings').checked;
     body.delay_standings             = document.getElementById('e-delay-standings').checked;
+    body.require_check_in            = document.getElementById('e-require-checkin').checked;
   }
   const res = await fetch('/api/events', {
     method: 'POST', headers: {'Content-Type': 'application/json'},

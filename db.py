@@ -39,15 +39,13 @@ def save_event(event_id: str, data: dict):
 def delete_event(event_id: str):
     get_db().collection('events').document(event_id).delete()
 
-def set_player_dropped(event_id: str, player_id: str, dropped: bool):
-    """Atomically flip a single player's `dropped` flag.
+def set_player_field(event_id: str, player_id: str, field: str, value):
+    """Atomically set one field on a single player.
 
-    Drop/un-drop otherwise read the whole event, edit one player, and write
-    the entire `players` array back. Two overlapping requests (dropping several
-    players quickly, or a drop racing an un-drop) each start from the same
-    snapshot, so the later write clobbers the earlier one — a lost update that
-    leaves a "dropped" player still active and inflates the next round's
-    pairings. Running the read-modify-write in a transaction serializes them.
+    Read-modify-write of the whole `players` array isn't safe under concurrency:
+    two overlapping requests start from the same snapshot, so the later write
+    clobbers the earlier one (a lost update — e.g. a "dropped" player left active,
+    or a check-in undone). Running it in a transaction serializes them.
 
     Returns the updated player dict, or None if the event or player is gone.
     """
@@ -64,11 +62,15 @@ def set_player_dropped(event_id: str, player_id: str, dropped: bool):
         target = next((p for p in players if p['id'] == player_id), None)
         if target is None:
             return None
-        target['dropped'] = dropped
+        target[field] = value
         txn.update(ref, {'players': players})
         return target
 
     return _apply(transaction)
+
+def set_player_dropped(event_id: str, player_id: str, dropped: bool):
+    """Atomically flip a single player's `dropped` flag (see set_player_field)."""
+    return set_player_field(event_id, player_id, 'dropped', dropped)
 
 def list_events() -> list[dict]:
     events = []

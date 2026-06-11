@@ -319,6 +319,11 @@ td.result { width: 1%; white-space: nowrap; }
             letter-spacing: 0.05em; color: var(--pink); border: 1px solid rgba(244,114,182,0.4);
             background: var(--pink-soft); border-radius: 99px;
             padding: 0.05rem 0.45rem; margin-left: 0.4rem; }
+.checkin-tag { font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+            white-space: nowrap; border-radius: 99px; padding: 0.05rem 0.5rem; }
+.checkin-tag.in  { color: var(--green); background: var(--green-soft); border: 1px solid rgba(74,222,128,0.35); }
+.checkin-tag.out { color: var(--muted); background: var(--bg3); border: 1px solid var(--border); }
+.checkin-btn { flex-shrink: 0; }
 
 /* ── Saved webhooks list ──────────────────────────────────────────────────── */
 .webhook-list    { list-style: none; font-size: 0.88rem; }
