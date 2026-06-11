@@ -712,8 +712,12 @@ function showRegisterForm() {
   nameInput.style.display = me.signed_in ? 'none' : '';
   // Show the entry-code box only when the event requires one.
   document.getElementById('entry-code-input').classList.toggle('hidden', !state.entry_code_required);
+  // Only ask for a Discord handle if we don't already have one on file (guests
+  // never do; signed-in users may already have it in their profile).
+  const discordInput = document.getElementById('discord-input');
+  discordInput.style.display = me.has_discord ? 'none' : '';
   if (me.signed_in) {
-    document.getElementById('discord-input').focus();
+    if (!me.has_discord) discordInput.focus();
   } else {
     nameInput.value = '';
     nameInput.focus();

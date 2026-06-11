@@ -150,7 +150,11 @@ def me():
     user = get_current_user()
     if not user:
         return jsonify({'signed_in': False})
-    return jsonify({'signed_in': True, 'user': user})
+    # Whether they already have a Discord handle on file, so the registration
+    # form can skip asking for it again.
+    profile = get_user_profile(user['id'])
+    return jsonify({'signed_in': True, 'user': user,
+                    'has_discord': bool((profile.get('discord') or '').strip())})
 
 
 def _resolve_pending_admin(user: dict):

@@ -450,7 +450,9 @@ def api_register(event_id):
     user = get_current_user()
     data = request.json or {}
     display_name = data.get('display_name', '').strip() or user['name']
-    discord      = data.get('discord', '').strip()
+    # The form hides the Discord field when the user already has one on file, so
+    # fall back to their saved handle when none is submitted.
+    discord      = data.get('discord', '').strip() or get_user_profile(user['id']).get('discord', '')
     if any(p.get('google_id') == user['id'] for p in e['players']):
         return jsonify({'error': 'Already registered'}), 400
     player = {
