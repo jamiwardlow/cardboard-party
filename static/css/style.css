@@ -77,6 +77,14 @@ a { color: var(--accent); }
 .site-footer a:hover { color: var(--accent); }
 .about-text   { max-width: 640px; font-size: 1rem; line-height: 1.7; color: var(--text); }
 
+/* Event branding */
+.event-brand     { margin-bottom: 1.25rem; }
+.event-brand-img { display: block; width: 100%; max-height: 240px; object-fit: cover;
+                   border: 1px solid var(--border); border-radius: var(--radius); }
+.event-brand-text { font-size: 0.95rem; color: var(--muted); margin-top: 0.6rem; }
+.brand-preview   { max-width: 100%; max-height: 140px; border: 1px solid var(--border);
+                   border-radius: var(--radius); object-fit: cover; }
+
 .page-header  { display: flex; justify-content: space-between; align-items: flex-start;
                 gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
 .page-header h1 { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600;

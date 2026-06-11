@@ -114,6 +114,10 @@
       <label class="adv-only">Contact
         <textarea id="e-contact" rows="2" placeholder="Optional — how to reach the organiser with questions"></textarea>
       </label>
+      <label>Brand text
+        <input id="e-brand-text" type="text" maxlength="300" placeholder="Optional — series, organiser, sponsor, or community">
+        <span class="field-help">A brand image can be added after creating the event.</span>
+      </label>
       <label>Entry cost
         <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
       </label>
@@ -462,6 +466,7 @@ async function submitCreateEvent() {
     date:             document.getElementById('e-date').value,
     num_rounds:       numRounds,
     registration_cap: cap,
+    brand_text:       document.getElementById('e-brand-text').value,
   };
   if (adv) {
     body.requires_decklists  = document.getElementById('e-decklists').checked;

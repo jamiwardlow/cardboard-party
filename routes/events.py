@@ -17,7 +17,7 @@ from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players)
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round, post_test, is_valid_webhook
-from storage import upload_avatar, delete_object
+from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import re
 import uuid
@@ -334,6 +334,9 @@ def api_create_event():
         'standings_released': True,
         # When True, only checked-in players are paired (attendance gate).
         'require_check_in': bool(data.get('require_check_in', False)),
+        'brand_text':       str(data.get('brand_text') or '')[:300],
+        'brand_image_url':  '',       # set via the brand-image upload endpoint
+        'brand_image_object': '',     # GCS object name (for replacing/deleting)
         'entry_code':   str(data.get('entry_code') or '').strip()[:64],  # '' = none required
         'advanced':     bool(data.get('advanced', False)),   # created via the Advanced flow
         # When True, the "0-0-3 Intentional draw" result option is hidden/rejected
@@ -421,6 +424,7 @@ def api_update_event(event_id):
     allowed = {'name', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
                'requires_decklists', 'entry_code', 'intentional_draws_frowned',
                'round_timer_minutes', 'delay_pairings', 'delay_standings', 'require_check_in',
+               'brand_text',
                'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
@@ -446,6 +450,8 @@ def api_update_event(event_id):
     for f in ('delay_pairings', 'delay_standings', 'require_check_in'):
         if f in updates:
             updates[f] = bool(updates[f])
+    if 'brand_text' in updates:
+        updates['brand_text'] = str(updates['brand_text'] or '')[:300]
     if 'prize_deadline_days' in updates:
         v = updates['prize_deadline_days']
         updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
@@ -1202,6 +1208,44 @@ def api_upload_avatar():
         delete_object(old_obj)
     session['user']['picture'] = url  # reflect in the nav this session
     return jsonify({'avatar_url': url})
+
+@events_bp.route('/api/events/<event_id>/brand-image', methods=['POST'])
+@login_required
+def api_upload_brand_image(event_id):
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    file = request.files.get('image')
+    if not file:
+        return jsonify({'error': 'No file uploaded'}), 400
+    raw = file.read(_MAX_AVATAR_BYTES + 1)
+    if not raw:
+        return jsonify({'error': 'The file is empty'}), 400
+    if len(raw) > _MAX_AVATAR_BYTES:
+        return jsonify({'error': 'Image too large (max 6 MB)'}), 400
+    try:
+        url, obj = upload_brand_image(event_id, raw)
+    except ValueError as ex:
+        return jsonify({'error': str(ex)}), 400
+    old_obj = e.get('brand_image_object')
+    save_event(event_id, {'brand_image_url': url, 'brand_image_object': obj})
+    if old_obj and old_obj != obj:
+        delete_object(old_obj)
+    return jsonify({'brand_image_url': url})
+
+@events_bp.route('/api/events/<event_id>/brand-image', methods=['DELETE'])
+@login_required
+def api_delete_brand_image(event_id):
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    old_obj = e.get('brand_image_object')
+    save_event(event_id, {'brand_image_url': '', 'brand_image_object': ''})
+    if old_obj:
+        delete_object(old_obj)
+    return jsonify({'ok': True})
 
 @events_bp.route('/api/profile/avatar', methods=['DELETE'])
 @login_required
