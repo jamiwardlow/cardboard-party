@@ -141,6 +141,7 @@
   <div class="modal">
     <h2 id="edit-modal-title">Edit pairings</h2>
     <div id="edit-pairings-form"></div>
+    <p id="edit-pairings-note" class="field-help" style="color:var(--danger)"></p>
     <div class="modal-actions">
       <button class="btn" onclick="closeEditModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditedPairings()">Save pairings</button>
@@ -1159,47 +1160,97 @@ function selectResult(score) {
 
 // ── Edit pairings modal ────────────────────────────────────────────────────────
 
+// Working state for the edit-pairings modal: one {p1, p2} per row, where each
+// value is '' (unset), '__bye__', or a player id.
+let editRows = [];
+
 function openEditModal(roundIdx) {
   editingRound = roundIdx;
   document.getElementById('edit-modal-title').textContent = `Edit round ${roundIdx + 1} pairings`;
-  const round  = state.rounds[roundIdx];
-  const active = state.players.filter(p => !p.dropped);
-  // Render every match — including any bye — as an editable row so the bye can
-  // be reassigned to a different player.
-  document.getElementById('edit-pairings-form').innerHTML =
-    round.map((m, mi) => `
-      <div class="pairing-row">
-        <select id="ep-p1-${mi}">
-          <option value="__bye__"${m.player1_id==='__bye__'?' selected':''}>— Bye —</option>
-          ${active.map(p=>`<option value="${escapeHtml(p.id)}"${p.id===m.player1_id?' selected':''}>${escapeHtml(p.name)}</option>`).join('')}
-        </select>
-        <span>vs</span>
-        <select id="ep-p2-${mi}">
-          <option value="__bye__"${m.is_bye?' selected':''}>— Bye —</option>
-          ${active.map(p=>`<option value="${escapeHtml(p.id)}"${p.id===m.player2_id?' selected':''}>${escapeHtml(p.name)}</option>`).join('')}
-        </select>
-      </div>`).join('');
+  editRows = state.rounds[roundIdx].map(m => ({
+    p1: m.player1_id,
+    p2: m.is_bye ? '__bye__' : m.player2_id,
+  }));
+  renderEditRows();
   document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+// The real players who were in the round being edited (the set we must re-home).
+function editOriginalPlayers() {
+  const s = new Set();
+  for (const m of state.rounds[editingRound])
+    for (const pid of [m.player1_id, m.player2_id])
+      if (pid && pid !== '__bye__') s.add(pid);
+  return s;
+}
+
+function editAssignedPlayers() {
+  const s = new Set();
+  for (const r of editRows)
+    for (const v of [r.p1, r.p2])
+      if (v && v !== '__bye__') s.add(v);
+  return s;
+}
+
+function renderEditRows() {
+  const active = state.players.filter(p => !p.dropped);
+  const opts = (sel) =>
+    `<option value=""${sel === '' ? ' selected' : ''}>— Select —</option>` +
+    `<option value="__bye__"${sel === '__bye__' ? ' selected' : ''}>— Bye —</option>` +
+    active.map(p => `<option value="${escapeHtml(p.id)}"${p.id === sel ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+  document.getElementById('edit-pairings-form').innerHTML = editRows.map((r, i) => `
+      <div class="pairing-row">
+        <select onchange="onEditRowChange(${i}, 'p1', this.value)">${opts(r.p1)}</select>
+        <span>vs</span>
+        <select onchange="onEditRowChange(${i}, 'p2', this.value)">${opts(r.p2)}</select>
+        <button type="button" class="btn btn-sm row-remove" title="Remove this pairing"
+                onclick="removeEditRow(${i})">✕</button>
+      </div>`).join('');
+  const missing = [...editOriginalPlayers()].filter(id => !editAssignedPlayers().has(id));
+  document.getElementById('edit-pairings-note').textContent =
+    missing.length ? `Still to assign: ${missing.map(playerName).join(', ')}` : '';
+}
+
+// Drop fully-blank rows and — if anyone's been freed up (e.g. by a bye) — add a
+// fresh empty Player-vs-Player row to re-home them.
+function reconcileEditRows() {
+  editRows = editRows.filter(r => !(r.p1 === '' && r.p2 === ''));
+  const missing = [...editOriginalPlayers()].filter(id => !editAssignedPlayers().has(id));
+  if (missing.length) editRows.push({ p1: '', p2: '' });
+  renderEditRows();
+}
+
+function onEditRowChange(i, side, val) {
+  editRows[i][side] = val;
+  reconcileEditRows();
+}
+
+// Remove a pairing row; its players return to "still to assign" to be re-homed.
+function removeEditRow(i) {
+  editRows.splice(i, 1);
+  reconcileEditRows();
 }
 
 function closeEditModal() {
   document.getElementById('edit-modal').classList.add('hidden');
   editingRound = null;
+  editRows = [];
 }
 
 async function saveEditedPairings() {
-  const round  = state.rounds[editingRound];
   const payload = [];
-  for (let mi = 0; mi < round.length; mi++) {
-    let p1 = document.getElementById(`ep-p1-${mi}`).value;
-    let p2 = document.getElementById(`ep-p2-${mi}`).value;
+  for (const r of editRows) {
+    let { p1, p2 } = r;
+    if (p1 === '' && p2 === '') continue;        // ignore leftover blank rows
     const isBye = p1 === '__bye__' || p2 === '__bye__';
-    if (p1 === '__bye__' && p2 === '__bye__') {
+    if (isBye && p1 === '__bye__' && p2 === '__bye__') {
       alert('A bye must include a player.'); return;
     }
+    if (!isBye && (p1 === '' || p2 === '')) {
+      alert(`${playerName(p1 || p2)} needs an opponent or a bye.`); return;
+    }
     // Normalise so the bye recipient is always player1 (swiss.py convention:
-    // the recipient is the winner of a 2-0-0). The Bye option sits on both
-    // sides for convenience, but storage keeps the real player on the left.
+    // the recipient is the winner of a 2-0-0).
     if (p1 === '__bye__') { [p1, p2] = [p2, p1]; }
     payload.push({
       player1_id: p1,
@@ -1223,6 +1274,15 @@ async function saveEditedPairings() {
       }
       seen.add(pid);
     }
+  }
+
+  // Every player in this round must still be assigned (to a match or a bye) —
+  // multiple byes are allowed, but byeing a player can't leave their old
+  // opponent (or anyone) with no assignment.
+  const missing = [...editOriginalPlayers()].filter(pid => !seen.has(pid));
+  if (missing.length) {
+    alert(`${missing.map(playerName).join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in any match.`);
+    return;
   }
 
   const res = await fetch(`/api/events/${EVENT_ID}/rounds/${editingRound + 1}/pairings`, {

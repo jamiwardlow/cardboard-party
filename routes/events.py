@@ -765,7 +765,12 @@ def api_edit_pairings(event_id, round_num):
             if match.get(key) not in valid_ids:
                 return jsonify({'error': f"Unknown player: {match.get(key)}"}), 400
         p1, p2 = match.get('player1_id'), match.get('player2_id')
-        if not match.get('is_bye') and p1 == p2:
+        if match.get('is_bye'):
+            # A bye is exactly one real player sitting out (vs the bye marker).
+            reals = [x for x in (p1, p2) if x != BYE_PLAYER_ID]
+            if len(reals) != 1:
+                return jsonify({'error': 'A bye must include exactly one player'}), 400
+        elif p1 == p2:
             return jsonify({'error': 'A player cannot be paired against themselves'}), 400
         for pid in (p1, p2):
             if pid == BYE_PLAYER_ID:
@@ -773,6 +778,19 @@ def api_edit_pairings(event_id, round_num):
             if pid in seen:
                 return jsonify({'error': f"{names.get(pid, pid)} is assigned to more than one match"}), 400
             seen.add(pid)
+
+    # Every player who was in this round must still be assigned (to a match or a
+    # bye) exactly once — multiple byes are fine, but no one may be left out.
+    original = {pid for m in e['rounds'][idx]
+                for pid in (m.get('player1_id'), m.get('player2_id'))
+                if pid and pid != BYE_PLAYER_ID}
+    missing = original - seen
+    if missing:
+        who = ', '.join(sorted(names.get(p, p) for p in missing))
+        return jsonify({'error': f"{who} {'is' if len(missing) == 1 else 'are'} not in any match"}), 400
+    if seen - original:
+        return jsonify({'error': 'Pairings can only include players already in this round'}), 400
+
     e['rounds'][idx] = new_pairings
     save_event(event_id, {'rounds': e['rounds']})
     return jsonify({'round_num': round_num, 'pairings': new_pairings})

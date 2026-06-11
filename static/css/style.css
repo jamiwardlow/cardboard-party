@@ -373,6 +373,8 @@ td.result { width: 1%; white-space: nowrap; }
                       margin-bottom: 0.65rem; }
 .pairing-row select { flex: 1; min-width: 0; }
 .pairing-row span   { color: var(--muted); font-size: 0.85rem; flex-shrink: 0; }
+.row-remove         { flex-shrink: 0; padding: 0.3rem 0.55rem; color: var(--muted); line-height: 1; }
+.row-remove:hover   { color: var(--danger); border-color: var(--danger); }
 
 /* ── Result entry modal ───────────────────────────────────────────────────── */
 .result-modal-players { display: flex; align-items: center; gap: 0.75rem;
