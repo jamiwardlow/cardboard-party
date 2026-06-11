@@ -199,7 +199,7 @@
     <label>Format
       <input id="ee-format" type="text">
     </label>
-    <label>Structure
+    <label class="ee-adv">Structure
       <select id="ee-structure" onchange="onStructureChange('ee')">
         <option value="">— Select —</option>
         <option value="swiss">Swiss only</option>
@@ -215,7 +215,7 @@
       </select>
       <span class="field-help">Seeds the playoff bracket; you confirm the cut when Swiss ends.</span>
     </label>
-    <div class="field-group">
+    <div class="field-group ee-adv">
       <span class="field-label">Tags</span>
       <div class="chip-options" id="ee-tags">
         <label class="chip"><input type="checkbox" value="Weekly Play"> Weekly Play</label>
@@ -227,19 +227,19 @@
     <label>Description
       <textarea id="ee-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
     </label>
-    <label>Schedule
+    <label class="ee-adv">Schedule
       <textarea id="ee-schedule" rows="3" placeholder="Optional — registration, check-in, rounds, breaks, top cut times"></textarea>
     </label>
-    <label>Rules
+    <label class="ee-adv">Rules
       <textarea id="ee-rules" rows="3" placeholder="Optional — format rules, banned cards, deck restrictions"></textarea>
     </label>
-    <label>Prizes
+    <label class="ee-adv">Prizes
       <textarea id="ee-prizes" rows="3" placeholder="Optional — prize breakdown by placement"></textarea>
     </label>
-    <label>Prize distribution deadline (days)
+    <label class="ee-adv">Prize distribution deadline (days)
       <input id="ee-prize-deadline" type="number" min="0" max="365" placeholder="e.g. 14">
     </label>
-    <label>Contact
+    <label class="ee-adv">Contact
       <textarea id="ee-contact" rows="2" placeholder="Optional — how to reach the organiser with questions"></textarea>
     </label>
     <label>Brand text
@@ -271,61 +271,61 @@
     <label>Registration cap
       <input id="ee-cap" type="number" min="2" max="256" placeholder="No cap">
     </label>
-    <label>Registration type
+    <label class="ee-adv">Registration type
       <select id="ee-reg-type">
         <option value="open">Open</option>
         <option value="invite_only">Invite only</option>
       </select>
       <span class="field-help">Invite only disables self sign-up — you add players yourself.</span>
     </label>
-    <label>Registration opens
+    <label class="ee-adv">Registration opens
       <input id="ee-reg-start" type="date">
     </label>
-    <label>Registration closes
+    <label class="ee-adv">Registration closes
       <input id="ee-reg-end" type="date">
     </label>
-    <label>Unenrollment deadline
+    <label class="ee-adv">Unenrollment deadline
       <input id="ee-unenroll-end" type="date">
       <span class="field-help">After this date, players can't withdraw themselves.</span>
     </label>
-    <label>Entry code
+    <label class="ee-adv">Entry code
       <input id="ee-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
     </label>
-    <label>Round timer (minutes)
+    <label class="ee-adv">Round timer (minutes)
       <input id="ee-round-timer" type="number" min="0" max="180" placeholder="No timer">
       <span class="field-help">Shows a countdown to players each round.</span>
     </label>
-    <label class="checkbox-row">
+    <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-delay-pairings">
       <span>Delay pairings
         <span class="field-help">New pairings stay hidden from players until you release them.</span>
       </span>
     </label>
-    <label class="checkbox-row">
+    <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-delay-standings">
       <span>Delay standings
         <span class="field-help">Standings stay hidden from players until you release them.</span>
       </span>
     </label>
-    <label class="checkbox-row">
+    <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-require-checkin">
       <span>Require check-in
         <span class="field-help">Only players you check in get paired.</span>
       </span>
     </label>
-    <label class="checkbox-row">
+    <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-draws-frowned">
       <span>Intentional draws are frowned upon
         <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
       </span>
     </label>
-    <label class="checkbox-row">
+    <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-decklists">
       <span>Require decklists
         <span class="field-help">Players are told a decklist is required for this event.</span>
       </span>
     </label>
-    <label class="checkbox-row">
+    <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-test-mode">
       <span>This event is in Test Mode
         <span class="field-help">Hidden from public event discovery — only you see it.</span>
@@ -517,6 +517,10 @@ function openEditEventModal() {
   onStructureChange('ee');
   const tags = state.tags || [];
   document.querySelectorAll('#ee-tags input').forEach(c => { c.checked = tags.includes(c.value); });
+  // Simple events show only the Simple fields here, matching their creation form;
+  // Advanced events show everything.
+  document.querySelectorAll('#edit-event-modal .ee-adv')
+    .forEach(el => el.classList.toggle('hidden', !state.advanced));
   document.getElementById('edit-event-modal').classList.remove('hidden');
 }
 
