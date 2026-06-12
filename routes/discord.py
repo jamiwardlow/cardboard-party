@@ -252,20 +252,17 @@ def _handle_component(body):
         return _update(f"✅ **{name}** pairings will post in this channel each round.")
 
     if custom_id == 'cbp_announce_select':
-        import discord_api
-        from routes.events import get_event
+        from routes.events import announce_event_to_channel
         val = ((body.get('data') or {}).get('values') or [''])[0]
         channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
-        event = get_event(val)
-        if not event:
+        name, posted = announce_event_to_channel(val, channel_id, request.host_url)
+        if name is None:
             return _update('That event no longer exists.')
-        event_url = request.host_url.rstrip('/') + '/events/' + val
-        ok = discord_api.announce_event(event, channel_id, event_url)
-        if not ok:
+        if not posted:
             return _update("I couldn't post here — check that I have permission to send "
                            "messages in this channel.")
-        return _update(f"✅ Posted **{event.get('name', 'the event')}** in this channel "
-                       "with a Register button.")
+        return _update(f"✅ Posted **{name}** in this channel with a Register button. "
+                       "It'll update automatically when registration fills or closes.")
 
     if custom_id.startswith('cbp_reg_btn:'):
         # One-tap Register button on an announcement post (no slash command needed).

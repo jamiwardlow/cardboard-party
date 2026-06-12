@@ -80,6 +80,53 @@ def _entry_code_error(event: dict, data: dict) -> str | None:
 
 # ── Discord registration (used by the Discord bot, routes/discord.py) ──────────
 
+def _registration_card_status(event: dict):
+    """(state, note) for an announced event card — mirrors the self-registration
+    gates so the posted card can show open / full / closed. state is
+    'open' | 'full' | 'closed'."""
+    blocked = _self_registration_blocked(event)
+    if blocked:
+        return 'closed', blocked
+    if event.get('entry_code'):
+        return 'closed', 'Entry code required — register on the web'
+    cap = event.get('registration_cap', 0)
+    active = len([p for p in event['players'] if not p.get('dropped')])
+    if cap and active >= cap:
+        return 'full', f'Full — {cap} players'
+    return 'open', ''
+
+def announce_event_to_channel(event_id: str, channel_id: str, base_url: str):
+    """Post an event card (Register button + details link) to a channel and
+    remember the message so its status can be kept current. Returns
+    (event_name, posted) — posted is False if the event is gone or the post
+    failed (e.g. missing channel permission)."""
+    e = get_event(event_id)
+    if not e:
+        return None, False
+    base = (base_url or '').rstrip('/')
+    state, note = _registration_card_status(e)
+    content, components = discord_api.event_card(e, f'{base}/events/{event_id}', state, note)
+    msg = discord_api.post_message(channel_id, content, components)
+    if not msg:
+        return e.get('name', 'the event'), False
+    save_event(event_id, {'discord_announce': {
+        'channel_id': channel_id, 'message_id': msg.get('id'), 'base_url': base}})
+    return e.get('name', 'the event'), True
+
+def refresh_event_announcement(event: dict) -> None:
+    """If this event has an announcement card posted, edit it to reflect the
+    current registration status (open / full / closed). Best-effort no-op when
+    there's no card. `event` must reflect the current players/registration."""
+    ann = event.get('discord_announce') or {}
+    if not ann.get('message_id'):
+        return
+    base = (ann.get('base_url') or '').rstrip('/')
+    state, note = _registration_card_status(event)
+    content, components = discord_api.event_card(
+        event, f"{base}/events/{event['id']}", state, note)
+    discord_api.edit_message(ann['channel_id'], ann['message_id'], content, components)
+
+
 def discord_registerable_events(limit: int = 25):
     """Events a Discord user can currently self-register for — open, not test,
     not invite-only/closed/expired/full, and with no entry code (codes aren't
@@ -127,6 +174,7 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
+    refresh_event_announcement(e)   # may have just hit the cap → show "full"
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
 
 
@@ -658,6 +706,12 @@ def api_update_event(event_id):
         if err:
             return jsonify({'error': err}), 400
     save_event(event_id, updates)
+    e.update(updates)
+    _CARD_FIELDS = {'name', 'event_type', 'format', 'date', 'entry_cost', 'description',
+                    'registration', 'registration_cap', 'registration_type',
+                    'registration_start', 'registration_end', 'entry_code'}
+    if e.get('discord_announce') and _CARD_FIELDS & updates.keys():
+        refresh_event_announcement(e)
     _redact_players(e)
     return jsonify({**e, **updates})
 
@@ -711,6 +765,7 @@ def api_register(event_id):
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
+    refresh_event_announcement(e)   # may have just hit the cap → show "full"
     # Keep the user directory current: capture the discord handle they gave.
     if discord:
         save_user_profile(user['id'], {'discord': discord})
@@ -734,6 +789,7 @@ def api_unregister(event_id):
     else:
         e['players'] = [p for p in e['players'] if p.get('google_id') != user['id']]
         save_event(event_id, {'players': e['players']})
+    refresh_event_announcement(get_event(event_id))   # a slot may have freed up
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/join', methods=['POST'])
@@ -771,6 +827,7 @@ def api_join_guest(event_id):
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
+    refresh_event_announcement(e)   # may have just hit the cap → show "full"
     echo = {k: v for k, v in player.items() if k != 'guest_token'}
     return jsonify({'player': echo, 'token': token}), 201
 
@@ -829,6 +886,7 @@ def api_add_player(event_id):
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
+    refresh_event_announcement(e)   # may have just hit the cap → show "full"
     return jsonify(player), 201
 
 @events_bp.route('/api/events/<event_id>/player-search', methods=['GET'])
@@ -873,6 +931,7 @@ def api_remove_player(event_id, player_id):
         return jsonify({'error': 'Player not found'}), 404
     e['players'] = remaining
     save_event(event_id, {'players': e['players']})
+    refresh_event_announcement(e)   # a slot may have freed up
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/drop', methods=['POST'])
@@ -884,6 +943,7 @@ def api_drop_player(event_id, player_id):
     _require_manage(e)
     if not set_player_dropped(event_id, player_id, True):
         return jsonify({'error': 'Player not found'}), 404
+    refresh_event_announcement(get_event(event_id))   # a slot may have freed up
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/undrop', methods=['POST'])
@@ -895,6 +955,7 @@ def api_undrop_player(event_id, player_id):
     _require_manage(e)
     if not set_player_dropped(event_id, player_id, False):
         return jsonify({'error': 'Player not found'}), 404
+    refresh_event_announcement(get_event(event_id))   # may have re-hit the cap
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/checkin', methods=['POST'])
@@ -965,6 +1026,8 @@ def api_pair_round(event_id):
     updates = {'rounds': e['rounds'], 'status': 'active', 'registration': 'closed',
                **_new_round_updates(e)}
     save_event(event_id, updates)
+    e['registration'] = 'closed'    # so the announcement card now shows closed
+    refresh_event_announcement(e)
 
     round_num  = len(e['rounds'])
     standings  = compute_standings(e['players'], e['rounds'])

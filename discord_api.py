@@ -11,11 +11,12 @@ from discord_notify import _round_label
 API = 'https://discord.com/api/v10'
 
 
-def post_message(channel_id: str, content: str, components=None) -> bool:
-    """Post a message to a channel as the bot. Best-effort (never raises)."""
+def post_message(channel_id: str, content: str, components=None):
+    """Post a message to a channel as the bot. Best-effort (never raises). Returns
+    the created message dict (so callers can keep its id) on success, else None."""
     token = get_secret('DISCORD_BOT_TOKEN')
     if not (token and channel_id):
-        return False
+        return None
     payload = {'content': content[:2000], 'allowed_mentions': {'parse': []}}
     if components:
         payload['components'] = components
@@ -25,16 +26,42 @@ def post_message(channel_id: str, content: str, components=None) -> bool:
                           json=payload, timeout=5)
         if not r.ok:
             print(f'discord post_message {r.status_code}: {r.text[:200]}')
-        return r.ok
+            return None
+        return r.json()
     except Exception as e:
         print(f'discord post_message error: {e}')
+        return None
+
+
+def edit_message(channel_id: str, message_id: str, content: str, components=None) -> bool:
+    """Edit a message the bot posted (used to keep an event card's status current).
+    Best-effort (never raises)."""
+    token = get_secret('DISCORD_BOT_TOKEN')
+    if not (token and channel_id and message_id):
+        return False
+    payload = {'content': content[:2000], 'components': components or [],
+               'allowed_mentions': {'parse': []}}
+    try:
+        r = requests.patch(f'{API}/channels/{channel_id}/messages/{message_id}',
+                           headers={'Authorization': f'Bot {token}'},
+                           json=payload, timeout=5)
+        if not r.ok:
+            print(f'discord edit_message {r.status_code}: {r.text[:200]}')
+        return r.ok
+    except Exception as e:
+        print(f'discord edit_message error: {e}')
         return False
 
 
-def announce_event(event: dict, channel_id: str, event_url: str) -> bool:
-    """Post an event 'card' to a channel with a one-click Register button (for
-    players who don't know the slash commands) and a link to the web page."""
-    bits = [f"**{event.get('name', 'Event')}** — registration open"]
+def event_card(event: dict, event_url: str, state: str, note: str = ''):
+    """Build (content, components) for an event 'card' — a Register button (for
+    players who don't know the slash commands) plus a link to the web page. The
+    button is disabled and the text reflects status when registration is full or
+    closed. `state` is 'open' | 'full' | 'closed'."""
+    headline = {'open': 'registration open', 'full': 'registration full',
+                'closed': 'registration closed'}.get(state, '')
+    title = f"**{event.get('name', 'Event')}**"
+    bits = [f"{title} — {headline}" if headline else title]
     meta = ' · '.join(x for x in (event.get('event_type'), event.get('date'),
                                   event.get('format')) if x)
     if meta:
@@ -43,12 +70,19 @@ def announce_event(event: dict, channel_id: str, event_url: str) -> bool:
         bits.append(f"Entry: {event['entry_cost']}")
     if event.get('description'):
         bits.append(event['description'][:300])
-    bits.append('Tap **Register** to join right here — no account or link needed.')
+    if state == 'open':
+        bits.append('Tap **Register** to join right here — no account or link needed.')
+    elif note:
+        bits.append(f'_{note}._')
+    register_btn = {'type': 2, 'style': 3, 'label': 'Register',
+                    'custom_id': f"cbp_reg_btn:{event['id']}"}
+    if state != 'open':
+        register_btn['disabled'] = True
     components = [{'type': 1, 'components': [
-        {'type': 2, 'style': 3, 'label': 'Register', 'custom_id': f"cbp_reg_btn:{event['id']}"},
+        register_btn,
         {'type': 2, 'style': 5, 'label': 'View details', 'url': event_url},
     ]}]
-    return post_message(channel_id, '\n'.join(bits), components)
+    return '\n'.join(bits), components
 
 
 def announce_round(event: dict, round_num: int):
