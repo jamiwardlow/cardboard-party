@@ -153,7 +153,7 @@
       <label class="adv-only">Entry code
         <input id="e-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
       </label>
-      <label class="adv-only">Round timer (minutes)
+      <label>Round timer (minutes)
         <input id="e-round-timer" type="number" min="0" max="180" placeholder="No timer">
         <span class="field-help">Shows a countdown to players each round.</span>
       </label>
@@ -467,6 +467,7 @@ async function submitCreateEvent() {
     num_rounds:       numRounds,
     registration_cap: cap,
     brand_text:       document.getElementById('e-brand-text').value,
+    round_timer_minutes: parseInt(document.getElementById('e-round-timer').value) || 0,
   };
   if (adv) {
     body.requires_decklists  = document.getElementById('e-decklists').checked;
@@ -481,7 +482,6 @@ async function submitCreateEvent() {
     body.unenroll_end        = document.getElementById('e-unenroll-end').value;
     body.entry_code                  = document.getElementById('e-entry-code').value;
     body.intentional_draws_frowned   = document.getElementById('e-draws-frowned').checked;
-    body.round_timer_minutes         = parseInt(document.getElementById('e-round-timer').value) || 0;
     body.delay_pairings              = document.getElementById('e-delay-pairings').checked;
     body.delay_standings             = document.getElementById('e-delay-standings').checked;
     body.require_check_in            = document.getElementById('e-require-checkin').checked;
