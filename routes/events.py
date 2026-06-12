@@ -77,6 +77,58 @@ def _entry_code_error(event: dict, data: dict) -> str | None:
     return None
 
 
+# ── Discord registration (used by the Discord bot, routes/discord.py) ──────────
+
+def discord_registerable_events(limit: int = 25):
+    """Events a Discord user can currently self-register for — open, not test,
+    not invite-only/closed/expired/full, and with no entry code (codes aren't
+    handled in the Discord flow yet). Soonest first; capped for the select menu."""
+    out = []
+    for e in list_events():
+        if e.get('test_mode') or e.get('entry_code'):
+            continue
+        if _self_registration_blocked(e):
+            continue
+        cap = e.get('registration_cap', 0)
+        active = [p for p in e['players'] if not p.get('dropped')]
+        if cap and len(active) >= cap:
+            continue
+        out.append(e)
+    out.sort(key=lambda e: e.get('date', ''))
+    return out[:limit]
+
+def register_player_via_discord(event_id: str, discord_id: str, discord_name: str):
+    """Register a Discord user as a player, keyed by their Discord ID. Returns
+    ({'player', 'event_name'}, None) on success or (None, error_message)."""
+    e = get_event(event_id)
+    if not e:
+        return None, 'That event no longer exists.'
+    blocked = _self_registration_blocked(e)
+    if blocked:
+        return None, blocked
+    if e.get('entry_code'):
+        return None, 'This event needs an entry code — please register on the web.'
+    cap = e.get('registration_cap', 0)
+    active = [p for p in e['players'] if not p.get('dropped')]
+    if cap and len(active) >= cap:
+        return None, f'This event is full ({cap} players max).'
+    if any(p.get('discord_id') == discord_id for p in e['players']):
+        return None, "You're already registered for this event."
+    name = (discord_name or 'Player').strip()[:80] or 'Player'
+    player = {
+        'id':         _slugify(name) + '_' + str(len(e['players'])),
+        'name':       name,
+        'google_id':  None,
+        'discord_id': discord_id,
+        'discord':    '',
+        'dropped':    False,
+        'checked_in': False,
+    }
+    e['players'].append(player)
+    save_event(event_id, {'players': e['players']})
+    return {'player': player, 'event_name': e.get('name', 'the event')}, None
+
+
 def _normalize_payment_url(raw) -> tuple:
     """Validate/normalize a payment link so it's safe to render as a clickable
     <a href>. Returns (url, error): an empty string for no link, an http(s)
@@ -121,9 +173,14 @@ def _redact_players(event: dict) -> None:
     """Strip guest self-report tokens before sending an event to clients. The
     token is a bearer secret — anyone holding it can report as that player and
     claim their identity via the magic link — so it must never appear in any
-    public event payload. It's only ever returned once, to the joiner."""
+    public event payload. It's only ever returned once, to the joiner.
+
+    Also strip discord_id — it's only used server-side to match a player to the
+    Discord user reporting, and there's no need to expose the player↔Discord
+    mapping in public payloads."""
     for p in event.get('players', []):
         p.pop('guest_token', None)
+        p.pop('discord_id', None)
 
 def _can_report_match(event: dict, match: dict, data: dict) -> bool:
     """Who may report a match result: a manager, the registered Google player
