@@ -101,7 +101,24 @@ def _handle_command(body):
         return _standings_menu()
     if sub == 'link':
         return _link_menu()
+    if sub == 'announce':
+        return _announce_menu()
     return _reply('🃏 Cardboard Party is connected! Try `/cbp register`, `/cbp report`, or `/cbp standings`.')
+
+
+def _announce_menu():
+    """Pick an event to post in the current channel with a one-click Register button."""
+    from routes.events import discord_registerable_events
+    events = discord_registerable_events()
+    if not events:
+        return _reply('There are no events open for registration to announce.')
+    options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
+    select = {'type': STRING_SELECT, 'custom_id': 'cbp_announce_select',
+              'placeholder': 'Which event do you want to post here?', 'options': options}
+    return jsonify({'type': CHANNEL_MESSAGE, 'data': {
+        'flags': EPHEMERAL,
+        'content': 'Post an event here so players can register with one tap:',
+        'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
 def _link_menu():
@@ -233,6 +250,32 @@ def _handle_component(body):
         if not name:
             return _update('That event no longer exists.')
         return _update(f"✅ **{name}** pairings will post in this channel each round.")
+
+    if custom_id == 'cbp_announce_select':
+        import discord_api
+        from routes.events import get_event
+        val = ((body.get('data') or {}).get('values') or [''])[0]
+        channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
+        event = get_event(val)
+        if not event:
+            return _update('That event no longer exists.')
+        event_url = request.host_url.rstrip('/') + '/events/' + val
+        ok = discord_api.announce_event(event, channel_id, event_url)
+        if not ok:
+            return _update("I couldn't post here — check that I have permission to send "
+                           "messages in this channel.")
+        return _update(f"✅ Posted **{event.get('name', 'the event')}** in this channel "
+                       "with a Register button.")
+
+    if custom_id.startswith('cbp_reg_btn:'):
+        # One-tap Register button on an announcement post (no slash command needed).
+        from routes.events import register_player_via_discord
+        eid = custom_id.split(':', 1)[1]
+        result, err = register_player_via_discord(eid, discord_id, name)
+        if err:
+            return _reply(f'⚠️ {err}')
+        return _reply(f"✅ Registered for **{result['event_name']}** as "
+                      f"**{result['player']['name']}**. Report results here with `/cbp report`.")
 
     if custom_id == 'cbp_report_btn':
         # "Report my result" on a pairings post → the report flow for the clicker.

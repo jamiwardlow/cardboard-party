@@ -31,6 +31,26 @@ def post_message(channel_id: str, content: str, components=None) -> bool:
         return False
 
 
+def announce_event(event: dict, channel_id: str, event_url: str) -> bool:
+    """Post an event 'card' to a channel with a one-click Register button (for
+    players who don't know the slash commands) and a link to the web page."""
+    bits = [f"**{event.get('name', 'Event')}** — registration open"]
+    meta = ' · '.join(x for x in (event.get('event_type'), event.get('date'),
+                                  event.get('format')) if x)
+    if meta:
+        bits.append(meta)
+    if event.get('entry_cost'):
+        bits.append(f"Entry: {event['entry_cost']}")
+    if event.get('description'):
+        bits.append(event['description'][:300])
+    bits.append('Tap **Register** to join right here — no account or link needed.')
+    components = [{'type': 1, 'components': [
+        {'type': 2, 'style': 3, 'label': 'Register', 'custom_id': f"cbp_reg_btn:{event['id']}"},
+        {'type': 2, 'style': 5, 'label': 'View details', 'url': event_url},
+    ]}]
+    return post_message(channel_id, '\n'.join(bits), components)
+
+
 def announce_round(event: dict, round_num: int):
     """Post a round's pairings to the event's linked Discord channel (if any),
     with a button players tap to report their own result. Best-effort."""
