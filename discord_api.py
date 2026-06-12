@@ -70,9 +70,7 @@ def event_card(event: dict, event_url: str, state: str, note: str = ''):
         bits.append(f"Entry: {event['entry_cost']}")
     if event.get('description'):
         bits.append(event['description'][:300])
-    if state == 'open':
-        bits.append('Tap **Register** to join right here — no account or link needed.')
-    elif note:
+    if state != 'open' and note:
         bits.append(f'_{note}._')
     register_btn = {'type': 2, 'style': 3, 'label': 'Register',
                     'custom_id': f"cbp_reg_btn:{event['id']}"}
