@@ -33,9 +33,20 @@ app.register_blueprint(discord_bp)
 # this is a safe no-op until CANONICAL_HOST is added to app.yaml.
 CANONICAL_HOST = os.environ.get('CANONICAL_HOST', '').strip()
 
+@app.route('/_ah/warmup')
+def _warmup():
+    """App Engine sends this to a new instance before routing live traffic to it
+    (with inbound_services: warmup). Reaching this route means the WSGI app and
+    all imports are loaded, so the instance is warm — which keeps the first real
+    request (e.g. a Discord interaction) from paying the ~3.7s cold-start that
+    exceeds Discord's 3s response limit."""
+    return '', 200
+
 @app.before_request
 def _redirect_to_canonical_host():
     if not CANONICAL_HOST or request.method not in ('GET', 'HEAD'):
+        return None
+    if request.path.startswith('/_ah/'):   # App Engine internal (warmup, etc.)
         return None
     if request.host == CANONICAL_HOST:
         return None

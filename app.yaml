@@ -5,6 +5,11 @@ runtime: python312
 automatic_scaling:
   min_instances: 1
 
+# Warm new instances (incl. the one a deploy spins up) before routing live
+# traffic, so the first Discord interaction doesn't hit the ~3.7s cold start.
+inbound_services:
+  - warmup
+
 handlers:
   - url: /static
     static_dir: static
