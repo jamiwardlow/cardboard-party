@@ -17,6 +17,7 @@ from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players)
 from routes.auth import get_current_user, login_required
 from discord_notify import post_round, post_test, is_valid_webhook
+import discord_api
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import re
@@ -219,6 +220,22 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code):
     save_event(event_id, {'rounds': e['rounds']})
     return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}).", None
 
+
+def discord_linkable_events(limit: int = 25):
+    """Non-test events an organiser might link to a Discord channel (for the
+    /cbp link picker). Most recent first."""
+    out = [e for e in list_events() if not e.get('test_mode')]
+    out.sort(key=lambda e: e.get('date', ''), reverse=True)
+    return out[:limit]
+
+def set_event_discord_channel(event_id: str, channel_id: str):
+    """Link an event so its pairings auto-post to this Discord channel. Returns
+    the event name, or None if it's gone."""
+    e = get_event(event_id)
+    if not e:
+        return None
+    save_event(event_id, {'discord_channel_id': channel_id})
+    return e.get('name', 'the event')
 
 def discord_standings_events(limit: int = 25):
     """Non-test events that have started (have standings to show)."""
@@ -923,6 +940,7 @@ def api_pair_round(event_id):
         webhook   = _resolve_event_webhook(e)
         if webhook:
             post_round(webhook, e, round_num, new_round, standings)
+        discord_api.announce_round(e, round_num)
         return jsonify({'round_num': round_num, 'pairings': new_round})
 
     if e['rounds'] and e.get('event_type') != 'League':
@@ -953,6 +971,7 @@ def api_pair_round(event_id):
     webhook    = _resolve_event_webhook(e)
     if webhook:
         post_round(webhook, e, round_num, new_round, standings)
+    discord_api.announce_round(e, round_num)
 
     return jsonify({'round_num': round_num, 'pairings': new_round})
 
@@ -989,6 +1008,7 @@ def api_cut_to_top(event_id):
     if webhook:
         post_round(webhook, e, round_num, new_round,
                    compute_standings(e['players'], e['rounds']))
+    discord_api.announce_round(e, round_num)
     return jsonify({'round_num': round_num, 'cut_size': cut_size, 'pairings': new_round})
 
 
@@ -1109,6 +1129,7 @@ def api_repair_round(event_id, round_num):
     webhook   = _resolve_event_webhook(e)
     if webhook:
         post_round(webhook, e, round_num, new_round, standings)
+    discord_api.announce_round(e, round_num)
 
     return jsonify({'round_num': round_num, 'pairings': new_round})
 

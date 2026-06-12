@@ -99,7 +99,24 @@ def _handle_command(body):
         return _report_menu(body)
     if sub == 'standings':
         return _standings_menu()
+    if sub == 'link':
+        return _link_menu()
     return _reply('🃏 Cardboard Party is connected! Try `/cbp register`, `/cbp report`, or `/cbp standings`.')
+
+
+def _link_menu():
+    """Pick an event whose pairings should auto-post in the current channel."""
+    from routes.events import discord_linkable_events
+    events = discord_linkable_events()
+    if not events:
+        return _reply('No events to link yet.')
+    options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
+    select = {'type': STRING_SELECT, 'custom_id': 'cbp_link_select',
+              'placeholder': 'Which event posts pairings here?', 'options': options}
+    return jsonify({'type': CHANNEL_MESSAGE, 'data': {
+        'flags': EPHEMERAL,
+        'content': 'Link an event to **this channel** — its pairings will post here each round:',
+        'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
 def _standings_menu():
@@ -207,6 +224,19 @@ def _handle_component(body):
         from routes.events import discord_standings_text
         val = ((body.get('data') or {}).get('values') or [''])[0]
         return _update(discord_standings_text(val) or 'That event no longer exists.')
+
+    if custom_id == 'cbp_link_select':
+        from routes.events import set_event_discord_channel
+        val = ((body.get('data') or {}).get('values') or [''])[0]
+        channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
+        name = set_event_discord_channel(val, channel_id)
+        if not name:
+            return _update('That event no longer exists.')
+        return _update(f"✅ **{name}** pairings will post in this channel each round.")
+
+    if custom_id == 'cbp_report_btn':
+        # "Report my result" on a pairings post → the report flow for the clicker.
+        return _report_menu(body)
 
     if custom_id.startswith('cbp_rep:'):
         from routes.events import report_result_via_discord
