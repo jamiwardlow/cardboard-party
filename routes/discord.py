@@ -97,7 +97,25 @@ def _handle_command(body):
         return _register_picker()
     if sub == 'report':
         return _report_menu(body)
-    return _reply('🃏 Cardboard Party is connected! Try `/cbp register` or `/cbp report`.')
+    if sub == 'standings':
+        return _standings_menu()
+    return _reply('🃏 Cardboard Party is connected! Try `/cbp register`, `/cbp report`, or `/cbp standings`.')
+
+
+def _standings_menu():
+    """Show standings; pick an event first if more than one has started."""
+    from routes.events import discord_standings_events, discord_standings_text
+    events = discord_standings_events()
+    if not events:
+        return _reply('No events have standings yet.')
+    if len(events) == 1:
+        return _reply(discord_standings_text(events[0]['id']))
+    options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
+    select = {'type': STRING_SELECT, 'custom_id': 'cbp_standings_select',
+              'placeholder': 'Which event?', 'options': options}
+    return jsonify({'type': CHANNEL_MESSAGE, 'data': {
+        'flags': EPHEMERAL, 'content': 'Standings for which event?',
+        'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
 def _register_picker():
@@ -184,6 +202,11 @@ def _handle_component(body):
         if not ctx:
             return _update("That doesn't look like an open match of yours anymore.")
         return jsonify({'type': UPDATE_MESSAGE, 'data': _report_buttons(ctx)})
+
+    if custom_id == 'cbp_standings_select':
+        from routes.events import discord_standings_text
+        val = ((body.get('data') or {}).get('values') or [''])[0]
+        return _update(discord_standings_text(val) or 'That event no longer exists.')
 
     if custom_id.startswith('cbp_rep:'):
         from routes.events import report_result_via_discord

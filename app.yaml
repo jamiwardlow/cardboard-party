@@ -1,5 +1,10 @@
 runtime: python312
 
+# Keep one instance warm so Discord interactions answer within its 3s limit
+# (cold starts can exceed it). ~24 instance-hours/day stays near the free tier.
+automatic_scaling:
+  min_instances: 1
+
 handlers:
   - url: /static
     static_dir: static

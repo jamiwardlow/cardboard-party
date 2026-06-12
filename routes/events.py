@@ -220,6 +220,30 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code):
     return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}).", None
 
 
+def discord_standings_events(limit: int = 25):
+    """Non-test events that have started (have standings to show)."""
+    out = [e for e in list_events() if e.get('rounds') and not e.get('test_mode')]
+    out.sort(key=lambda e: e.get('date', ''), reverse=True)
+    return out[:limit]
+
+def discord_standings_text(event_id: str, top: int = 16):
+    """Formatted standings for a Discord message, or None if the event is gone."""
+    e = get_event(event_id)
+    if not e:
+        return None
+    standings = compute_standings(e['players'], e['rounds'])
+    name = e.get('name', 'Event')
+    if not standings:
+        return f"**{name}** — no standings yet."
+    lines = [f"**{name}** — standings"]
+    for i, s in enumerate(standings[:top], 1):
+        tag = ' _(dropped)_' if s.get('dropped') else ''
+        lines.append(f"{i}. {s['name']} — {s['points']} pts{tag}")
+    if len(standings) > top:
+        lines.append(f"…and {len(standings) - top} more")
+    return '\n'.join(lines)
+
+
 def _normalize_payment_url(raw) -> tuple:
     """Validate/normalize a payment link so it's safe to render as a clickable
     <a href>. Returns (url, error): an empty string for no link, an http(s)
