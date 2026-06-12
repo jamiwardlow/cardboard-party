@@ -32,7 +32,9 @@ EPHEMERAL = 1 << 6           # message flag: only the invoking user sees it
 
 # Component types
 ACTION_ROW = 1
+BUTTON = 2
 STRING_SELECT = 3
+# Button styles: 1 primary, 2 secondary, 3 success (green), 4 danger (red)
 
 
 def _verify_signature(req) -> bool:
@@ -93,7 +95,9 @@ def _handle_command(body):
     sub = ((data.get('options') or [{}])[0]).get('name')
     if sub == 'register':
         return _register_picker()
-    return _reply('🃏 Cardboard Party is connected! Try `/cbp register`.')
+    if sub == 'report':
+        return _report_menu(body)
+    return _reply('🃏 Cardboard Party is connected! Try `/cbp register` or `/cbp report`.')
 
 
 def _register_picker():
@@ -116,20 +120,80 @@ def _register_picker():
         'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
+def _report_menu(body):
+    """Entry for /cbp report: 0 matches → notice; 1 → result buttons; many → picker."""
+    from routes.events import discord_open_matches
+    discord_id, _ = _interaction_user(body)
+    matches = discord_open_matches(discord_id)
+    if not matches:
+        return _reply('You have no matches to report right now.')
+    if len(matches) == 1:
+        return jsonify({'type': CHANNEL_MESSAGE, 'data': _report_buttons(matches[0])})
+    options = [{'label': f"{m['event_name']} — vs {m['opponent']}"[:100],
+                'value': f"{m['event_id']}:{m['round_idx']}:{m['match_idx']}"} for m in matches]
+    select = {'type': STRING_SELECT, 'custom_id': 'cbp_report_select',
+              'placeholder': 'Which match?', 'options': options}
+    return jsonify({'type': CHANNEL_MESSAGE, 'data': {
+        'flags': EPHEMERAL, 'content': 'Which match do you want to report?',
+        'components': [{'type': ACTION_ROW, 'components': [select]}]}})
+
+
+def _report_buttons(ctx):
+    """Result-entry buttons for one match (from the reporter's perspective)."""
+    def cid(code):
+        return f"cbp_rep:{ctx['event_id']}:{ctx['round_idx']}:{ctx['match_idx']}:{code}"
+    rows = [{'type': ACTION_ROW, 'components': [
+        {'type': BUTTON, 'style': 3, 'label': 'Win 2–0',  'custom_id': cid('w20')},
+        {'type': BUTTON, 'style': 3, 'label': 'Win 2–1',  'custom_id': cid('w21')},
+        {'type': BUTTON, 'style': 4, 'label': 'Lose 1–2', 'custom_id': cid('l12')},
+        {'type': BUTTON, 'style': 4, 'label': 'Lose 0–2', 'custom_id': cid('l02')},
+        {'type': BUTTON, 'style': 2, 'label': 'Draw',     'custom_id': cid('draw')},
+    ]}]
+    if ctx.get('allow_id'):
+        rows.append({'type': ACTION_ROW, 'components': [
+            {'type': BUTTON, 'style': 2, 'label': 'Intentional draw (0–0–3)', 'custom_id': cid('id')}]})
+    return {'flags': EPHEMERAL,
+            'content': f"Report your Round {ctx['round_num']} match vs "
+                       f"**{ctx['opponent']}** ({ctx['event_name']}):",
+            'components': rows}
+
+
 def _handle_component(body):
-    custom_id = (body.get('data') or {}).get('custom_id')
+    custom_id = (body.get('data') or {}).get('custom_id') or ''
+    discord_id, name = _interaction_user(body)
+
     if custom_id == 'cbp_register_select':
         from routes.events import register_player_via_discord
         values = (body.get('data') or {}).get('values') or []
         if not values:
             return _update('No event selected.')
-        discord_id, name = _interaction_user(body)
         result, err = register_player_via_discord(values[0], discord_id, name)
         if err:
             return _update(f'⚠️ {err}')
         return _update(f"✅ Registered for **{result['event_name']}** as "
-                       f"**{result['player']['name']}**. You'll be able to report "
-                       f"results here with `/cbp report` soon.")
+                       f"**{result['player']['name']}**. Report results here with `/cbp report`.")
+
+    if custom_id == 'cbp_report_select':
+        from routes.events import discord_match_context
+        val = ((body.get('data') or {}).get('values') or [''])[0]
+        try:
+            eid, ri, mi = val.split(':'); ri, mi = int(ri), int(mi)
+        except ValueError:
+            return _update('Sorry, that selection was invalid.')
+        ctx = discord_match_context(eid, ri, mi, discord_id)
+        if not ctx:
+            return _update("That doesn't look like an open match of yours anymore.")
+        return jsonify({'type': UPDATE_MESSAGE, 'data': _report_buttons(ctx)})
+
+    if custom_id.startswith('cbp_rep:'):
+        from routes.events import report_result_via_discord
+        try:
+            _, eid, ri, mi, code = custom_id.split(':'); ri, mi = int(ri), int(mi)
+        except ValueError:
+            return _update('Sorry, that button was invalid.')
+        msg, err = report_result_via_discord(eid, ri, mi, discord_id, code)
+        return _update(f'⚠️ {err}' if err else f'✅ {msg}')
+
     return _reply('That action is not available yet.')
 
 

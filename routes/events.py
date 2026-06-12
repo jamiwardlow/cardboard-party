@@ -129,6 +129,97 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
 
 
+def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str):
+    """Context for a Discord user's match in event `e`, or None if it's not their
+    open (unreported, non-bye) match. Shared by the report picker and reporting."""
+    rounds = e.get('rounds', [])
+    if not (0 <= round_idx < len(rounds)):
+        return None
+    rnd = rounds[round_idx]
+    if not (0 <= match_idx < len(rnd)):
+        return None
+    m = rnd[match_idx]
+    player = next((p for p in e['players']
+                   if p.get('discord_id') == discord_id and not p.get('dropped')), None)
+    if not player or m.get('is_bye'):
+        return None
+    if player['id'] not in (m.get('player1_id'), m.get('player2_id')):
+        return None
+    if m.get('winner_id') or m.get('result') in DRAW_RESULTS:
+        return None
+    is_p1 = player['id'] == m.get('player1_id')
+    opp_id = m['player2_id'] if is_p1 else m['player1_id']
+    opp = next((p for p in e['players'] if p['id'] == opp_id), None)
+    return {
+        'event_id': e['id'], 'event_name': e.get('name', 'Event'),
+        'round_idx': round_idx, 'match_idx': match_idx, 'round_num': round_idx + 1,
+        'player_id': player['id'], 'opp_id': opp_id,
+        'opponent': opp['name'] if opp else 'Opponent', 'is_p1': is_p1,
+        'allow_id': bool(e.get('advanced')) and not e.get('intentional_draws_frowned'),
+    }
+
+def discord_open_matches(discord_id: str, limit: int = 25):
+    """A Discord user's current open matches (latest round of each event they're
+    in), for the /cbp report picker."""
+    out = []
+    for e in list_events():
+        ridx = len(e.get('rounds', [])) - 1
+        if ridx < 0:
+            continue
+        for midx in range(len(e['rounds'][ridx])):
+            ctx = _discord_match_ctx(e, ridx, midx, discord_id)
+            if ctx:
+                out.append(ctx)
+                break
+    return out[:limit]
+
+def discord_match_context(event_id: str, round_idx: int, match_idx: int, discord_id: str):
+    e = get_event(event_id)
+    return _discord_match_ctx(e, round_idx, match_idx, discord_id) if e else None
+
+# Map a reporter-perspective result code to a stored result + summary.
+_DISCORD_RESULT_CODES = {
+    'w20': ('win',  2, 0), 'w21': ('win',  2, 1),
+    'l02': ('lose', 0, 2), 'l12': ('lose', 1, 2),
+    'draw': ('draw', None, None), 'id': ('id', None, None),
+}
+
+def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code):
+    """Record a result a Discord player reports for their own match. `code` is
+    from the reporter's perspective (see _DISCORD_RESULT_CODES). Returns
+    (confirmation, None) or (None, error)."""
+    e = get_event(event_id)
+    if not e:
+        return None, 'That event no longer exists.'
+    ctx = _discord_match_ctx(e, round_idx, match_idx, discord_id)
+    if not ctx:
+        return None, "That doesn't look like an open match of yours anymore."
+    spec = _DISCORD_RESULT_CODES.get(code)
+    if not spec:
+        return None, 'Unknown result.'
+    kind, mine, theirs = spec
+    if kind == 'draw':
+        winner_id, result, summary = None, 'draw', 'a draw (1–1)'
+    elif kind == 'id':
+        if not ctx['allow_id']:
+            return None, 'Intentional draws are not allowed for this event.'
+        winner_id, result, summary = None, '0-0-3', 'an intentional draw (0–0–3)'
+    else:
+        winner_id = ctx['player_id'] if kind == 'win' else ctx['opp_id']
+        # Stored result is from player1's perspective.
+        a, b = (mine, theirs) if ctx['is_p1'] else (theirs, mine)
+        result = f'{a}-{b}'
+        summary = f"you {'won' if kind == 'win' else 'lost'} {max(mine, theirs)}–{min(mine, theirs)}"
+    err = _validate_result(e['rounds'][round_idx][match_idx], winner_id, result)
+    if err:
+        return None, err
+    m = e['rounds'][round_idx][match_idx]
+    m['winner_id'] = winner_id
+    m['result'] = result
+    save_event(event_id, {'rounds': e['rounds']})
+    return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}).", None
+
+
 def _normalize_payment_url(raw) -> tuple:
     """Validate/normalize a payment link so it's safe to render as a clickable
     <a href>. Returns (url, error): an empty string for no link, an http(s)
