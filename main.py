@@ -4,6 +4,7 @@ from urllib.parse import urlsplit, urlunsplit
 from flask import Flask, request, redirect
 from routes.auth import auth_bp
 from routes.events import events_bp
+from routes.discord import discord_bp
 from gcp_secrets import get_secret
 
 app = Flask(__name__)
@@ -23,6 +24,7 @@ app.config.update(
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(events_bp)
+app.register_blueprint(discord_bp)
 
 # Canonical host (e.g. "cardboardparty.gg"). When set, every page is served
 # under this host: requests to any other host (the appspot URL, www.*, etc.)
