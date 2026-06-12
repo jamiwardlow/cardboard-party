@@ -90,7 +90,7 @@ def _interaction_user(body):
 
 def _handle_command(body):
     data = body.get('data') or {}
-    if data.get('name') != 'cbp':
+    if data.get('name') != 'cbparty':
         return _reply('Unknown command.')
     sub = ((data.get('options') or [{}])[0]).get('name')
     if sub == 'register':
@@ -103,7 +103,7 @@ def _handle_command(body):
         return _link_menu()
     if sub == 'announce':
         return _announce_menu()
-    return _reply('🃏 Cardboard Party is connected! Try `/cbp register`, `/cbp report`, or `/cbp standings`.')
+    return _reply('🃏 Cardboard Party is connected! Try `/cbparty register`, `/cbparty report`, or `/cbparty standings`.')
 
 
 def _announce_menu():
@@ -173,7 +173,7 @@ def _register_picker():
 
 
 def _report_menu(body):
-    """Entry for /cbp report: 0 matches → notice; 1 → result buttons; many → picker."""
+    """Entry for /cbparty report: 0 matches → notice; 1 → result buttons; many → picker."""
     from routes.events import discord_open_matches
     discord_id, _ = _interaction_user(body)
     matches = discord_open_matches(discord_id)
@@ -223,7 +223,7 @@ def _handle_component(body):
         if err:
             return _update(f'⚠️ {err}')
         return _update(f"✅ Registered for **{result['event_name']}** as "
-                       f"**{result['player']['name']}**. Report results here with `/cbp report`.")
+                       f"**{result['player']['name']}**. Report results here with `/cbparty report`.")
 
     if custom_id == 'cbp_report_select':
         from routes.events import discord_match_context
@@ -272,7 +272,7 @@ def _handle_component(body):
         if err:
             return _reply(f'⚠️ {err}')
         return _reply(f"✅ Registered for **{result['event_name']}** as "
-                      f"**{result['player']['name']}**. Report results here with `/cbp report`.")
+                      f"**{result['player']['name']}**. Report results here with `/cbparty report`.")
 
     if custom_id == 'cbp_report_btn':
         # "Report my result" on a pairings post → the report flow for the clicker.
