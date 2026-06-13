@@ -11,12 +11,10 @@ from flask import Blueprint, request, jsonify, render_template, abort, session
 from db import (create_event, get_event, save_event, list_events, delete_event,
                 set_player_dropped, set_player_field,
                 get_admins, is_admin, add_admin, remove_admin,
-                get_user_profile, save_user_profile, list_users,
-                get_config, save_config)
+                get_user_profile, save_user_profile, list_users)
 from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players)
 from routes.auth import get_current_user, login_required
-from discord_notify import post_round, post_test, is_valid_webhook
 import discord_api
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
@@ -439,22 +437,6 @@ def _validate_result(match: dict, winner_id, result) -> str | None:
         return 'Winner does not match the score'
     return None
 
-def _resolve_event_webhook(event: dict) -> str:
-    """Resolve an event's notification setting to an actual webhook URL ('' = none)."""
-    mode = event.get('notify_mode', 'none')
-    if mode == 'community':
-        return get_config().get('discord_webhook', '')
-    if mode == 'saved':
-        owner = get_user_profile(event.get('owner_id', ''))
-        wid = event.get('notify_webhook_id')
-        wh = next((w for w in owner.get('webhooks', []) if w.get('id') == wid), None)
-        return wh['url'] if wh else ''
-    return ''
-
-def _mask_webhook(url: str) -> str:
-    """Identify a webhook without revealing its token."""
-    return (url[:38] + '…' + url[-4:]) if len(url) > 46 else url
-
 def _now_iso() -> str:
     """Current UTC time as an ISO string (used to stamp round-timer starts)."""
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -640,8 +622,6 @@ def api_create_event():
         'registration_end':   (data.get('registration_end') or '').strip(),
         'unenroll_end':       (data.get('unenroll_end') or '').strip(),
         'registration_cap': data.get('registration_cap', 0),  # 0 = no cap
-        'notify_mode':      'none',   # none | community | saved
-        'notify_webhook_id': '',      # which saved webhook (when mode == saved)
     }
     eid = create_event(event)
     event['id'] = eid
@@ -662,13 +642,6 @@ def api_get_event(event_id):
     owner_profile = get_user_profile(e.get('owner_id', ''))
     # Surface the organizer's discord (if known) so players know how to reach them.
     e['owner_discord'] = owner_profile.get('discord', '')
-    # Whether the "community channel" option is available (admin has set one).
-    e['community_webhook_set'] = bool(get_config().get('discord_webhook'))
-    # Managers pick the notification destination from the owner's saved webhooks
-    # (labels only — never expose the URLs, and only to people who can manage).
-    if e['can_manage']:
-        e['owner_webhooks'] = [{'id': w['id'], 'label': w.get('label', '')}
-                               for w in owner_profile.get('webhooks', [])]
     # Expose only whether a code is needed; the code itself is a secret the
     # organiser shares out-of-band, so never send it to non-managers.
     e['entry_code_required'] = bool(e.get('entry_code'))
@@ -702,8 +675,7 @@ def api_update_event(event_id):
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'num_rounds',
                'status', 'registration', 'registration_cap',
-               'registration_type', 'registration_start', 'registration_end', 'unenroll_end',
-               'notify_mode', 'notify_webhook_id'}
+               'registration_type', 'registration_start', 'registration_end', 'unenroll_end'}
     updates = {k: v for k, v in data.items() if k in allowed}
     if 'name' in updates and not str(updates['name']).strip():
         return jsonify({'error': 'Event name is required'}), 400
@@ -735,8 +707,6 @@ def api_update_event(event_id):
         updates['structure'] = ''
     if 'planned_cut_size' in updates and updates['planned_cut_size'] not in (4, 8, 16):
         updates['planned_cut_size'] = 0
-    if updates.get('notify_mode') not in (None, 'none', 'community', 'saved'):
-        return jsonify({'error': 'Invalid notify_mode'}), 400
     if 'payment_url' in updates:
         updates['payment_url'], err = _normalize_payment_url(updates['payment_url'])
         if err:
@@ -1063,10 +1033,6 @@ def api_pair_round(event_id):
         e['rounds'].append(new_round)
         save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
         round_num = len(e['rounds'])
-        standings = compute_standings(e['players'], e['rounds'])
-        webhook   = _resolve_event_webhook(e)
-        if webhook:
-            post_round(webhook, e, round_num, new_round, standings)
         discord_api.announce_round(e, round_num)
         return jsonify({'round_num': round_num, 'pairings': new_round})
 
@@ -1096,10 +1062,6 @@ def api_pair_round(event_id):
     refresh_event_announcement(e)
 
     round_num  = len(e['rounds'])
-    standings  = compute_standings(e['players'], e['rounds'])
-    webhook    = _resolve_event_webhook(e)
-    if webhook:
-        post_round(webhook, e, round_num, new_round, standings)
     discord_api.announce_round(e, round_num)
 
     return jsonify({'round_num': round_num, 'pairings': new_round})
@@ -1133,10 +1095,6 @@ def api_cut_to_top(event_id):
                           **_new_round_updates(e)})
 
     round_num = len(e['rounds'])
-    webhook   = _resolve_event_webhook(e)
-    if webhook:
-        post_round(webhook, e, round_num, new_round,
-                   compute_standings(e['players'], e['rounds']))
     discord_api.announce_round(e, round_num)
     return jsonify({'round_num': round_num, 'cut_size': cut_size, 'pairings': new_round})
 
@@ -1254,10 +1212,6 @@ def api_repair_round(event_id, round_num):
     e['rounds'][idx] = new_round
     save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
 
-    standings = compute_standings(e['players'], e['rounds'])
-    webhook   = _resolve_event_webhook(e)
-    if webhook:
-        post_round(webhook, e, round_num, new_round, standings)
     discord_api.announce_round(e, round_num)
 
     return jsonify({'round_num': round_num, 'pairings': new_round})
@@ -1581,91 +1535,3 @@ def api_delete_avatar():
     google_pic = profile.get('google_picture', '')
     session['user']['picture'] = google_pic  # revert nav to Google picture
     return jsonify({'avatar_url': google_pic})
-
-
-# ── Admin settings (Discord webhook etc.) ─────────────────────────────────────
-
-@events_bp.route('/admin/settings')
-@login_required
-def settings_page():
-    user = get_current_user()
-    if not is_admin(user['id']):
-        abort(403)
-    config = get_config()
-    return render_template('settings.html', user=user, config=config)
-
-@events_bp.route('/api/settings', methods=['PUT'])
-@login_required
-def api_update_settings():
-    user = get_current_user()
-    if not is_admin(user['id']):
-        abort(403)
-    data = request.json or {}
-    updates = {}
-    if 'discord_webhook' in data:
-        wh = (data.get('discord_webhook') or '').strip()
-        if wh and not is_valid_webhook(wh):
-            return jsonify({'error': 'That does not look like a Discord webhook URL'}), 400
-        updates['discord_webhook'] = wh  # '' clears it
-    save_config(updates)
-    return jsonify({'ok': True})
-
-
-# ── Personal Discord webhooks (per organiser) ─────────────────────────────────
-# Saved on the user's profile as webhooks: [{id, label, url}]. Any signed-in user
-# can manage their own; events reference them by id via notify_webhook_id.
-
-@events_bp.route('/webhooks')
-@login_required
-def webhooks_page():
-    return render_template('webhooks.html', user=get_current_user())
-
-@events_bp.route('/api/webhooks', methods=['GET'])
-@login_required
-def api_list_webhooks():
-    user  = get_current_user()
-    hooks = get_user_profile(user['id']).get('webhooks', [])
-    # Never return full URLs to the client.
-    return jsonify([{'id': w['id'], 'label': w.get('label', ''),
-                     'masked': _mask_webhook(w.get('url', ''))} for w in hooks])
-
-@events_bp.route('/api/webhooks', methods=['POST'])
-@login_required
-def api_add_webhook():
-    user  = get_current_user()
-    data  = request.json or {}
-    label = (data.get('label') or '').strip()
-    url   = (data.get('url') or '').strip()
-    if not label:
-        return jsonify({'error': 'A label is required'}), 400
-    if not is_valid_webhook(url):
-        return jsonify({'error': 'That does not look like a Discord webhook URL'}), 400
-    profile = get_user_profile(user['id'])
-    hooks   = profile.get('webhooks', [])
-    if len(hooks) >= 25:
-        return jsonify({'error': 'You have reached the saved-webhook limit'}), 400
-    hook = {'id': uuid.uuid4().hex[:12], 'label': label, 'url': url}
-    hooks.append(hook)
-    save_user_profile(user['id'], {'webhooks': hooks})
-    return jsonify({'id': hook['id'], 'label': label, 'masked': _mask_webhook(url)}), 201
-
-@events_bp.route('/api/webhooks/<webhook_id>', methods=['DELETE'])
-@login_required
-def api_delete_webhook(webhook_id):
-    user  = get_current_user()
-    hooks = [w for w in get_user_profile(user['id']).get('webhooks', [])
-             if w.get('id') != webhook_id]
-    save_user_profile(user['id'], {'webhooks': hooks})
-    return jsonify({'ok': True})
-
-@events_bp.route('/api/webhooks/<webhook_id>/test', methods=['POST'])
-@login_required
-def api_test_webhook(webhook_id):
-    user = get_current_user()
-    wh = next((w for w in get_user_profile(user['id']).get('webhooks', [])
-               if w.get('id') == webhook_id), None)
-    if not wh:
-        return jsonify({'error': 'Webhook not found'}), 404
-    if post_test(wh['url']):
-        return jsonify({'ok': True})
-    return jsonify({'error': 'Discord did not accept the test message'}), 502

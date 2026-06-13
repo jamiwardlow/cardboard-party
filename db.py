@@ -147,15 +147,3 @@ def list_users() -> list[dict]:
         data['google_id'] = doc.id
         users.append(data)
     return users
-
-
-# ── Config (Discord webhook etc.) ─────────────────────────────────────────────
-
-_CONFIG_DOC = 'config/settings'
-
-def get_config() -> dict:
-    doc = get_db().document(_CONFIG_DOC).get()
-    return doc.to_dict() if doc.exists else {}
-
-def save_config(data: dict):
-    get_db().document(_CONFIG_DOC).set(data, merge=True)

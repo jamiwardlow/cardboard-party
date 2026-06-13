@@ -336,17 +336,6 @@ td.result { width: 1%; white-space: nowrap; }
             padding: 0.1rem 0.35rem; font-size: 0.95rem; line-height: 1; cursor: pointer; }
 .edit-name-btn:hover { color: var(--text); }
 
-/* ── Saved webhooks list ──────────────────────────────────────────────────── */
-.webhook-list    { list-style: none; font-size: 0.88rem; }
-.webhook-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
-                   padding: 0.65rem 0; border-bottom: 1px solid var(--border); }
-.webhook-list li:last-child { border-bottom: none; }
-.webhook-main    { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
-.webhook-label   { font-weight: 500; color: var(--text); }
-.webhook-masked  { font-family: var(--font-mono); font-size: 0.74rem; color: var(--muted);
-                   word-break: break-all; }
-.webhook-actions { display: flex; gap: 0.4rem; margin-left: auto; flex-shrink: 0; }
-
 /* ── Add-player typeahead ─────────────────────────────────────────────────── */
 .autocomplete       { position: relative; }
 .autocomplete-list  { list-style: none; position: absolute; top: calc(100% + 2px); left: 0; right: 0;
