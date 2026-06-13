@@ -293,7 +293,7 @@ def _handle_component(body):
             _, eid, ri, mi, code = custom_id.split(':'); ri, mi = int(ri), int(mi)
         except ValueError:
             return _update('Sorry, that button was invalid.')
-        msg, err = report_result_via_discord(eid, ri, mi, discord_id, code)
+        msg, err = report_result_via_discord(eid, ri, mi, discord_id, code, request.host_url)
         return _update(f'⚠️ {err}' if err else f'✅ {msg}')
 
     return _reply('That action is not available yet.')

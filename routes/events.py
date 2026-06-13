@@ -212,9 +212,18 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
 
 
-def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str):
+def _google_id_for_discord(discord_id: str):
+    """The Google account (if any) linked to a Discord numeric ID — so we can also
+    match players who registered on the web/were added by an organiser but have a
+    linked Discord. Returns the google_id or None."""
+    prof = _find_profile_for_discord(discord_id, '')   # '' = match by discord_id only
+    return prof.get('google_id') if prof else None
+
+def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str, gid=None):
     """Context for a Discord user's match in event `e`, or None if it's not their
-    open (unreported, non-bye) match. Shared by the report picker and reporting."""
+    open (unreported, non-bye) match. Shared by the report picker and reporting.
+    `gid` is the Google account linked to this Discord user (if known), so a
+    web/organiser-added player who's linked their Discord is also matched."""
     rounds = e.get('rounds', [])
     if not (0 <= round_idx < len(rounds)):
         return None
@@ -223,7 +232,9 @@ def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str)
         return None
     m = rnd[match_idx]
     player = next((p for p in e['players']
-                   if p.get('discord_id') == discord_id and not p.get('dropped')), None)
+                   if not p.get('dropped') and
+                      (p.get('discord_id') == discord_id or (gid and p.get('google_id') == gid))),
+                  None)
     if not player or m.get('is_bye'):
         return None
     if player['id'] not in (m.get('player1_id'), m.get('player2_id')):
@@ -245,12 +256,13 @@ def discord_open_matches(discord_id: str, limit: int = 25):
     """A Discord user's current open matches (latest round of each event they're
     in), for the /cbp report picker."""
     out = []
+    gid = _google_id_for_discord(discord_id)
     for e in list_events():
         ridx = len(e.get('rounds', [])) - 1
         if ridx < 0:
             continue
         for midx in range(len(e['rounds'][ridx])):
-            ctx = _discord_match_ctx(e, ridx, midx, discord_id)
+            ctx = _discord_match_ctx(e, ridx, midx, discord_id, gid)
             if ctx:
                 out.append(ctx)
                 break
@@ -258,7 +270,8 @@ def discord_open_matches(discord_id: str, limit: int = 25):
 
 def discord_match_context(event_id: str, round_idx: int, match_idx: int, discord_id: str):
     e = get_event(event_id)
-    return _discord_match_ctx(e, round_idx, match_idx, discord_id) if e else None
+    return _discord_match_ctx(e, round_idx, match_idx, discord_id,
+                              _google_id_for_discord(discord_id)) if e else None
 
 # Map a reporter-perspective result code to a stored result + summary.
 _DISCORD_RESULT_CODES = {
@@ -267,14 +280,15 @@ _DISCORD_RESULT_CODES = {
     'draw': ('draw', None, None), 'id': ('id', None, None),
 }
 
-def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code):
+def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, base_url=''):
     """Record a result a Discord player reports for their own match. `code` is
     from the reporter's perspective (see _DISCORD_RESULT_CODES). Returns
     (confirmation, None) or (None, error)."""
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    ctx = _discord_match_ctx(e, round_idx, match_idx, discord_id)
+    ctx = _discord_match_ctx(e, round_idx, match_idx, discord_id,
+                             _google_id_for_discord(discord_id))
     if not ctx:
         return None, "That doesn't look like an open match of yours anymore."
     spec = _DISCORD_RESULT_CODES.get(code)
@@ -300,6 +314,9 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code):
     m['winner_id'] = winner_id
     m['result'] = result
     save_event(event_id, {'rounds': e['rounds']})
+    # Let the opponent know it's recorded so they don't report it again.
+    discord_api.dm_result_recorded(e, round_idx, match_idx,
+                                   exclude_player_id=ctx['player_id'], base_url=base_url)
     return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}).", None
 
 
@@ -1034,6 +1051,7 @@ def api_pair_round(event_id):
         save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
         round_num = len(e['rounds'])
         discord_api.announce_round(e, round_num)
+        discord_api.dm_round_pairings(e, round_num, request.host_url)
         return jsonify({'round_num': round_num, 'pairings': new_round})
 
     if e['rounds'] and e.get('event_type') != 'League':
@@ -1063,6 +1081,7 @@ def api_pair_round(event_id):
 
     round_num  = len(e['rounds'])
     discord_api.announce_round(e, round_num)
+    discord_api.dm_round_pairings(e, round_num, request.host_url)
 
     return jsonify({'round_num': round_num, 'pairings': new_round})
 
@@ -1096,6 +1115,7 @@ def api_cut_to_top(event_id):
 
     round_num = len(e['rounds'])
     discord_api.announce_round(e, round_num)
+    discord_api.dm_round_pairings(e, round_num, request.host_url)
     return jsonify({'round_num': round_num, 'cut_size': cut_size, 'pairings': new_round})
 
 
@@ -1213,6 +1233,7 @@ def api_repair_round(event_id, round_num):
     save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
 
     discord_api.announce_round(e, round_num)
+    discord_api.dm_round_pairings(e, round_num, request.host_url)
 
     return jsonify({'round_num': round_num, 'pairings': new_round})
 
@@ -1248,6 +1269,21 @@ def api_record_result(event_id, round_num):
     match['winner_id'] = winner_id
     match['result']    = result
     save_event(event_id, {'rounds': e['rounds']})
+    # Notify the other player(s) via Discord so they don't report it again. The
+    # reporter (a player) is excluded; an organiser reporting excludes no one.
+    reporter_pid = None
+    user = get_current_user()
+    if user:
+        gp = _find_player_by_google_id(e, user['id'])
+        if gp:
+            reporter_pid = gp['id']
+    if reporter_pid is None:
+        token = request.headers.get('X-Guest-Token') or data.get('guest_token')
+        gp = _find_player_by_guest_token(e, token)
+        if gp:
+            reporter_pid = gp['id']
+    discord_api.dm_result_recorded(e, idx, match_index,
+                                   exclude_player_id=reporter_pid, base_url=request.host_url)
     return jsonify(match)
 
 
