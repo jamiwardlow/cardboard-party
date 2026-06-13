@@ -332,6 +332,9 @@ td.result { width: 1%; white-space: nowrap; }
 .checkin-tag.in  { color: var(--green); background: var(--green-soft); border: 1px solid rgba(74,222,128,0.35); }
 .checkin-tag.out { color: var(--muted); background: var(--bg3); border: 1px solid var(--border); }
 .checkin-btn { flex-shrink: 0; }
+.edit-name-btn { flex-shrink: 0; background: none; border: none; color: var(--muted);
+            padding: 0.1rem 0.35rem; font-size: 0.95rem; line-height: 1; cursor: pointer; }
+.edit-name-btn:hover { color: var(--text); }
 
 /* ── Saved webhooks list ──────────────────────────────────────────────────── */
 .webhook-list    { list-style: none; font-size: 0.88rem; }

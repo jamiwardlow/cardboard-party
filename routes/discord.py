@@ -87,6 +87,13 @@ def _interaction_user(body):
     name = member.get('nick') or user.get('global_name') or user.get('username') or 'Player'
     return user.get('id'), name
 
+def _interaction_username(body):
+    """The triggering user's unique Discord username (the @handle), used to match
+    them to an existing account at registration."""
+    member = body.get('member') or {}
+    user = member.get('user') or body.get('user') or {}
+    return user.get('username') or ''
+
 
 def _handle_command(body):
     data = body.get('data') or {}
@@ -219,7 +226,8 @@ def _handle_component(body):
         values = (body.get('data') or {}).get('values') or []
         if not values:
             return _update('No event selected.')
-        result, err = register_player_via_discord(values[0], discord_id, name)
+        result, err = register_player_via_discord(
+            values[0], discord_id, name, _interaction_username(body))
         if err:
             return _update(f'⚠️ {err}')
         return _update(f"✅ Registered for **{result['event_name']}** as "
@@ -268,7 +276,8 @@ def _handle_component(body):
         # One-tap Register button on an announcement post (no slash command needed).
         from routes.events import register_player_via_discord
         eid = custom_id.split(':', 1)[1]
-        result, err = register_player_via_discord(eid, discord_id, name)
+        result, err = register_player_via_discord(
+            eid, discord_id, name, _interaction_username(body))
         if err:
             return _reply(f'⚠️ {err}')
         return _reply(f"✅ Registered for **{result['event_name']}** as "

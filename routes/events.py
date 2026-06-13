@@ -145,9 +145,33 @@ def discord_registerable_events(limit: int = 25):
     out.sort(key=lambda e: e.get('date', ''))
     return out[:limit]
 
-def register_player_via_discord(event_id: str, discord_id: str, discord_name: str):
-    """Register a Discord user as a player, keyed by their Discord ID. Returns
-    ({'player', 'event_name'}, None) on success or (None, error_message)."""
+def _normalize_handle(h: str) -> str:
+    """Normalise a Discord handle for comparison: drop a leading @, lower-case,
+    and drop a legacy '#1234' discriminator."""
+    h = (h or '').strip().lstrip('@').lower()
+    return h.split('#', 1)[0] if '#' in h else h
+
+def _find_profile_for_discord(discord_id: str, username: str) -> dict | None:
+    """Match a Discord user to an existing account: by a discord_id we've stored
+    on the profile before (exact), else by the profile's saved Discord handle
+    matching the interaction's username. Returns the profile (with google_id) or
+    None. Exact ID matches win over handle matches."""
+    uname = _normalize_handle(username)
+    by_handle = None
+    for u in list_users():
+        if discord_id and u.get('discord_id') == discord_id:
+            return u
+        if uname and not by_handle and _normalize_handle(u.get('discord')) == uname:
+            by_handle = u
+    return by_handle
+
+def register_player_via_discord(event_id: str, discord_id: str, discord_name: str,
+                                discord_username: str = ''):
+    """Register a Discord user as a player. When their Discord matches an existing
+    account (by stored discord_id, or by the profile's Discord handle matching
+    their username), the registration is linked to that account and uses its real
+    name — otherwise a ghost player is created. Returns ({'player', 'event_name'},
+    None) on success or (None, error_message)."""
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
@@ -160,20 +184,32 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     active = [p for p in e['players'] if not p.get('dropped')]
     if cap and len(active) >= cap:
         return None, f'This event is full ({cap} players max).'
+    profile = _find_profile_for_discord(discord_id, discord_username)
+    google_id = profile.get('google_id') if profile else None
     if any(p.get('discord_id') == discord_id for p in e['players']):
         return None, "You're already registered for this event."
-    name = (discord_name or 'Player').strip()[:80] or 'Player'
+    if google_id and any(p.get('google_id') == google_id for p in e['players']):
+        return None, "You're already registered for this event (linked to your account)."
+    if profile:
+        name = (profile.get('name') or discord_name or 'Player').strip()[:80] or 'Player'
+        discord_handle = profile.get('discord', '')
+    else:
+        name = (discord_name or 'Player').strip()[:80] or 'Player'
+        discord_handle = ''
     player = {
         'id':         _slugify(name) + '_' + str(len(e['players'])),
         'name':       name,
-        'google_id':  None,
+        'google_id':  google_id,
         'discord_id': discord_id,
-        'discord':    '',
+        'discord':    discord_handle,
         'dropped':    False,
         'checked_in': False,
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
+    # Remember the Discord ID on the matched account so future links are exact.
+    if google_id and not profile.get('discord_id'):
+        save_user_profile(google_id, {'discord_id': discord_id})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
 
@@ -957,6 +993,36 @@ def api_undrop_player(event_id, player_id):
         return jsonify({'error': 'Player not found'}), 404
     refresh_event_announcement(get_event(event_id))   # may have re-hit the cap
     return jsonify({'ok': True})
+
+@events_bp.route('/api/events/<event_id>/players/<player_id>/rename', methods=['POST'])
+def api_rename_player(event_id, player_id):
+    """Change the name shown for a player on this event (e.g. a real name for a
+    larger event). Allowed for a manager, or for the player editing their own
+    entry (matched by Google account or guest token). Only the display name
+    changes — the player's id, matches and standings are unaffected."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    name = str((request.json or {}).get('name') or '').strip()[:80]
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    player = next((p for p in e['players'] if p['id'] == player_id), None)
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+    allowed = _can_manage(e)
+    if not allowed:
+        user = get_current_user()
+        if user and player.get('google_id') == user['id']:
+            allowed = True
+    if not allowed:
+        token = request.headers.get('X-Guest-Token') or (request.json or {}).get('guest_token')
+        if token and player.get('guest_token') == token:
+            allowed = True
+    if not allowed:
+        abort(403)
+    player['name'] = name
+    save_event(event_id, {'players': e['players']})
+    return jsonify({'ok': True, 'name': name})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/checkin', methods=['POST'])
 @login_required

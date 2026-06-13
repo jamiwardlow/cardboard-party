@@ -1132,10 +1132,32 @@ function renderPlayers() {
     const profileLink = p.google_id
       ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(p.name)}</a>`
       : `<span class="player-name">${escapeHtml(p.name)}</span>`;
+    // Managers can edit any name; a player can edit their own (the name shown on
+    // this event — useful when real names are wanted).
+    const isMine = (myPlayer && myPlayer.id === p.id);
+    const editBtn = (canManage() || isMine)
+      ? `<button class="btn btn-sm edit-name-btn" title="Edit display name" onclick="renamePlayer('${p.id}')">✎</button>`
+      : '';
     return `<li class="${p.dropped ? 'dropped' : ''}">
-      ${profileLink}${discord}${checkTag}${checkBtn}${dropBtn}
+      ${profileLink}${editBtn}${discord}${checkTag}${checkBtn}${dropBtn}
     </li>`;
   }).join('');
+}
+
+async function renamePlayer(playerId) {
+  const p = state.players.find(x => x.id === playerId);
+  const current = p ? p.name : '';
+  const name = prompt('Name to show for this player on this event:', current);
+  if (name === null) return;                         // cancelled
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === current) return;
+  const headers = {'Content-Type':'application/json'};
+  if (guestToken) headers['X-Guest-Token'] = guestToken;
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(playerId)}/rename`, {
+    method: 'POST', headers, body: JSON.stringify({ name: trimmed }),
+  });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to update name.'); }
 }
 
 async function setCheckIn(playerId, value) {
