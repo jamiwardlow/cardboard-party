@@ -1377,11 +1377,16 @@ def player_profile(google_id):
 
     saved = get_user_profile(google_id)
     if not profile:
-        # No event history yet — still let the user view/edit their own profile.
+        # No event history yet. Build a profile from the saved users/<id> doc if
+        # one exists (the person has signed in or been registered), so anyone can
+        # view it. Fall back to the current user's session name for their own
+        # brand-new profile.
         cur = get_current_user()
-        if cur and cur['id'] == google_id:
-            profile = {'name': saved.get('name') or cur.get('name', ''),
+        if saved:
+            profile = {'name': saved.get('name', ''),
                        'discord': saved.get('discord', '')}
+        elif cur and cur['id'] == google_id:
+            profile = {'name': cur.get('name', ''), 'discord': ''}
         else:
             return 'Player not found', 404
 
