@@ -114,14 +114,14 @@
       <label class="adv-only">Contact
         <textarea id="e-contact" rows="2" placeholder="Optional — how to reach the organiser with questions"></textarea>
       </label>
-      <label>Brand text
+      <label class="adv-only">Brand text
         <input id="e-brand-text" type="text" maxlength="300" placeholder="Optional — series, organiser, sponsor, or community">
         <span class="field-help">A brand image can be added after creating the event.</span>
       </label>
-      <label>Entry cost
+      <label class="adv-only">Entry cost
         <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
       </label>
-      <label>Payment link
+      <label class="adv-only">Payment link
         <input id="e-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
       </label>
       <label>Date
@@ -483,13 +483,13 @@ async function submitCreateEvent() {
     event_type:       document.getElementById('e-type').value,
     format,
     description:      document.getElementById('e-description').value,
-    entry_cost:       document.getElementById('e-cost').value,
-    payment_url:      document.getElementById('e-payment').value,
+    entry_cost:       adv ? document.getElementById('e-cost').value : '',
+    payment_url:      adv ? document.getElementById('e-payment').value : '',
     date:             document.getElementById('e-date').value,
     start_time:       document.getElementById('e-time').value,
     num_rounds:       numRounds,
     registration_cap: cap,
-    brand_text:       document.getElementById('e-brand-text').value,
+    brand_text:       adv ? document.getElementById('e-brand-text').value : '',
     round_timer_minutes: parseInt(document.getElementById('e-round-timer').value) || 0,
   };
   if (adv) {
