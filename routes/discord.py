@@ -110,6 +110,8 @@ def _handle_command(body):
         return _link_menu()
     if sub == 'announce':
         return _announce_menu()
+    if sub == 'invite':
+        return _invite_menu(body)
     return _reply('🃏 Cardboard Party is connected! Try `/cbparty register`, `/cbparty report`, or `/cbparty standings`.')
 
 
@@ -125,6 +127,31 @@ def _announce_menu():
     return jsonify({'type': CHANNEL_MESSAGE, 'data': {
         'flags': EPHEMERAL,
         'content': 'Post an event here so players can register with one tap:',
+        'components': [{'type': ACTION_ROW, 'components': [select]}]}})
+
+
+def _invite_menu(body):
+    """/cbparty invite user:@someone — pick an event, then DM them an invitation.
+    The @user is a native Discord user option, so we get their numeric ID (the DM
+    is deliverable only because they're a server member the bot shares a guild
+    with)."""
+    data = body.get('data') or {}
+    sub = (data.get('options') or [{}])[0]
+    target_id = next((o.get('value') for o in (sub.get('options') or [])
+                      if o.get('name') == 'user'), None)
+    if not target_id:
+        return _reply('Please choose someone to invite.')
+    from routes.events import discord_registerable_events
+    events = discord_registerable_events()
+    if not events:
+        return _reply('There are no events open for registration to invite anyone to.')
+    options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
+    select = {'type': STRING_SELECT, 'custom_id': f'cbp_invite_select:{target_id}',
+              'placeholder': 'Which event do you want to invite them to?', 'options': options}
+    return jsonify({'type': CHANNEL_MESSAGE, 'data': {
+        'flags': EPHEMERAL,
+        'content': f'Invite <@{target_id}> to which event?',
+        'allowed_mentions': {'parse': []},
         'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
@@ -282,6 +309,23 @@ def _handle_component(body):
             return _reply(f'⚠️ {err}')
         return _reply(f"✅ Registered for **{result['event_name']}** as "
                       f"**{result['player']['name']}**. Report results here with `/cbparty report`.")
+
+    if custom_id.startswith('cbp_invite_select:'):
+        # Event chosen for an invite → DM the target the registration card.
+        from routes.events import invite_player_via_discord
+        target_id = custom_id.split(':', 1)[1]
+        values = (body.get('data') or {}).get('values') or []
+        if not values:
+            return _update('No event selected.')
+        msg, err = invite_player_via_discord(
+            values[0], discord_id, target_id, name, request.host_url)
+        return _update(f'⚠️ {err}' if err else f'✅ {msg}')
+
+    if custom_id == 'cbp_invite_optout':
+        # "Don't invite me" button on an invitation DM.
+        from db import set_invite_optout
+        set_invite_optout(discord_id, True)
+        return _reply("Got it — you won't receive event invites from Cardboard Party anymore.")
 
     if custom_id == 'cbp_report_btn':
         # "Report my result" on a pairings post → the report flow for the clicker.

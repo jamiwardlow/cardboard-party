@@ -85,6 +85,20 @@ def event_card(event: dict, event_url: str, state: str, note: str = ''):
     return '\n'.join(bits), components
 
 
+def dm_event_invite(target_id: str, event: dict, event_url: str, inviter_name: str,
+                    state: str = 'open', note: str = '') -> bool:
+    """DM `target_id` an invitation to register for an event — the same card the
+    /cbparty announce flow posts (Register button + details link), prefixed with
+    who invited them, plus a button to opt out of future invites. Best-effort;
+    returns True only if the DM was actually delivered."""
+    content, components = event_card(event, event_url, state, note)
+    content = (f"🃏 **{inviter_name}** invited you to register for an event on "
+               f"Cardboard Party:\n\n{content}")
+    components.append({'type': 1, 'components': [
+        {'type': 2, 'style': 2, 'label': "Don't invite me", 'custom_id': 'cbp_invite_optout'}]})
+    return dm_user(target_id, content, components)
+
+
 def announce_round(event: dict, round_num: int):
     """Post a round's pairings to the event's linked Discord channel (if any),
     with a button players tap to report their own result. Best-effort."""

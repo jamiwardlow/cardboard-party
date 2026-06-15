@@ -1,4 +1,5 @@
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 _db = None
 
@@ -147,3 +148,42 @@ def list_users() -> list[dict]:
         data['google_id'] = doc.id
         users.append(data)
     return users
+
+
+# ── Event invites (Discord DMs) ──────────────────────────────────────────────
+# Each invite a Discord user sends is logged so we can rate-limit senders and
+# avoid re-pestering the same recipient about the same event. Recipients can
+# opt out entirely (stored by their numeric Discord ID, since a recipient may
+# have no account here). Queries use single-field equality filters only, so no
+# composite Firestore index is needed; small result sets are filtered in Python.
+
+def record_invite(inviter_id: str, target_id: str, event_id: str, ts: float):
+    """Log that `inviter_id` invited `target_id` to `event_id` at unix time `ts`."""
+    get_db().collection('invites').add({
+        'inviter_id': str(inviter_id), 'target_id': str(target_id),
+        'event_id': event_id, 'ts': ts})
+
+def recent_invite_count(inviter_id: str, since_ts: float) -> int:
+    """How many invites this sender has logged since `since_ts` (rate limiting)."""
+    q = get_db().collection('invites').where(
+        filter=FieldFilter('inviter_id', '==', str(inviter_id))).stream()
+    return sum(1 for d in q if (d.to_dict().get('ts') or 0) >= since_ts)
+
+def target_invited_since(target_id: str, event_id: str, since_ts: float) -> bool:
+    """Whether `target_id` has already been invited to `event_id` since `since_ts`
+    (dedupe — by anyone, so the recipient isn't pestered repeatedly)."""
+    q = get_db().collection('invites').where(
+        filter=FieldFilter('target_id', '==', str(target_id))).stream()
+    return any(d.to_dict().get('event_id') == event_id
+               and (d.to_dict().get('ts') or 0) >= since_ts for d in q)
+
+def set_invite_optout(discord_id: str, opted_out: bool = True):
+    """Record (or clear) a recipient's choice not to receive event invites."""
+    ref = get_db().collection('invite_optouts').document(str(discord_id))
+    if opted_out:
+        ref.set({'opted_out': True})
+    else:
+        ref.delete()
+
+def is_invite_opted_out(discord_id: str) -> bool:
+    return get_db().collection('invite_optouts').document(str(discord_id)).get().exists

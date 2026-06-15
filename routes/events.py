@@ -11,7 +11,9 @@ from flask import Blueprint, request, jsonify, render_template, abort, session
 from db import (create_event, get_event, save_event, list_events, delete_event,
                 set_player_dropped, set_player_field,
                 get_admins, is_admin, add_admin, remove_admin,
-                get_user_profile, save_user_profile, list_users)
+                get_user_profile, save_user_profile, list_users,
+                record_invite, recent_invite_count, target_invited_since,
+                set_invite_optout, is_invite_opted_out)
 from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players)
 from routes.auth import get_current_user, login_required
@@ -19,6 +21,7 @@ import discord_api
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import re
+import time
 import uuid
 from urllib.parse import urlparse
 
@@ -210,6 +213,64 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
         save_user_profile(google_id, {'discord_id': discord_id})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
+
+
+# Anti-spam limits for Discord event invites. Anyone may invite anyone, so these
+# keep one person from blasting invites and keep a recipient from being pestered
+# about the same event repeatedly.
+INVITE_RATE_LIMIT = 10              # max invites one sender may send per window
+INVITE_RATE_WINDOW = 60 * 60       # ...within this many seconds (1 hour)
+INVITE_DEDUPE_WINDOW = 7 * 24 * 60 * 60   # don't re-invite a target to the same event within 7 days
+
+def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
+                              inviter_name: str, base_url: str = ''):
+    """DM `target_id` an invitation to register for an event, on behalf of
+    `inviter_id`. Enforces the anti-spam guards (opt-out, already-registered,
+    dedupe, sender rate limit) before sending. Returns (confirmation, None) on
+    success or (None, error_message)."""
+    if str(target_id) == str(inviter_id):
+        return None, "You can register yourself with `/cbparty register` — no invite needed."
+    e = get_event(event_id)
+    if not e:
+        return None, 'That event no longer exists.'
+    blocked = _self_registration_blocked(e)
+    if blocked:
+        return None, blocked
+    if e.get('entry_code'):
+        return None, 'This event needs an entry code, so it cannot be invited to from Discord.'
+    cap = e.get('registration_cap', 0)
+    active = [p for p in e['players'] if not p.get('dropped')]
+    if cap and len(active) >= cap:
+        return None, f'This event is full ({cap} players max).'
+
+    # Recipient opted out of invites entirely.
+    if is_invite_opted_out(target_id):
+        return None, 'That person has chosen not to receive event invites.'
+
+    # Already registered (by Discord ID or a linked account)?
+    gid = _google_id_for_discord(target_id)
+    if any(p.get('discord_id') == target_id for p in e['players']) or \
+       (gid and any(p.get('google_id') == gid for p in e['players'])):
+        return None, "They're already registered for this event."
+
+    now = time.time()
+    # Don't pester the same person about the same event repeatedly.
+    if target_invited_since(target_id, event_id, now - INVITE_DEDUPE_WINDOW):
+        return None, "They've already been invited to this event recently."
+    # Rate-limit the sender.
+    if recent_invite_count(inviter_id, now - INVITE_RATE_WINDOW) >= INVITE_RATE_LIMIT:
+        return None, ("You've sent a lot of invites recently — please wait a bit "
+                      "before sending more.")
+
+    base = (base_url or '').rstrip('/')
+    state, note = _registration_card_status(e)
+    delivered = discord_api.dm_event_invite(
+        target_id, e, f'{base}/events/{event_id}', inviter_name, state, note)
+    if not delivered:
+        return None, ("I couldn't DM them — they may not share a server with the bot "
+                      "or have DMs from server members turned off.")
+    record_invite(inviter_id, target_id, event_id, now)
+    return f"Invitation sent for **{e.get('name', 'the event')}**.", None
 
 
 def _google_id_for_discord(discord_id: str):
