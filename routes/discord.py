@@ -11,10 +11,16 @@ Secrets (per environment, in Secret Manager): DISCORD_PUBLIC_KEY (verify
 requests), DISCORD_BOT_TOKEN (REST calls), DISCORD_APP_ID (REST/command setup).
 """
 
+import os
 from flask import Blueprint, request, jsonify, abort
 from gcp_secrets import get_secret
 
 discord_bp = Blueprint('discord', __name__)
+
+# Slash-command name, per environment so staging and prod (same code) don't
+# collide in a shared server. Prod defaults to 'cparty'; staging.yaml overrides
+# it to 'cpstaging'. Used by the router, all user-facing text, and the help page.
+COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
 
 # Interaction types (incoming)
 PING = 1
@@ -97,7 +103,7 @@ def _interaction_username(body):
 
 def _handle_command(body):
     data = body.get('data') or {}
-    if data.get('name') != 'cparty':
+    if data.get('name') != COMMAND_NAME:
         return _reply('Unknown command.')
     sub = ((data.get('options') or [{}])[0]).get('name')
     if sub == 'register':
@@ -114,20 +120,22 @@ def _handle_command(body):
         return _invite_menu(body)
     if sub == 'help':
         return _help()
-    return _reply('🃏 Cardboard Party is connected! Try `/cparty register`, `/cparty report`, or `/cparty standings`.')
+    return _reply(f'🃏 Cardboard Party is connected! Try `/{COMMAND_NAME} register`, '
+                  f'`/{COMMAND_NAME} report`, or `/{COMMAND_NAME} standings`.')
 
 
 def _help():
     """An ephemeral list of what the bot can do."""
+    c = COMMAND_NAME
     lines = [
         '🃏 **Cardboard Party — bot commands**',
         '',
-        '`/cparty register` — Register yourself for an event.',
-        '`/cparty report` — Report the result of your match.',
-        '`/cparty standings` — Show an event\'s standings.',
-        '`/cparty invite` — DM someone an invitation to register for an event.',
-        '`/cparty link` — *(organizer)* Post an event\'s pairings in this channel each round.',
-        '`/cparty announce` — *(organizer)* Post an event here with a one-tap Register button.',
+        f'`/{c} register` — Register yourself for an event.',
+        f'`/{c} report` — Report the result of your match.',
+        f'`/{c} standings` — Show an event\'s standings.',
+        f'`/{c} invite` — DM someone an invitation to register for an event.',
+        f'`/{c} link` — *(organizer)* Post an event\'s pairings in this channel each round.',
+        f'`/{c} announce` — *(organizer)* Post an event here with a one-tap Register button.',
         '',
         'Each round the bot also DMs you your pairing with a button to report your result.',
     ]
@@ -288,7 +296,7 @@ def _handle_component(body):
         if err:
             return _update(f'⚠️ {err}')
         return _update(f"✅ Registered for **{result['event_name']}** as "
-                       f"**{result['player']['name']}**. Report results here with `/cparty report`.")
+                       f"**{result['player']['name']}**. Report results here with `/{COMMAND_NAME} report`.")
 
     if custom_id == 'cbp_report_select':
         from routes.events import discord_match_context
@@ -338,7 +346,7 @@ def _handle_component(body):
         if err:
             return _reply(f'⚠️ {err}')
         return _reply(f"✅ Registered for **{result['event_name']}** as "
-                      f"**{result['player']['name']}**. Report results here with `/cparty report`.")
+                      f"**{result['player']['name']}**. Report results here with `/{COMMAND_NAME} report`.")
 
     if custom_id.startswith('cbp_invite_select:'):
         # Event chosen for an invite → DM the target the registration card.

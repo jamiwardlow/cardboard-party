@@ -20,12 +20,17 @@ from routes.auth import get_current_user, login_required
 import discord_api
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
+import os
 import re
 import time
 import uuid
 from urllib.parse import urlparse
 
 events_bp = Blueprint('events', __name__)
+
+# Per-environment slash-command name (see routes/discord.py); 'cparty' in prod,
+# 'cpstaging' on staging. Used in user-facing text and the /discord-bot page.
+COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
 
 # Advanced-creation vocabularies. Kept server-side so the stored values are
 # validated against an allow-list rather than trusting whatever the client sends.
@@ -230,7 +235,7 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
     dedupe, sender rate limit) before sending. Returns (confirmation, None) on
     success or (None, error_message)."""
     if str(target_id) == str(inviter_id):
-        return None, "You can register yourself with `/cparty register` — no invite needed."
+        return None, f"You can register yourself with `/{COMMAND_NAME} register` — no invite needed."
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
@@ -559,7 +564,7 @@ def about():
 
 @events_bp.route('/discord-bot')
 def discord_bot():
-    return render_template('discord_bot.html', user=get_current_user())
+    return render_template('discord_bot.html', user=get_current_user(), cmd=COMMAND_NAME)
 
 @events_bp.route('/events/<event_id>')
 def event_detail(event_id):

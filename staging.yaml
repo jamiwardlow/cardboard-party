@@ -34,3 +34,6 @@ env_variables:
   # Authorized redirect URIs.
   GOOGLE_CLIENT_ID: "763844211840-hp56qvqtfthnfj21d9ol4o9u73efqj2b.apps.googleusercontent.com"
   # No CANONICAL_HOST on purpose — staging must not redirect to the prod domain.
+  # Staging's bot command is /cpstaging so it doesn't collide with prod's /cparty
+  # in a shared Discord server (both run the same code).
+  DISCORD_COMMAND_NAME: cpstaging

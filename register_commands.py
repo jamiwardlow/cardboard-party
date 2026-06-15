@@ -16,15 +16,20 @@ replaces whatever was registered before.
 Global commands can take a few minutes to propagate to clients.
 """
 
+import os
 import sys
 import requests
 from gcp_secrets import get_secret
 
 API = 'https://discord.com/api/v10'
 
+# Command name per environment (matches routes/discord.py): 'cparty' in prod,
+# 'cpstaging' on staging. Set DISCORD_COMMAND_NAME to override.
+COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
+
 # Option types we use: 1 = SUB_COMMAND, 6 = USER.
 COMMANDS = [{
-    'name': 'cparty',
+    'name': COMMAND_NAME,
     'description': 'Cardboard Party tournaments',
     'type': 1,  # CHAT_INPUT
     'options': [
