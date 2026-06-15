@@ -241,7 +241,7 @@ def _dm_result_recorded(event, round_idx, match_idx, exclude_player_id, base_url
         else:
             outcome = f"a win for {opp['name'] if opp else 'your opponent'}"
         embed = _embed(f"Your match vs **{opp['name'] if opp else '?'}** was reported "
-                       f"as **{outcome}** — no need to report it again.",
+                       f"as **{outcome}**. GGs!",
                        title=f"{ename} — {label}")
         dm_user(did, embeds=[embed], components=link)
 

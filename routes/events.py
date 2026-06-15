@@ -379,7 +379,7 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
     # Let the opponent know it's recorded so they don't report it again.
     discord_api.dm_result_recorded(e, round_idx, match_idx,
                                    exclude_player_id=ctx['player_id'], base_url=base_url)
-    return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}).", None
+    return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}). GGs!", None
 
 
 def discord_linkable_events(limit: int = 25):
