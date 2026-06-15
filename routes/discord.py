@@ -338,7 +338,9 @@ def _handle_component(body):
         except ValueError:
             return _update('Sorry, that button was invalid.')
         msg, err = report_result_via_discord(eid, ri, mi, discord_id, code, request.host_url)
-        return _update(f'⚠️ {err}' if err else f'✅ {msg}')
+        if err:
+            return _update(f'⚠️ {err}')
+        return _reported(f'✅ {msg}')
 
     return _reply('That action is not available yet.')
 
@@ -346,3 +348,14 @@ def _handle_component(body):
 def _update(content: str):
     """Edit the (ephemeral) message a component is on, clearing its controls."""
     return jsonify({'type': UPDATE_MESSAGE, 'data': {'content': content, 'components': []}})
+
+
+def _reported(content: str):
+    """Edit the result-entry message after a successful report: swap the buttons
+    for a single greyed-out, disabled 'Result reported' button so it's clear the
+    result is in and can't be entered again."""
+    button = {'type': BUTTON, 'style': 2, 'label': 'Result reported',
+              'custom_id': 'cbp_reported_noop', 'disabled': True}
+    return jsonify({'type': UPDATE_MESSAGE, 'data': {
+        'content': content,
+        'components': [{'type': ACTION_ROW, 'components': [button]}]}})
