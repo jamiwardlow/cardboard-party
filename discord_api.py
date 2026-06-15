@@ -8,7 +8,7 @@ import threading
 import requests
 
 from gcp_secrets import get_secret
-from discord_notify import _round_label
+from discord_notify import _round_label, fmt_time
 
 API = 'https://discord.com/api/v10'
 
@@ -101,6 +101,7 @@ def event_card(event: dict, event_url: str, state: str, note: str = ''):
                 'closed': 'registration closed'}.get(state, '')
     bits = [f"_{headline}_"] if headline else []
     meta = ' · '.join(x for x in (event.get('event_type'), event.get('date'),
+                                  fmt_time(event.get('start_time')),
                                   event.get('format')) if x)
     if meta:
         bits.append(meta)

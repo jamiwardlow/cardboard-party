@@ -6,8 +6,10 @@ from routes.auth import auth_bp
 from routes.events import events_bp
 from routes.discord import discord_bp
 from gcp_secrets import get_secret
+from discord_notify import fmt_time
 
 app = Flask(__name__)
+app.jinja_env.filters['time12'] = fmt_time
 # Production key comes from Secret Manager (FLASK_SECRET_KEY); local dev falls
 # back to a static insecure key so sessions still work without GCP access.
 app.secret_key = get_secret('FLASK_SECRET_KEY') or 'dev-only-insecure-key'

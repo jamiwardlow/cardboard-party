@@ -127,6 +127,10 @@
       <label>Date
         <input id="e-date" type="date">
       </label>
+      <label>Start time
+        <input id="e-time" type="time">
+        <span class="field-help">Optional — when the event begins.</span>
+      </label>
       <label>Number of rounds
         <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto">
       </label>
@@ -280,6 +284,15 @@ function isComplete(e) {
   return e.status === 'finished' || (done > 0 && done >= expectedRounds(e));
 }
 
+// 'HH:MM' (24h) → friendly 12-hour time, mirroring the server's time12 filter.
+function fmtTime(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((hhmm || '').trim());
+  if (!m) return '';
+  const h = +m[1], min = m[2];
+  if (h > 23 || +min > 59) return '';
+  return `${h % 12 || 12}:${min} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
 function eventCard(e) {
   const activePlayers = (e.players || []).filter(p => !p.dropped).length;
   const cap     = e.registration_cap ? ` / ${e.registration_cap}` : '';
@@ -301,7 +314,7 @@ function eventCard(e) {
   return `<a class="card" href="/events/${encodeURIComponent(e.id)}">
     <div class="card-title">${escapeHtml(e.name)}${testBadge}</div>
     ${gameLine}
-    <div class="card-meta">${escapeHtml(e.event_type || 'One-day')} · ${escapeHtml(e.date || '')}</div>
+    <div class="card-meta">${escapeHtml(e.event_type || 'One-day')} · ${escapeHtml(e.date || '')}${fmtTime(e.start_time) ? ' · ' + escapeHtml(fmtTime(e.start_time)) : ''}</div>
     <div class="card-meta">${escapeHtml(e.format || '')}</div>
     ${e.description ? `<div class="card-description">${escapeHtml(e.description)}</div>` : ''}
     ${e.entry_cost ? `<div class="card-meta">Entry: ${escapeHtml(e.entry_cost)}</div>` : ''}
@@ -473,6 +486,7 @@ async function submitCreateEvent() {
     entry_cost:       document.getElementById('e-cost').value,
     payment_url:      document.getElementById('e-payment').value,
     date:             document.getElementById('e-date').value,
+    start_time:       document.getElementById('e-time').value,
     num_rounds:       numRounds,
     registration_cap: cap,
     brand_text:       document.getElementById('e-brand-text').value,

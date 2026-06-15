@@ -15,7 +15,7 @@
       {% if event.test_mode %}<span class="test-badge">TEST</span>{% endif %}
       <button class="btn btn-sm" id="btn-share" onclick="shareEvent(this)">Share</button>
     </div>
-    <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}</p>
+    <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }}{% if event.start_time %} · {{ event.start_time | time12 }}{% endif %} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}</p>
     {% if event.game %}<p class="subtitle" style="margin-top:0.15rem">{{ event.game }}</p>{% endif %}
     {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
     {% if event.requires_decklists %}<p class="event-note">📋 Decklists required</p>{% endif %}
@@ -256,6 +256,9 @@
     <label>Date
       <input id="ee-date" type="date">
     </label>
+    <label>Start time
+      <input id="ee-time" type="time">
+    </label>
     <label>Number of rounds
       <input id="ee-rounds" type="number" min="1" max="20" placeholder="Auto">
     </label>
@@ -452,6 +455,7 @@ function openEditEventModal() {
   document.getElementById('ee-cost').value        = state.entry_cost || '';
   document.getElementById('ee-payment').value     = state.payment_url || '';
   document.getElementById('ee-date').value        = state.date || '';
+  document.getElementById('ee-time').value         = state.start_time || '';
   document.getElementById('ee-rounds').value      = state.num_rounds || '';
   document.getElementById('ee-cap').value         = state.registration_cap || '';
   document.getElementById('ee-reg-type').value    = state.registration_type || 'open';
@@ -543,6 +547,7 @@ async function saveEventDetails() {
     entry_cost:       document.getElementById('ee-cost').value,
     payment_url:      document.getElementById('ee-payment').value,
     date:             document.getElementById('ee-date').value,
+    start_time:       document.getElementById('ee-time').value,
     num_rounds:       parseInt(document.getElementById('ee-rounds').value) || 0,
     registration_cap: parseInt(document.getElementById('ee-cap').value) || 0,
     test_mode:        document.getElementById('ee-test-mode').checked,

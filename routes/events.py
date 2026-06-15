@@ -687,6 +687,7 @@ def api_create_event():
         'entry_cost':   data.get('entry_cost', ''),
         'payment_url':  payment_url,
         'date':         data.get('date', str(datetime.date.today())),
+        'start_time':   (data.get('start_time') or '').strip()[:5],
         'owner_id':     user['id'],
         'owner_name':   user['name'],
         'players':      [],
@@ -752,7 +753,7 @@ def api_update_event(event_id):
                'brand_text',
                'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
                'event_type', 'format', 'description', 'entry_cost',
-               'payment_url', 'date', 'num_rounds',
+               'payment_url', 'date', 'start_time', 'num_rounds',
                'status', 'registration', 'registration_cap',
                'registration_type', 'registration_start', 'registration_end', 'unenroll_end'}
     updates = {k: v for k, v in data.items() if k in allowed}
@@ -776,6 +777,8 @@ def api_update_event(event_id):
             updates[f] = bool(updates[f])
     if 'brand_text' in updates:
         updates['brand_text'] = str(updates['brand_text'] or '')[:300]
+    if 'start_time' in updates:
+        updates['start_time'] = str(updates['start_time'] or '').strip()[:5]
     if 'prize_deadline_days' in updates:
         v = updates['prize_deadline_days']
         updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
@@ -792,7 +795,7 @@ def api_update_event(event_id):
             return jsonify({'error': err}), 400
     save_event(event_id, updates)
     e.update(updates)
-    _CARD_FIELDS = {'name', 'event_type', 'format', 'date', 'entry_cost', 'description',
+    _CARD_FIELDS = {'name', 'event_type', 'format', 'date', 'start_time', 'entry_cost', 'description',
                     'registration', 'registration_cap', 'registration_type',
                     'registration_start', 'registration_end', 'entry_code'}
     if e.get('discord_announce') and _CARD_FIELDS & updates.keys():
