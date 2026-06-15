@@ -557,6 +557,10 @@ def index():
 def about():
     return render_template('about.html', user=get_current_user())
 
+@events_bp.route('/discord-bot')
+def discord_bot():
+    return render_template('discord_bot.html', user=get_current_user())
+
 @events_bp.route('/events/<event_id>')
 def event_detail(event_id):
     event = get_event(event_id)

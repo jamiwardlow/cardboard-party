@@ -76,6 +76,20 @@ a { color: var(--accent); }
 .site-footer a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
 .site-footer a:hover { color: var(--accent); }
 .about-text   { max-width: 640px; font-size: 1rem; line-height: 1.7; color: var(--text); }
+.footer-sep   { color: var(--muted); font-size: 0.85rem; margin: 0 0.5rem; }
+
+/* Inline code + the Discord-bot command list. */
+.about-text code, .bot-commands code {
+  font-family: var(--font-mono); font-size: 0.9em; white-space: nowrap;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.1rem 0.4rem; color: var(--text);
+}
+.bot-commands { max-width: 640px; margin: 0.5rem 0 2rem; }
+.bot-commands dt { margin-top: 1.1rem; }
+.bot-commands dd { margin: 0.35rem 0 0; color: var(--muted); line-height: 1.6; }
+.bot-role { display: inline-block; font-size: 0.68rem; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--accent); background: var(--accent-soft);
+  border-radius: 99px; padding: 0.05rem 0.55rem; margin-right: 0.4rem; vertical-align: middle; }
 
 /* Event branding */
 .event-brand     { margin-bottom: 1.25rem; }

@@ -45,6 +45,8 @@ COMMANDS = [{
               'description': 'Who to invite (must be a member of this server)',
               'required': True},
          ]},
+        {'type': 1, 'name': 'help',
+         'description': 'List the bot commands and what they do'},
     ],
 }]
 

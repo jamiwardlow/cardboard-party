@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Discord bot — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Discord bot</h1>
+</div>
+
+<p class="about-text">
+  Run a Cardboard Party event from your Discord server — players register, report
+  results, and follow standings without leaving the channel. All commands live
+  under <code>/cparty</code>.
+</p>
+
+<h2>Commands</h2>
+<dl class="bot-commands">
+  <dt><code>/cparty register</code></dt>
+  <dd>Register yourself for an event — pick from the events open for registration.</dd>
+
+  <dt><code>/cparty report</code></dt>
+  <dd>Report the result of your match — tap Win, Lose, or Draw.</dd>
+
+  <dt><code>/cparty standings</code></dt>
+  <dd>Show an event's current standings.</dd>
+
+  <dt><code>/cparty invite&nbsp;user:@someone</code></dt>
+  <dd>DM someone an invitation to register for an event. They must be a member of
+      the server, and you can opt out of invites at any time.</dd>
+
+  <dt><code>/cparty link</code></dt>
+  <dd><span class="bot-role">Organizer</span> Link this channel to an event so its
+      pairings post here automatically each round.</dd>
+
+  <dt><code>/cparty announce</code></dt>
+  <dd><span class="bot-role">Organizer</span> Post an event card in this channel
+      with a one-tap Register button.</dd>
+
+  <dt><code>/cparty help</code></dt>
+  <dd>Show this list of commands in Discord.</dd>
+</dl>
+
+<h2>What happens automatically</h2>
+<ul class="about-text">
+  <li>Each round, the bot DMs every player their pairing with a “Report my result” button.</li>
+  <li>After you report, your opponent gets a DM confirming the result so no one reports it twice.</li>
+  <li>Linked channels get a pairings post each round, and registration cards update as events fill or close.</li>
+</ul>
+{% endblock %}

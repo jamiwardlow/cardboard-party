@@ -112,7 +112,26 @@ def _handle_command(body):
         return _announce_menu()
     if sub == 'invite':
         return _invite_menu(body)
+    if sub == 'help':
+        return _help()
     return _reply('🃏 Cardboard Party is connected! Try `/cparty register`, `/cparty report`, or `/cparty standings`.')
+
+
+def _help():
+    """An ephemeral list of what the bot can do."""
+    lines = [
+        '🃏 **Cardboard Party — bot commands**',
+        '',
+        '`/cparty register` — Register yourself for an event.',
+        '`/cparty report` — Report the result of your match.',
+        '`/cparty standings` — Show an event\'s standings.',
+        '`/cparty invite` — DM someone an invitation to register for an event.',
+        '`/cparty link` — *(organizer)* Post an event\'s pairings in this channel each round.',
+        '`/cparty announce` — *(organizer)* Post an event here with a one-tap Register button.',
+        '',
+        'Each round the bot also DMs you your pairing with a button to report your result.',
+    ]
+    return _reply('\n'.join(lines))
 
 
 def _announce_menu():
