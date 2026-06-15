@@ -206,22 +206,33 @@ def _register_picker():
         'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
-def _report_menu(body):
-    """Entry for /cparty report: 0 matches → notice; 1 → result buttons; many → picker."""
+def _report_menu(body, in_place=False):
+    """Entry for /cparty report: 0 matches → notice; 1 → result buttons; many → picker.
+
+    When `in_place` (the button was tapped on the player's own pairing DM), edit
+    that message in place instead of posting a new one — so its 'Report my result'
+    button becomes the result buttons, and ultimately the disabled 'Result
+    reported' confirmation. Channel posts and the slash command spawn a fresh
+    ephemeral message instead (the channel button is shared by the whole round)."""
     from routes.events import discord_open_matches
     discord_id, _ = _interaction_user(body)
     matches = discord_open_matches(discord_id)
     if not matches:
         return _reply('You have no matches to report right now.')
     if len(matches) == 1:
-        return jsonify({'type': CHANNEL_MESSAGE, 'data': _report_buttons(matches[0])})
-    options = [{'label': f"{m['event_name']} — vs {m['opponent']}"[:100],
-                'value': f"{m['event_id']}:{m['round_idx']}:{m['match_idx']}"} for m in matches]
-    select = {'type': STRING_SELECT, 'custom_id': 'cbp_report_select',
-              'placeholder': 'Which match?', 'options': options}
-    return jsonify({'type': CHANNEL_MESSAGE, 'data': {
-        'flags': EPHEMERAL, 'content': 'Which match do you want to report?',
-        'components': [{'type': ACTION_ROW, 'components': [select]}]}})
+        data = _report_buttons(matches[0])
+    else:
+        options = [{'label': f"{m['event_name']} — vs {m['opponent']}"[:100],
+                    'value': f"{m['event_id']}:{m['round_idx']}:{m['match_idx']}"} for m in matches]
+        select = {'type': STRING_SELECT, 'custom_id': 'cbp_report_select',
+                  'placeholder': 'Which match?', 'options': options}
+        data = {'flags': EPHEMERAL, 'content': 'Which match do you want to report?',
+                'components': [{'type': ACTION_ROW, 'components': [select]}]}
+    if in_place:
+        # Editing an existing (non-ephemeral) DM message: drop the ephemeral flag.
+        data = {k: v for k, v in data.items() if k != 'flags'}
+        return jsonify({'type': UPDATE_MESSAGE, 'data': data})
+    return jsonify({'type': CHANNEL_MESSAGE, 'data': data})
 
 
 def _report_buttons(ctx):
@@ -328,8 +339,12 @@ def _handle_component(body):
         return _reply("Got it — you won't receive event invites from Cardboard Party anymore.")
 
     if custom_id == 'cbp_report_btn':
-        # "Report my result" on a pairings post → the report flow for the clicker.
-        return _report_menu(body)
+        # "Report my result" → the report flow for the clicker. If it was tapped on
+        # the player's own pairing DM (a message, no guild), update that message in
+        # place so its button becomes the result entry (and then "Result reported");
+        # the shared channel-post button stays a fresh ephemeral.
+        in_place = bool(body.get('message')) and not body.get('guild_id')
+        return _report_menu(body, in_place=in_place)
 
     if custom_id.startswith('cbp_rep:'):
         from routes.events import report_result_via_discord
