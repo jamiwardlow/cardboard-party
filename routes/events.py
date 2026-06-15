@@ -229,7 +229,7 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
     dedupe, sender rate limit) before sending. Returns (confirmation, None) on
     success or (None, error_message)."""
     if str(target_id) == str(inviter_id):
-        return None, "You can register yourself with `/cbparty register` — no invite needed."
+        return None, "You can register yourself with `/cparty register` — no invite needed."
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'

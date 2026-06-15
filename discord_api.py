@@ -88,7 +88,7 @@ def event_card(event: dict, event_url: str, state: str, note: str = ''):
 def dm_event_invite(target_id: str, event: dict, event_url: str, inviter_name: str,
                     state: str = 'open', note: str = '') -> bool:
     """DM `target_id` an invitation to register for an event — the same card the
-    /cbparty announce flow posts (Register button + details link), prefixed with
+    /cparty announce flow posts (Register button + details link), prefixed with
     who invited them, plus a button to opt out of future invites. Best-effort;
     returns True only if the DM was actually delivered."""
     content, components = event_card(event, event_url, state, note)

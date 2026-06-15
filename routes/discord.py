@@ -97,7 +97,7 @@ def _interaction_username(body):
 
 def _handle_command(body):
     data = body.get('data') or {}
-    if data.get('name') != 'cbparty':
+    if data.get('name') != 'cparty':
         return _reply('Unknown command.')
     sub = ((data.get('options') or [{}])[0]).get('name')
     if sub == 'register':
@@ -112,7 +112,7 @@ def _handle_command(body):
         return _announce_menu()
     if sub == 'invite':
         return _invite_menu(body)
-    return _reply('🃏 Cardboard Party is connected! Try `/cbparty register`, `/cbparty report`, or `/cbparty standings`.')
+    return _reply('🃏 Cardboard Party is connected! Try `/cparty register`, `/cparty report`, or `/cparty standings`.')
 
 
 def _announce_menu():
@@ -131,7 +131,7 @@ def _announce_menu():
 
 
 def _invite_menu(body):
-    """/cbparty invite user:@someone — pick an event, then DM them an invitation.
+    """/cparty invite user:@someone — pick an event, then DM them an invitation.
     The @user is a native Discord user option, so we get their numeric ID (the DM
     is deliverable only because they're a server member the bot shares a guild
     with)."""
@@ -207,7 +207,7 @@ def _register_picker():
 
 
 def _report_menu(body):
-    """Entry for /cbparty report: 0 matches → notice; 1 → result buttons; many → picker."""
+    """Entry for /cparty report: 0 matches → notice; 1 → result buttons; many → picker."""
     from routes.events import discord_open_matches
     discord_id, _ = _interaction_user(body)
     matches = discord_open_matches(discord_id)
@@ -258,7 +258,7 @@ def _handle_component(body):
         if err:
             return _update(f'⚠️ {err}')
         return _update(f"✅ Registered for **{result['event_name']}** as "
-                       f"**{result['player']['name']}**. Report results here with `/cbparty report`.")
+                       f"**{result['player']['name']}**. Report results here with `/cparty report`.")
 
     if custom_id == 'cbp_report_select':
         from routes.events import discord_match_context
@@ -308,7 +308,7 @@ def _handle_component(body):
         if err:
             return _reply(f'⚠️ {err}')
         return _reply(f"✅ Registered for **{result['event_name']}** as "
-                      f"**{result['player']['name']}**. Report results here with `/cbparty report`.")
+                      f"**{result['player']['name']}**. Report results here with `/cparty report`.")
 
     if custom_id.startswith('cbp_invite_select:'):
         # Event chosen for an invite → DM the target the registration card.

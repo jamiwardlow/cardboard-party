@@ -24,7 +24,7 @@ API = 'https://discord.com/api/v10'
 
 # Option types we use: 1 = SUB_COMMAND, 6 = USER.
 COMMANDS = [{
-    'name': 'cbparty',
+    'name': 'cparty',
     'description': 'Cardboard Party tournaments',
     'type': 1,  # CHAT_INPUT
     'options': [
