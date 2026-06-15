@@ -351,7 +351,16 @@ function chooseMode(mode) {
     .forEach(el => el.classList.toggle('hidden', !adv));
   document.getElementById('format-simple').classList.toggle('hidden', adv);
   document.getElementById('format-advanced').classList.toggle('hidden', !adv);
-  if (adv) { populateFormats(); onStructureChange('e'); }
+  if (adv) {
+    populateFormats(); onStructureChange('e');
+  } else {
+    // Advanced-only dependent sub-fields aren't tagged .adv-only (their
+    // visibility is driven by other inputs, not the mode), so the bulk toggle
+    // above misses them — hide them explicitly so e.g. a Top cut size chosen in
+    // Advanced doesn't linger on the Simple form. Values stay in the DOM, so
+    // switching back to Advanced restores them (a draft across the switch).
+    document.getElementById('e-topcut-wrap').classList.add('hidden');
+  }
   document.getElementById('create-title').textContent =
     adv ? 'New event — Advanced' : 'New event — Simple';
   document.getElementById('create-mode-choice').classList.add('hidden');
