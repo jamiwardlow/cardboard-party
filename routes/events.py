@@ -106,8 +106,8 @@ def announce_event_to_channel(event_id: str, channel_id: str, base_url: str):
         return None, False
     base = (base_url or '').rstrip('/')
     state, note = _registration_card_status(e)
-    content, components = discord_api.event_card(e, f'{base}/events/{event_id}', state, note)
-    msg = discord_api.post_message(channel_id, content, components)
+    embeds, components = discord_api.event_card(e, f'{base}/events/{event_id}', state, note)
+    msg = discord_api.post_message(channel_id, components=components, embeds=embeds)
     if not msg:
         return e.get('name', 'the event'), False
     save_event(event_id, {'discord_announce': {
@@ -123,9 +123,10 @@ def refresh_event_announcement(event: dict) -> None:
         return
     base = (ann.get('base_url') or '').rstrip('/')
     state, note = _registration_card_status(event)
-    content, components = discord_api.event_card(
+    embeds, components = discord_api.event_card(
         event, f"{base}/events/{event['id']}", state, note)
-    discord_api.edit_message(ann['channel_id'], ann['message_id'], content, components)
+    discord_api.edit_message(ann['channel_id'], ann['message_id'],
+                             components=components, embeds=embeds)
 
 
 def discord_registerable_events(limit: int = 25):
