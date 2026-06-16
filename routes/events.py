@@ -159,17 +159,22 @@ def _normalize_handle(h: str) -> str:
     h = (h or '').strip().lstrip('@').lower()
     return h.split('#', 1)[0] if '#' in h else h
 
-def _find_profile_for_discord(discord_id: str, username: str) -> dict | None:
+def _find_profile_for_discord(discord_id: str, username: str, display: str = '') -> dict | None:
     """Match a Discord user to an existing account: by a discord_id we've stored
     on the profile before (exact), else by the profile's saved Discord handle
-    matching the interaction's username. Returns the profile (with google_id) or
-    None. Exact ID matches win over handle matches."""
-    uname = _normalize_handle(username)
+    matching either the interaction's username or display name (people often save
+    their display name as their handle). Returns the profile (with google_id) or
+    None. Exact ID matches win over handle matches.
+
+    A handle match also lets the caller store the numeric discord_id on the
+    account (see register_player_via_discord), so subsequent links are exact and
+    immune to the handle being a display name, edited, or a renamed username."""
+    candidates = {h for h in (_normalize_handle(username), _normalize_handle(display)) if h}
     by_handle = None
     for u in list_users():
         if discord_id and u.get('discord_id') == discord_id:
             return u
-        if uname and not by_handle and _normalize_handle(u.get('discord')) == uname:
+        if candidates and not by_handle and _normalize_handle(u.get('discord')) in candidates:
             by_handle = u
     return by_handle
 
@@ -192,7 +197,10 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     active = [p for p in e['players'] if not p.get('dropped')]
     if cap and len(active) >= cap:
         return None, f'This event is full ({cap} players max).'
-    profile = _find_profile_for_discord(discord_id, discord_username)
+    # discord_name is the registrant's Discord display name; pass it as a second
+    # handle candidate so an account that saved its display name as the handle
+    # still links (and we then lock in the numeric ID below).
+    profile = _find_profile_for_discord(discord_id, discord_username, discord_name)
     google_id = profile.get('google_id') if profile else None
     if any(p.get('discord_id') == discord_id for p in e['players']):
         return None, "You're already registered for this event."
