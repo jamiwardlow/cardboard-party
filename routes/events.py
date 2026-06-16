@@ -481,6 +481,22 @@ def _redact_players(event: dict) -> None:
         p.pop('guest_token', None)
         p.pop('discord_id', None)
 
+def _enrich_players_discord(event: dict) -> None:
+    """Refresh each linked player's `discord` from their account profile, which is
+    the source of truth going forward — so a handle set or changed *after*
+    registration shows on the event page, not just the registration-time snapshot.
+    Profiles are read once per google_id; guests/ghosts (no google_id) and
+    accounts with no saved handle keep their snapshot."""
+    cache = {}
+    for p in event.get('players', []):
+        gid = p.get('google_id')
+        if not gid:
+            continue
+        if gid not in cache:
+            cache[gid] = get_user_profile(gid).get('discord', '')
+        if cache[gid]:
+            p['discord'] = cache[gid]
+
 def _can_report_match(event: dict, match: dict, data: dict) -> bool:
     """Who may report a match result: a manager, the registered Google player
     in the match, or a guest holding that player's self-report token."""
@@ -749,6 +765,7 @@ def api_get_event(event_id):
     # Expose only whether a code is needed; the code itself is a secret the
     # organiser shares out-of-band, so never send it to non-managers.
     e['entry_code_required'] = bool(e.get('entry_code'))
+    _enrich_players_discord(e)
     if not e['can_manage']:
         e.pop('entry_code', None)
         # Delayed delivery: hide the latest round's pairings / the standings from
