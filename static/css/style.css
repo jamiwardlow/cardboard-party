@@ -76,6 +76,9 @@ a { color: var(--accent); }
 .site-footer a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
 .site-footer a:hover { color: var(--accent); }
 .about-text   { max-width: 640px; font-size: 1rem; line-height: 1.7; color: var(--text); }
+/* Restore list indent (the global reset zeroes padding, so outside bullet
+   markers would otherwise sit past the page edge and clip on mobile). */
+ul.about-text { padding-left: 1.25rem; }
 .footer-sep   { color: var(--muted); font-size: 0.85rem; margin: 0 0.5rem; }
 
 /* Inline code + the Discord-bot command list. */
