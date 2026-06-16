@@ -52,8 +52,11 @@
     <button class="btn btn-primary btn-sm" onclick="submitRegister()">Confirm</button>
     <button class="btn btn-sm" onclick="cancelRegister()">Cancel</button>
   </div>
-  <div id="register-buttons">
-    <button class="btn btn-primary btn-sm" onclick="showRegisterForm()">Register for this event</button>
+  <div id="register-buttons" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+    <!-- Signed in: one button. Not signed in: lead with account sign-in, offer guest as a fallback. -->
+    <a id="register-signin-btn" class="btn btn-primary btn-sm" href="/auth/login" style="display:none">Log in or create an account</a>
+    <button id="register-self-btn" class="btn btn-primary btn-sm" style="display:none" onclick="showRegisterForm()">Register for this event</button>
+    <button id="register-guest-btn" class="btn btn-sm" style="display:none" onclick="showRegisterForm()">Join with your name</button>
   </div>
 </div>
 
@@ -745,8 +748,18 @@ function renderBanners() {
     const capText = cap ? ` (${active}/${cap} spots taken)` : '';
     let msg = `Registration is open${capText}.`;
     if (state.registration_end) msg += ` Closes ${state.registration_end}.`;
-    msg += (me.signed_in ? '' : ' Join with your name — no account needed.');
+    // Encourage an account (so results follow them across events), but keep
+    // guest-by-name as a fallback for those without a Google account.
+    msg += (me.signed_in
+      ? ''
+      : ' Log in or create an account to register and keep your results across events — or join with just your name.');
     document.getElementById('register-banner-msg').textContent = msg;
+    const signinBtn = document.getElementById('register-signin-btn');
+    signinBtn.href = '/auth/login?next=' +
+      encodeURIComponent(window.location.pathname + window.location.search);
+    signinBtn.style.display = me.signed_in ? 'none' : '';
+    document.getElementById('register-self-btn').style.display  = me.signed_in ? '' : 'none';
+    document.getElementById('register-guest-btn').style.display = me.signed_in ? 'none' : '';
     document.getElementById('register-buttons').classList.remove('hidden');
     document.getElementById('register-form').classList.add('hidden');
     regBanner.classList.remove('banner-closed');
