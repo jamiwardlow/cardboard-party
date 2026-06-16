@@ -17,6 +17,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
 from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players)
 from routes.auth import get_current_user, login_required
+from gcp_secrets import get_secret
 import discord_api
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
@@ -564,7 +565,13 @@ def about():
 
 @events_bp.route('/discord-bot')
 def discord_bot():
-    return render_template('discord_bot.html', user=get_current_user(), cmd=COMMAND_NAME)
+    # Invite link for this environment's bot (prod vs staging app), built from the
+    # app ID in Secret Manager. Omitted if the bot isn't configured for this env.
+    app_id = get_secret('DISCORD_APP_ID')
+    invite_url = (f'https://discord.com/oauth2/authorize?client_id={app_id}'
+                  '&scope=bot+applications.commands&permissions=18432') if app_id else ''
+    return render_template('discord_bot.html', user=get_current_user(),
+                           cmd=COMMAND_NAME, invite_url=invite_url)
 
 @events_bp.route('/events/<event_id>')
 def event_detail(event_id):

@@ -6,6 +6,14 @@
   <h1>Discord bot</h1>
 </div>
 
+{% if invite_url %}
+<p style="margin-bottom:1.25rem">
+  <a class="btn btn-primary" href="{{ invite_url }}" target="_blank" rel="noopener">
+    Invite PartyBot to your server
+  </a>
+</p>
+{% endif %}
+
 <p class="about-text">
   Run a Cardboard Party event from your Discord server — players register, report
   results, and follow standings without leaving the channel. All commands live
@@ -41,7 +49,7 @@
 
 <h2>What happens automatically</h2>
 <ul class="about-text">
-  <li>Each round, the bot DMs every player their pairing with a “Report my result” button.</li>
+  <li>Each round, PartyBot DMs every player their pairing with a “Report my result” button.</li>
   <li>After you report, your opponent gets a DM confirming the result so no one reports it twice.</li>
   <li>Linked channels get a pairings post each round, and registration cards update as events fill or close.</li>
 </ul>
