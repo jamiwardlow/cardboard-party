@@ -202,10 +202,20 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     # still links (and we then lock in the numeric ID below).
     profile = _find_profile_for_discord(discord_id, discord_username, discord_name)
     google_id = profile.get('google_id') if profile else None
-    if any(p.get('discord_id') == discord_id for p in e['players']):
-        return None, "You're already registered for this event."
-    if google_id and any(p.get('google_id') == google_id for p in e['players']):
-        return None, "You're already registered for this event (linked to your account)."
+    # Already in the event? If active, that's a no-op; if previously dropped,
+    # re-activate their existing entry rather than refusing or duplicating them.
+    existing = next((p for p in e['players']
+                     if p.get('discord_id') == discord_id
+                     or (google_id and p.get('google_id') == google_id)), None)
+    if existing:
+        if not existing.get('dropped'):
+            return None, "You're already registered for this event."
+        existing['dropped'] = False
+        save_event(event_id, {'players': e['players']})
+        if google_id and not (profile or {}).get('discord_id'):
+            save_user_profile(google_id, {'discord_id': discord_id})
+        refresh_event_announcement(e)
+        return {'player': existing, 'event_name': e.get('name', 'the event')}, None
     if profile:
         name = (profile.get('name') or discord_name or 'Player').strip()[:80] or 'Player'
         discord_handle = profile.get('discord', '')
@@ -890,8 +900,17 @@ def api_register(event_id):
     # The form hides the Discord field when the user already has one on file, so
     # fall back to their saved handle when none is submitted.
     discord      = data.get('discord', '').strip() or get_user_profile(user['id']).get('discord', '')
-    if any(p.get('google_id') == user['id'] for p in e['players']):
-        return jsonify({'error': 'Already registered'}), 400
+    # Re-activate a previously dropped entry instead of refusing or duplicating.
+    existing = _find_player_by_google_id(e, user['id'])
+    if existing:
+        if not existing.get('dropped'):
+            return jsonify({'error': 'Already registered'}), 400
+        set_player_dropped(event_id, existing['id'], False)
+        if discord:
+            save_user_profile(user['id'], {'discord': discord})
+        refresh_event_announcement(get_event(event_id))
+        existing['dropped'] = False
+        return jsonify(existing), 200
     player = {
         'id':        _slugify(display_name) + '_' + str(len(e['players'])),
         'name':      display_name,
