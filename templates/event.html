@@ -1,6 +1,27 @@
 {% extends "base.html" %}
 {% block title %}{{ event.name }} — Cardboard Party{% endblock %}
 
+{% block head %}
+{# Open Graph tags so a posted event link unfurls into a preview in Discord,
+   iMessage, etc. Discord reads these from the server-rendered HTML (no JS). #}
+{% set _meta = [event.event_type or 'One-day', event.date, event.start_time | time12, event.format] | select | join(' · ') %}
+{% set _desc = _meta + (' — ' + event.description if event.description else '') %}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Cardboard Party">
+<meta property="og:url" content="{{ request.url }}">
+<meta property="og:title" content="{{ event.name }}">
+<meta property="og:description" content="{{ _desc | truncate(200) }}">
+<meta name="description" content="{{ _desc | truncate(200) }}">
+{% if event.brand_image_url %}
+<meta property="og:image" content="{{ event.brand_image_url }}">
+<meta name="twitter:card" content="summary_large_image">
+{% else %}
+<meta name="twitter:card" content="summary">
+{% endif %}
+<meta name="twitter:title" content="{{ event.name }}">
+<meta name="twitter:description" content="{{ _desc | truncate(200) }}">
+{% endblock %}
+
 {% block content %}
 {% if event.brand_image_url or event.brand_text %}
 <div class="event-brand">
