@@ -563,6 +563,14 @@ def index():
 def about():
     return render_template('about.html', user=get_current_user())
 
+@events_bp.route('/terms')
+def terms():
+    return render_template('terms.html', user=get_current_user())
+
+@events_bp.route('/privacy')
+def privacy():
+    return render_template('privacy.html', user=get_current_user())
+
 @events_bp.route('/discord-bot')
 def discord_bot():
     # Invite link for this environment's bot (prod vs staging app), built from the

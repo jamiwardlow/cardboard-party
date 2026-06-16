@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Privacy Policy</h1>
+</div>
+
+<div class="legal">
+  <p class="legal-meta">Last updated: June 16, 2026</p>
+
+  <p>
+    This policy explains what information Cardboard Party (“we”, “us”) collects,
+    how we use it, and the choices you have. It applies to the website at
+    cardboardparty.gg and the Cardboard Party Discord bot.
+  </p>
+
+  <h2>Information we collect</h2>
+  <ul>
+    <li>
+      <strong>From Google sign-in.</strong> When you sign in with Google, we receive
+      your name, email address, Google account ID, and profile picture.
+    </li>
+    <li>
+      <strong>Profile details you add.</strong> An editable display name, Discord
+      handle, pronouns, name pronunciation, a short “about” bio, and a custom
+      avatar if you upload one.
+    </li>
+    <li>
+      <strong>Discord information.</strong> If you use the bot, we store your Discord
+      user ID (and username) and link it to your account so we can pair you,
+      record your results, and message you. We also keep a record of event
+      invitations sent and received (to prevent spam) and your invite opt-out choice.
+    </li>
+    <li>
+      <strong>Event data.</strong> Your event registrations, match results,
+      standings, and information organizers enter about their events. Organizers can
+      also add players by name (“ghost” players) who haven’t signed in; that
+      information comes from the organizer.
+    </li>
+    <li>
+      <strong>Technical data.</strong> A single essential session cookie keeps you
+      signed in, and our hosting provider records standard server logs (such as IP
+      address and request details).
+    </li>
+  </ul>
+
+  <h2>What we don’t do</h2>
+  <p>
+    We do not use third-party analytics, advertising, or tracking technologies, and
+    we do not sell or rent your personal information. We use only the essential
+    cookies needed to sign you in and protect against cross-site request forgery —
+    no tracking or advertising cookies.
+  </p>
+
+  <h2>How we use information</h2>
+  <ul>
+    <li>to run events — registration, pairings, results, and standings;</li>
+    <li>to show your player profile and event history;</li>
+    <li>to send Discord notifications (such as your pairings and result confirmations);</li>
+    <li>to operate, maintain, and secure the Service and prevent abuse.</li>
+  </ul>
+
+  <h2>What’s public</h2>
+  <p>
+    Cardboard Party is built around public events. Event pages, standings, player
+    display names, profiles, and any avatar you upload are visible to anyone. Avatars
+    are stored in public cloud storage. Your <strong>email address is not shown
+    publicly</strong>. Please don’t put anything in your profile, name, or event text
+    that you don’t want to be public.
+  </p>
+
+  <h2>Service providers</h2>
+  <p>
+    We host the Service on Google Cloud Platform (App Engine, Firestore, Cloud
+    Storage, and Secret Manager), with data stored in the United States. If you use
+    the bot, information is also shared with Discord to deliver messages. These
+    providers process data under their own terms:
+  </p>
+  <ul>
+    <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a></li>
+    <li><a href="https://discord.com/privacy" target="_blank" rel="noopener">Discord Privacy Policy</a></li>
+  </ul>
+
+  <h2>Data retention</h2>
+  <p>
+    We keep your information for as long as your account exists and as needed to
+    maintain event history and standings. You can edit or remove most profile
+    details at any time, or ask us to delete your account and associated data (see
+    “Your choices”). Note that removing your account does not erase an event’s
+    historical results that other participants rely on, though we will dissociate
+    your personal profile from them on request where practical.
+  </p>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>Edit your display name, Discord handle, pronouns, bio, and avatar from your profile.</li>
+    <li>Remove a custom avatar to revert to your Google picture.</li>
+    <li>Opt out of Discord event invitations using the “Don’t invite me” button.</li>
+    <li>Request access to, correction of, or deletion of your data by emailing us.</li>
+  </ul>
+
+  <h2>Children</h2>
+  <p>
+    The Service is not directed to children under 13, and we don’t knowingly collect
+    information from them. If you believe a child under 13 has provided us
+    information, please contact us and we’ll remove it.
+  </p>
+
+  <h2>Security</h2>
+  <p>
+    Sign-in is handled by Google, so we never see or store your password. Session
+    cookies are HttpOnly and, in production, sent only over HTTPS. No method of
+    transmission or storage is completely secure, so we can’t guarantee absolute
+    security.
+  </p>
+
+  <h2>Changes to this policy</h2>
+  <p>
+    We may update this policy from time to time. When we do, we’ll revise the “Last
+    updated” date above.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    For privacy questions or data requests, email
+    <a href="mailto:privacy@cardboardparty.gg">privacy@cardboardparty.gg</a>.
+  </p>
+</div>
+{% endblock %}
