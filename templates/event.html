@@ -102,7 +102,7 @@
 <div id="round-timer" class="hidden">
   <span class="timer-label">Round time</span>
   <span id="timer-text" class="timer-text">—</span>
-  <button class="btn btn-sm" id="timer-restart" style="display:none" onclick="restartTimer()">Restart</button>
+  <button class="btn btn-sm" id="timer-btn" style="display:none" onclick="startTimer()">Start timer</button>
 </div>
 
 {% if event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days %}
@@ -805,23 +805,37 @@ function selfRegBlockedReason() {
   return null;
 }
 
-// Live round-timer countdown. Shown while the latest round is in progress and a
-// timer length is configured; counts down from when the round was paired.
+// Round-timer widget. A timer no longer auto-starts on pairing: the organiser
+// starts it with the Start-timer button, after which it counts down live.
 let roundTimerInterval = null;
 function renderRoundTimer() {
-  const el = document.getElementById('round-timer');
+  const el  = document.getElementById('round-timer');
+  const txt = document.getElementById('timer-text');
+  const btn = document.getElementById('timer-btn');
   if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
   const mins = state.round_timer_minutes || 0;
   const last = state.rounds[state.rounds.length - 1] || null;
-  // Only while configured, started, and the current round isn't fully scored.
-  if (!mins || !state.round_started_at || !last || roundFinished(last)) {
-    el.classList.add('hidden'); return;
+  // Only when a timer is configured and the current round isn't fully scored.
+  if (!mins || !last || roundFinished(last)) { el.classList.add('hidden'); return; }
+
+  if (!state.round_started_at) {
+    // Not started yet — organiser sees a Start button; players see nothing.
+    if (!canManage()) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden', 'timer-up');
+    txt.textContent = 'Not started';
+    txt.classList.add('timer-idle');
+    btn.textContent = 'Start timer';
+    btn.style.display = '';
+    return;
   }
-  document.getElementById('timer-restart').style.display = canManage() ? '' : 'none';
+
+  // Running — live countdown, plus a Restart button for the organiser.
+  txt.classList.remove('timer-idle');
+  btn.textContent = 'Restart';
+  btn.style.display = canManage() ? '' : 'none';
   const endMs = new Date(state.round_started_at).getTime() + mins * 60000;
   const tick = () => {
     const remaining = endMs - Date.now();
-    const txt = document.getElementById('timer-text');
     if (remaining > 0) {
       const m = Math.floor(remaining / 60000), s = Math.floor((remaining % 60000) / 1000);
       txt.textContent = `${m}:${String(s).padStart(2, '0')}`;
@@ -836,9 +850,11 @@ function renderRoundTimer() {
   el.classList.remove('hidden');
 }
 
-async function restartTimer() {
+// Start (or restart) the round timer — both stamp the start time to now.
+async function startTimer() {
   const res = await fetch(`/api/events/${EVENT_ID}/timer`, { method: 'POST' });
   if (res.ok) { const d = await res.json(); state.round_started_at = d.round_started_at; renderRoundTimer(); }
+  else { alert('Could not start the timer.'); }
 }
 
 // Tell a registered player when an intentional draw this round locks their cut.

@@ -587,10 +587,11 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def _new_round_updates(event: dict) -> dict:
-    """Fields to set whenever a new round is created: restart the round timer and,
-    where delivery is delayed, re-hide pairings/standings until the organiser
-    releases them."""
-    u = {'round_started_at': _now_iso()}
+    """Fields to set whenever a new round is created: clear the round timer (the
+    organiser starts it with the Start-timer button — it no longer auto-starts on
+    pairing) and, where delivery is delayed, re-hide pairings/standings until the
+    organiser releases them."""
+    u = {'round_started_at': ''}
     if event.get('delay_pairings'):
         u['pairings_released'] = False
     if event.get('delay_standings'):

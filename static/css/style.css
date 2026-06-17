@@ -258,6 +258,10 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .timer-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .timer-text  { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; color: var(--text);
                margin-right: auto; font-variant-numeric: tabular-nums; }
+/* Idle ("Not started") state: match the "Round time" label rather than the big
+   monospace countdown, which reads awkwardly for words. */
+.timer-text.timer-idle { font-family: var(--font-body); font-size: 0.78rem; font-weight: 500;
+               text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 #round-timer.timer-up { border-color: var(--danger); background: var(--danger-bg); }
 #round-timer.timer-up .timer-text { color: var(--danger); }
 
