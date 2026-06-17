@@ -642,8 +642,13 @@ def discord_bot():
     app_id = get_secret('DISCORD_APP_ID')
     invite_url = (f'https://discord.com/oauth2/authorize?client_id={app_id}'
                   '&scope=bot+applications.commands&permissions=18432') if app_id else ''
+    # User-install link ("Add to your account"): integration_type=1, commands-only
+    # scope (no bot/permissions — it isn't joining a server). Lets someone run the
+    # /cparty commands anywhere, even in servers PartyBot isn't in.
+    account_url = (f'https://discord.com/oauth2/authorize?client_id={app_id}'
+                   '&integration_type=1&scope=applications.commands') if app_id else ''
     return render_template('discord_bot.html', user=get_current_user(),
-                           cmd=COMMAND_NAME, invite_url=invite_url)
+                           cmd=COMMAND_NAME, invite_url=invite_url, account_url=account_url)
 
 @events_bp.route('/events/<event_id>')
 def event_detail(event_id):

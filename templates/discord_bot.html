@@ -7,18 +7,24 @@
 </div>
 
 {% if invite_url %}
-<p style="margin-bottom:1.25rem">
-  <a class="btn btn-primary" href="{{ invite_url }}" target="_blank" rel="noopener">
-    Invite PartyBot to your server
-  </a>
+<p style="margin-bottom:0.85rem">
+  <a class="btn btn-primary" href="{{ invite_url }}" target="_blank" rel="noopener">Invite PartyBot to your server</a>
 </p>
 {% endif %}
-
-<p class="about-text">
+<p class="about-text" style="margin-bottom:1.5rem">
   Run a Cardboard Party event from your Discord server — players register, report
   results, and follow standings without leaving the channel. All commands live
   under <code>/{{ cmd }}</code>.
 </p>
+
+{% if account_url %}
+<p style="margin-bottom:0.85rem">
+  <a class="btn btn-primary" href="{{ account_url }}" target="_blank" rel="noopener">Add PartyBot to your account</a>
+</p>
+<p class="about-text" style="margin-bottom:1.5rem">
+  Use <code>/{{ cmd }}</code> commands anywhere.
+</p>
+{% endif %}
 
 <h2>Commands</h2>
 <dl class="bot-commands">
