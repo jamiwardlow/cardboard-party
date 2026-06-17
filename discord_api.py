@@ -323,7 +323,7 @@ def _dm_round_pairings(event: dict, round_num: int, base_url: str):
             p = players.get(m.get('player1_id'))
             did = _player_discord_id(p) if p and not p.get('dropped') else None
             if did:
-                embed = _embed("You have a **bye** this round (auto-win).",
+                embed = _embed("You have a **bye** this round (auto-win). GGs!",
                                color=BRAND_GREEN, title=f"{ename} — {label}")
                 dm_user(did, embeds=[embed],
                         components=([{'type': 1, 'components': [link_btn]}] if link_btn else None))
