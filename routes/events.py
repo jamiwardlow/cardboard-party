@@ -1289,6 +1289,8 @@ def api_restart_timer(event_id):
     _require_manage(e)
     now = _now_iso()
     save_event(event_id, {'round_started_at': now})
+    e['round_started_at'] = now
+    discord_api.update_round_pairings(e)   # show the live countdown on the pairings card
     return jsonify({'round_started_at': now})
 
 

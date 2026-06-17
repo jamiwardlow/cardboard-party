@@ -3,6 +3,7 @@ Outbound Discord REST calls for the bot (channel posts). HTTP-only — pairs wit
 the HTTP-Interactions endpoint in routes/discord.py; no gateway connection.
 """
 
+import datetime
 import threading
 
 import requests
@@ -137,14 +138,26 @@ def dm_event_invite(target_id: str, event: dict, event_url: str, inviter_name: s
     return dm_user(target_id, content, components, embeds)
 
 
-def announce_round(event: dict, round_num: int):
-    """Post a round's pairings to the event's linked Discord channel (if any),
-    with a button players tap to report their own result. Best-effort."""
-    channel_id = event.get('discord_channel_id')
-    rounds = event.get('rounds', [])
-    if not channel_id or not (1 <= round_num <= len(rounds)):
-        return
-    rnd = rounds[round_num - 1]
+def _round_end_unix(event: dict):
+    """Unix timestamp when the current round's timer ends, or None if no timer is
+    configured/started. Used for Discord's live <t:…:R> relative time."""
+    started = event.get('round_started_at')
+    mins = event.get('round_timer_minutes') or 0
+    if not started or not mins:
+        return None
+    try:
+        return int(datetime.datetime.fromisoformat(started).timestamp()) + mins * 60
+    except (ValueError, TypeError):
+        return None
+
+
+def _pairings_components():
+    return [{'type': 1, 'components': [
+        {'type': 2, 'style': STYLE_BLURPLE, 'label': 'Report my result', 'custom_id': 'cbp_report_btn'}]}]
+
+
+def _pairings_embed(event: dict, round_num: int, end_unix=None):
+    rnd = event['rounds'][round_num - 1]
     names = {p['id']: p['name'] for p in event.get('players', [])}
     lines = []
     for m in rnd:
@@ -153,11 +166,41 @@ def announce_round(event: dict, round_num: int):
         else:
             lines.append(f"• {names.get(m.get('player1_id'), '?')} vs "
                          f"{names.get(m.get('player2_id'), '?')}")
-    embed = _embed("\n".join(lines), color=BRAND_PURPLE,
-                   title=f"{event.get('name', 'Event')} — {_round_label(round_num, rnd)} pairings")
-    components = [{'type': 1, 'components': [
-        {'type': 2, 'style': STYLE_BLURPLE, 'label': 'Report my result', 'custom_id': 'cbp_report_btn'}]}]
-    post_message(channel_id, embeds=[embed], components=components)
+    if end_unix:
+        # Discord renders <t:…:R> as a live, client-updating relative time.
+        lines.append(f"\n⏱ **Round ends** <t:{end_unix}:R>")
+    return _embed("\n".join(lines), color=BRAND_PURPLE,
+                  title=f"{event.get('name', 'Event')} — {_round_label(round_num, rnd)} pairings")
+
+
+def announce_round(event: dict, round_num: int):
+    """Post a round's pairings to the event's linked Discord channel (if any),
+    with a button players tap to report their own result. Remembers the message so
+    the timer can be added to it later. Best-effort. (No timer line at pairing —
+    the organiser starts the timer afterwards; see update_round_pairings.)"""
+    channel_id = event.get('discord_channel_id')
+    rounds = event.get('rounds', [])
+    if not channel_id or not (1 <= round_num <= len(rounds)):
+        return
+    msg = post_message(channel_id, embeds=[_pairings_embed(event, round_num)],
+                       components=_pairings_components())
+    if msg and event.get('id'):
+        from db import save_event
+        save_event(event['id'], {'discord_pairings': {
+            'channel_id': channel_id, 'message_id': msg.get('id'), 'round_num': round_num}})
+
+
+def update_round_pairings(event: dict):
+    """Re-render the latest round's pairings post to show the live timer countdown
+    (called when the organiser starts or restarts the round timer). Best-effort
+    no-op if there's no stored pairings message for the current round."""
+    p = event.get('discord_pairings') or {}
+    rounds = event.get('rounds', [])
+    if not p.get('message_id') or p.get('round_num') != len(rounds):
+        return
+    embed = _pairings_embed(event, p['round_num'], _round_end_unix(event))
+    edit_message(p['channel_id'], p['message_id'], embeds=[embed],
+                 components=_pairings_components())
 
 
 def dm_user(discord_id: str, content: str = None, components=None, embeds=None) -> bool:
