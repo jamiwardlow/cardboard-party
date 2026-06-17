@@ -426,6 +426,9 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
     m['winner_id'] = winner_id
     m['result'] = result
     save_event(event_id, {'rounds': e['rounds']})
+    # Mark both players' pairing DMs as reported (mirrors reporting from the DM),
+    # so a result entered in the channel/slash still updates their DM message.
+    discord_api.mark_dm_pairings_reported(e, [ctx['player_id'], ctx['opp_id']])
     # Let the opponent know it's recorded so they don't report it again.
     discord_api.dm_result_recorded(e, round_idx, match_idx,
                                    exclude_player_id=ctx['player_id'], base_url=base_url)

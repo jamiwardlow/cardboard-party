@@ -203,24 +203,25 @@ def update_round_pairings(event: dict):
                  components=_pairings_components())
 
 
-def dm_user(discord_id: str, content: str = None, components=None, embeds=None) -> bool:
+def dm_user(discord_id: str, content: str = None, components=None, embeds=None):
     """Send a direct message to a Discord user (opening the DM channel first).
-    Best-effort — fails quietly if the user shares no server with the bot or has
-    DMs disabled."""
+    Returns the created message dict (with its id + channel_id, so callers can
+    edit it later) on success, else None. Best-effort — fails quietly if the user
+    shares no server with the bot or has DMs disabled."""
     token = get_secret('DISCORD_BOT_TOKEN')
     if not (token and discord_id):
-        return False
+        return None
     try:
         r = requests.post(f'{API}/users/@me/channels',
                           headers={'Authorization': f'Bot {token}'},
                           json={'recipient_id': str(discord_id)}, timeout=5)
         if not r.ok:
             print(f'discord dm open {r.status_code}: {r.text[:200]}')
-            return False
-        return bool(post_message(r.json().get('id'), content, components, embeds))
+            return None
+        return post_message(r.json().get('id'), content, components, embeds)
     except Exception as e:
         print(f'discord dm_user error: {e}')
-        return False
+        return None
 
 
 _DRAW_RESULTS = ('draw', '0-0-3')
@@ -315,6 +316,8 @@ def _dm_round_pairings(event: dict, round_num: int, base_url: str):
             row.append(link_btn)
         return [{'type': 1, 'components': row}]
 
+    dms = {}   # player_id -> {channel_id, message_id}, so a report elsewhere can
+               # mark this DM "reported" too (see mark_dm_pairing_reported).
     for m in rnd:
         if m.get('is_bye'):
             p = players.get(m.get('player1_id'))
@@ -336,4 +339,34 @@ def _dm_round_pairings(event: dict, round_num: int, base_url: str):
             embed = _embed(f"You're paired against **{opp['name'] if opp else '?'}**. "
                            f"Report your result when you're done:",
                            title=f"{ename} — {label}")
-            dm_user(did, embeds=[embed], components=report_row())
+            msg = dm_user(did, embeds=[embed], components=report_row())
+            if msg and msg.get('id'):
+                dms[pid] = {'channel_id': msg.get('channel_id'), 'message_id': msg['id']}
+    if dms and event.get('id'):
+        from db import save_event
+        save_event(event['id'], {'discord_pairing_dms': {'round_num': round_num, 'dms': dms}})
+
+
+def mark_dm_pairing_reported(event: dict, player_id: str):
+    """Edit a player's pairing DM for the current round to show their result is in
+    — swapping the 'Report my result' button for a disabled 'Result reported', the
+    same end state as reporting from the DM. Best-effort no-op if we have no stored
+    DM message for them this round."""
+    info = event.get('discord_pairing_dms') or {}
+    if info.get('round_num') != len(event.get('rounds', [])):
+        return
+    dm = (info.get('dms') or {}).get(player_id)
+    if not dm or not dm.get('message_id'):
+        return
+    reported = [{'type': 1, 'components': [
+        {'type': 2, 'style': STYLE_GREY, 'label': 'Result reported',
+         'custom_id': 'cbp_reported_noop', 'disabled': True}]}]
+    edit_message(dm['channel_id'], dm['message_id'], components=reported)
+
+
+def mark_dm_pairings_reported(event: dict, player_ids):
+    """Background, best-effort: mark each player's pairing DM as reported, so it
+    doesn't block the 3s interaction response with extra Discord edits."""
+    threading.Thread(
+        target=lambda: [mark_dm_pairing_reported(event, pid) for pid in player_ids],
+        daemon=True).start()
