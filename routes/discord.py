@@ -182,6 +182,17 @@ def _invite_menu(body):
         'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
+def _invite_action_row(eid, registered):
+    """Action row for a DM invitation card: a Register/Withdraw toggle (reflecting
+    whether they're currently registered) plus a View-details link."""
+    toggle = ({'type': BUTTON, 'style': 4, 'label': 'Withdraw', 'custom_id': f'cbp_wd_btn:{eid}'}
+              if registered else
+              {'type': BUTTON, 'style': 1, 'label': 'Register', 'custom_id': f'cbp_reg_btn:{eid}'})
+    view = {'type': BUTTON, 'style': 5, 'label': 'View details',
+            'url': f"{request.host_url.rstrip('/')}/events/{eid}"}
+    return [{'type': ACTION_ROW, 'components': [toggle, view]}]
+
+
 def _link_menu():
     """Pick an event whose pairings should auto-post in the current channel."""
     from routes.events import discord_linkable_events
@@ -338,15 +349,32 @@ def _handle_component(body):
                        "It'll update automatically when registration fills or closes.")
 
     if custom_id.startswith('cbp_reg_btn:'):
-        # One-tap Register button on an announcement post (no slash command needed).
+        # One-tap Register button (on a channel announce card or a DM invitation).
         from routes.events import register_player_via_discord
         eid = custom_id.split(':', 1)[1]
         result, err = register_player_via_discord(
             eid, discord_id, name, _interaction_username(body))
         if err:
             return _reply(f'⚠️ {err}')
-        return _reply(f"✅ Registered for **{result['event_name']}** as "
-                      f"**{result['player']['name']}**. Report results here with `/{COMMAND_NAME} report`.")
+        confirm = (f"✅ Registered for **{result['event_name']}** as "
+                   f"**{result['player']['name']}**. Report results here with `/{COMMAND_NAME} report`.")
+        # On a DM invitation, flip the card's Register button to Withdraw in place.
+        # A shared announce card in a channel just gets an ephemeral confirmation.
+        if body.get('message') and not body.get('guild_id'):
+            return jsonify({'type': UPDATE_MESSAGE, 'data': {
+                'content': confirm, 'components': _invite_action_row(eid, registered=True)}})
+        return _reply(confirm)
+
+    if custom_id.startswith('cbp_wd_btn:'):
+        # Withdraw button on a DM invitation → drop/remove, then toggle back to Register.
+        from routes.events import withdraw_player_via_discord
+        eid = custom_id.split(':', 1)[1]
+        ename, err = withdraw_player_via_discord(eid, discord_id)
+        if err:
+            return _reply(f'⚠️ {err}')
+        return jsonify({'type': UPDATE_MESSAGE, 'data': {
+            'content': f"You've withdrawn from **{ename}**. Changed your mind? Tap Register.",
+            'components': _invite_action_row(eid, registered=False)}})
 
     if custom_id.startswith('cbp_invite_select:'):
         # Event chosen for an invite → DM the target the registration card.

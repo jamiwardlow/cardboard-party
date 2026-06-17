@@ -240,6 +240,32 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
 
 
+def withdraw_player_via_discord(event_id: str, discord_id: str):
+    """Withdraw a Discord-registered player from an event (the toggle counterpart
+    to register_player_via_discord). Mirrors the web withdraw: drop if rounds have
+    started, else remove the entry. Returns (event_name, None) or (None, error)."""
+    e = get_event(event_id)
+    if not e:
+        return None, 'That event no longer exists.'
+    gid = _google_id_for_discord(discord_id)
+    player = next((p for p in e['players']
+                   if not p.get('dropped') and
+                      (p.get('discord_id') == discord_id or (gid and p.get('google_id') == gid))),
+                  None)
+    if not player:
+        return None, "You're not registered for this event."
+    unenroll_end = e.get('unenroll_end')
+    if unenroll_end and datetime.date.today().isoformat() > unenroll_end:
+        return None, 'The unenrollment deadline has passed — contact the organiser.'
+    if e['rounds']:
+        set_player_dropped(event_id, player['id'], True)
+    else:
+        e['players'] = [p for p in e['players'] if p['id'] != player['id']]
+        save_event(event_id, {'players': e['players']})
+    refresh_event_announcement(get_event(event_id))   # a slot may have freed up
+    return e.get('name', 'the event'), None
+
+
 # Anti-spam limits for Discord event invites. Anyone may invite anyone, so these
 # keep one person from blasting invites and keep a recipient from being pestered
 # about the same event repeatedly.
