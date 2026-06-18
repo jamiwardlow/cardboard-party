@@ -24,8 +24,14 @@ def get_secret(name: str) -> str:
     if not project:
         return ''
 
-    from google.cloud import secretmanager
-    client = secretmanager.SecretManagerServiceClient()
-    path = f'projects/{project}/secrets/{name}/versions/latest'
-    response = client.access_secret_version(name=path)
-    return response.payload.data.decode('utf-8')
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        path = f'projects/{project}/secrets/{name}/versions/latest'
+        response = client.access_secret_version(name=path)
+        return response.payload.data.decode('utf-8')
+    except Exception as e:
+        # Missing or inaccessible secret → '' (don't crash startup over an
+        # optional secret, e.g. DISCORD_CLIENT_SECRET before it's configured).
+        print(f'get_secret({name}) unavailable: {e}')
+        return ''

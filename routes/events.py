@@ -1566,7 +1566,8 @@ def player_profile(google_id):
     if saved.get('discord'):
         profile['discord'] = saved['discord']
     # Effective avatar: custom upload if set, else the Google picture.
-    profile['picture'] = saved.get('avatar_url') or saved.get('google_picture') or ''
+    profile['picture'] = (saved.get('avatar_url') or saved.get('google_picture')
+                          or saved.get('discord_picture') or '')
     profile['about'] = saved.get('about', '')
     profile['pronouns'] = saved.get('pronouns', '')
     profile['pronunciation'] = saved.get('pronunciation', '')
