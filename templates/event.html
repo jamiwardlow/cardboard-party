@@ -35,6 +35,13 @@
       <h1>{{ event.name }}</h1>
       {% if event.test_mode %}<span class="test-badge">TEST</span>{% endif %}
       <button class="btn btn-sm" id="btn-share" onclick="shareEvent(this)">Share</button>
+      <details class="cal-menu">
+        <summary class="btn btn-sm">Add to calendar</summary>
+        <div class="cal-menu-pop">
+          <a href="#" onclick="addToGoogleCal();return false;">Google Calendar</a>
+          <a href="#" onclick="downloadIcs();return false;">Apple / Outlook (.ics)</a>
+        </div>
+      </details>
       <button class="btn btn-sm hidden" id="btn-duplicate" onclick="duplicateEvent()">Duplicate event</button>
     </div>
     <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }}{% if event.start_time %} · {{ event.start_time | time12 }}{% endif %} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}</p>
@@ -440,6 +447,73 @@ async function shareEvent(btn) {
   } catch (err) {
     prompt('Copy this link:', url);
   }
+}
+
+// ── Add to calendar ──────────────────────────────────────────────────────────
+// We store a date and an optional start time but no timezone or end time, so the
+// time is treated as floating local (as it's displayed) with a 3-hour default
+// block; events with no start time become all-day.
+const CAL_DEFAULT_HOURS = 3;
+
+function _calRange() {
+  const [y, mo, d] = (state.date || '').split('-').map(Number);
+  if (!y) return null;
+  if (state.start_time) {
+    const [h, mi] = state.start_time.split(':').map(Number);
+    const start = new Date(y, mo - 1, d, h || 0, mi || 0);
+    return { start, end: new Date(start.getTime() + CAL_DEFAULT_HOURS * 3600000), allDay: false };
+  }
+  const start = new Date(y, mo - 1, d);
+  return { start, end: new Date(start.getTime() + 86400000), allDay: true };
+}
+function _pad(n) { return String(n).padStart(2, '0'); }
+function _calDate(dt) { return `${dt.getFullYear()}${_pad(dt.getMonth() + 1)}${_pad(dt.getDate())}`; }
+function _calLocal(dt) { return `${_calDate(dt)}T${_pad(dt.getHours())}${_pad(dt.getMinutes())}00`; }
+function _calDetails() {
+  const bits = [];
+  const meta = [state.format, state.game].filter(Boolean).join(' · ');
+  if (meta) bits.push(meta);
+  if (state.entry_cost) bits.push('Entry: ' + state.entry_cost);
+  if (state.description) bits.push(state.description);
+  bits.push(window.location.origin + '/events/' + EVENT_ID);
+  return bits.join('\n\n');
+}
+function _closeCalMenu() { document.querySelector('.cal-menu')?.removeAttribute('open'); }
+
+function addToGoogleCal() {
+  _closeCalMenu();
+  const r = _calRange();
+  if (!r) return;
+  const dates = r.allDay ? `${_calDate(r.start)}/${_calDate(r.end)}`
+                         : `${_calLocal(r.start)}/${_calLocal(r.end)}`;
+  const p = new URLSearchParams({ action: 'TEMPLATE', text: state.name || 'Event',
+                                  dates, details: _calDetails() });
+  window.open('https://calendar.google.com/calendar/render?' + p.toString(), '_blank', 'noopener');
+}
+
+function downloadIcs() {
+  _closeCalMenu();
+  const r = _calRange();
+  if (!r) return;
+  const esc = s => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;')
+                            .replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  const when = r.allDay
+    ? `DTSTART;VALUE=DATE:${_calDate(r.start)}\r\nDTEND;VALUE=DATE:${_calDate(r.end)}`
+    : `DTSTART:${_calLocal(r.start)}\r\nDTEND:${_calLocal(r.end)}`;
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Cardboard Party//EN', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT', `UID:${EVENT_ID}@cardboardparty.gg`, `DTSTAMP:${stamp}`, when,
+    `SUMMARY:${esc(state.name || 'Event')}`, `DESCRIPTION:${esc(_calDetails())}`,
+    `URL:${window.location.origin}/events/${EVENT_ID}`, 'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.name || 'event').replace(/[^\w]+/g, '_') + '.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function render() {

@@ -116,6 +116,19 @@ ul.about-text { padding-left: 1.25rem; }
 .page-header h1 { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600;
                   line-height: 1.15; letter-spacing: -0.01em; }
 .title-row    { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+/* "Add to calendar" disclosure menu (native <details>). */
+.cal-menu { position: relative; display: inline-block; }
+.cal-menu > summary { list-style: none; cursor: pointer; }
+.cal-menu > summary::-webkit-details-marker { display: none; }
+.cal-menu-pop { position: absolute; left: 0; top: calc(100% + 0.3rem); z-index: 20;
+               min-width: 190px; display: flex; flex-direction: column;
+               background: var(--bg2); border: 1px solid var(--border);
+               border-radius: var(--radius); padding: 0.3rem;
+               box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
+.cal-menu-pop a { padding: 0.45rem 0.6rem; border-radius: 6px; color: var(--text);
+                  text-decoration: none; font-size: 0.9rem; white-space: nowrap; }
+.cal-menu-pop a:hover { background: var(--bg3); color: var(--accent); }
 #btn-share          { background: var(--accent-h); color: #fff;
                       border-color: transparent; font-weight: 600; }
 #btn-share:hover    { background: #7c3aed; border-color: transparent; }
