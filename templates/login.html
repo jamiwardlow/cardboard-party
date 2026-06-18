@@ -11,9 +11,9 @@
     Sign in (or create an account) to organize events, register, and track your
     results across events.
   </p>
-  <a class="btn btn-primary" href="/auth/login/google?next={{ next | urlencode }}">Continue with Google</a>
   {% if discord_enabled %}
-  <a class="btn btn-discord" href="/auth/login/discord?next={{ next | urlencode }}">Continue with Discord</a>
+  <a class="btn btn-primary" href="/auth/login/discord?next={{ next | urlencode }}">Continue with Discord</a>
   {% endif %}
+  <a class="btn" href="/auth/login/google?next={{ next | urlencode }}">Continue with Google</a>
 </div>
 {% endblock %}
