@@ -92,6 +92,7 @@
 <!-- Registered player banner -->
 <div id="player-banner" class="banner banner-player hidden">
   <span id="player-banner-msg">You're registered for this event.</span>
+  <button class="btn btn-sm" id="btn-decklist" style="display:none" onclick="openMyDecklist()">Submit decklist</button>
   <button class="btn btn-sm btn-danger" id="withdraw-btn" onclick="unregister()">Withdraw</button>
   <button class="btn btn-sm" id="guest-link-btn" style="display:none" onclick="copyGuestLink(this)">Copy my private link</button>
 </div>
@@ -351,6 +352,10 @@
         <span class="field-help">Players are told a decklist is required for this event.</span>
       </span>
     </label>
+    <label class="ee-adv">Decklist deadline
+      <input id="ee-decklist-deadline" type="date">
+      <span class="field-help">After this date, players can't submit or edit decklists.</span>
+    </label>
     <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-test-mode">
       <span>This event is in Test Mode
@@ -360,6 +365,21 @@
     <div class="modal-actions">
       <button class="btn" onclick="closeEditEventModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEventDetails()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Decklist submit/view modal -->
+<div id="decklist-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="decklist-modal-title">Decklist</h2>
+    <p id="decklist-modal-note" class="field-help" style="margin-bottom:0.6rem"></p>
+    <textarea id="decklist-text" rows="16" spellcheck="false"
+              placeholder="Paste your decklist here, e.g.&#10;4 Lightning Bolt&#10;...&#10;&#10;Sideboard&#10;2 Pyroblast"
+              style="width:100%;font-family:var(--font-mono);font-size:0.9rem;padding:0.6rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)"></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeDecklistModal()">Close</button>
+      <button class="btn btn-primary" id="decklist-save-btn" onclick="saveMyDecklist()">Save decklist</button>
     </div>
   </div>
 </div>
@@ -557,6 +577,7 @@ function openEditEventModal() {
   document.getElementById('ee-brand-file').value = '';
   document.getElementById('ee-brand-msg').textContent = '';
   document.getElementById('ee-decklists').checked = !!state.requires_decklists;
+  document.getElementById('ee-decklist-deadline').value = state.decklist_deadline || '';
   document.getElementById('ee-cost').value        = state.entry_cost || '';
   document.getElementById('ee-payment').value     = state.payment_url || '';
   document.getElementById('ee-date').value        = state.date || '';
@@ -661,6 +682,7 @@ async function saveEventDetails() {
     planned_cut_size: document.getElementById('ee-structure').value === 'swiss_top_cut'
                         ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
     requires_decklists: document.getElementById('ee-decklists').checked,
+    decklist_deadline: document.getElementById('ee-decklist-deadline').value,
     prize_deadline_days: parseInt(document.getElementById('ee-prize-deadline').value) || 0,
     rules:            document.getElementById('ee-rules').value,
     schedule:         document.getElementById('ee-schedule').value,
@@ -838,6 +860,7 @@ function renderBanners() {
     // offer the private link instead (organiser can drop them if needed).
     document.getElementById('withdraw-btn').style.display   = isGuest ? 'none' : '';
     document.getElementById('guest-link-btn').style.display = isGuest ? '' : 'none';
+    renderDecklistButton();
     return;
   }
 
@@ -873,6 +896,77 @@ function renderBanners() {
     document.getElementById('register-form').classList.add('hidden');
     regBanner.classList.add('banner-closed');
   }
+}
+
+// ── Decklists ────────────────────────────────────────────────────────────────
+function _guestHeaders() {
+  return guestToken ? { 'X-Guest-Token': guestToken } : {};
+}
+function _decklistLocked() {
+  const dd = state.decklist_deadline;
+  return !!dd && new Date().toISOString().slice(0, 10) > dd;
+}
+
+// The participant's own Submit/Edit/View button in the player banner.
+function renderDecklistButton() {
+  const btn = document.getElementById('btn-decklist');
+  if (!state.requires_decklists || !myPlayer) { btn.style.display = 'none'; return; }
+  const locked = _decklistLocked();
+  btn.textContent = locked ? 'View decklist'
+                  : (myPlayer.has_decklist ? 'Edit decklist' : 'Submit decklist');
+  btn.style.display = '';
+}
+
+async function openMyDecklist() {
+  const res = await fetch(`/api/events/${EVENT_ID}/decklist`, { headers: _guestHeaders() });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not load your decklist.'); return; }
+  const d = await res.json();
+  const ta = document.getElementById('decklist-text');
+  ta.value = d.text || '';
+  ta.readOnly = !!d.locked;
+  document.getElementById('decklist-modal-title').textContent =
+    d.locked ? 'Your decklist (locked)' : (d.text ? 'Edit your decklist' : 'Submit your decklist');
+  document.getElementById('decklist-modal-note').textContent =
+    d.locked ? `The deadline (${d.deadline}) has passed — your list is read-only.`
+             : (state.decklist_deadline ? `Due by ${state.decklist_deadline}.` : '');
+  document.getElementById('decklist-save-btn').style.display = d.locked ? 'none' : '';
+  document.getElementById('decklist-modal').classList.remove('hidden');
+}
+
+async function saveMyDecklist() {
+  const text = document.getElementById('decklist-text').value;
+  const res = await fetch(`/api/events/${EVENT_ID}/decklist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ..._guestHeaders() },
+    body: JSON.stringify({ text }),
+  });
+  if (res.ok) {
+    const d = await res.json();
+    if (myPlayer) myPlayer.has_decklist = d.has_decklist;
+    const p = state.players.find(x => x.id === (myPlayer && myPlayer.id));
+    if (p) p.has_decklist = d.has_decklist;
+    closeDecklistModal();
+    render();
+  } else { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save your decklist.'); }
+}
+
+function closeDecklistModal() {
+  document.getElementById('decklist-modal').classList.add('hidden');
+}
+
+// Organiser: view a specific player's submitted decklist (read-only).
+async function openPlayerDecklist(playerId) {
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/decklist`);
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not load that decklist.'); return; }
+  const d = await res.json();
+  document.getElementById('decklist-modal-title').textContent = `${d.name}'s decklist`;
+  document.getElementById('decklist-modal-note').textContent =
+    d.updated_at ? `Submitted ${new Date(d.updated_at).toLocaleString()}.` : 'No decklist submitted yet.';
+  const ta = document.getElementById('decklist-text');
+  ta.value = d.text || '';
+  ta.readOnly = true;
+  document.getElementById('decklist-save-btn').style.display = 'none';
+  document.getElementById('decklist-modal').classList.remove('hidden');
 }
 
 // Mirrors the backend gate: why self-registration is unavailable, or null if open.
@@ -1227,6 +1321,11 @@ function renderPlayers() {
     }
     const discord = p.discord
       ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
+    // Decklist status — organisers see a button to view each player's list.
+    let decklistTag = '';
+    if (state.requires_decklists && !p.dropped && canManage()) {
+      decklistTag = `<button class="btn btn-sm decklist-btn${p.has_decklist ? '' : ' decklist-missing'}" onclick="openPlayerDecklist('${p.id}')">${p.has_decklist ? '📋 View list' : '📋 No list'}</button>`;
+    }
     const profileLink = p.google_id
       ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(p.name)}</a>`
       : `<span class="player-name">${escapeHtml(p.name)}</span>`;
@@ -1237,7 +1336,7 @@ function renderPlayers() {
       ? `<button class="btn btn-sm edit-name-btn" title="Edit display name" onclick="renamePlayer('${p.id}')">✎</button>`
       : '';
     return `<li class="${p.dropped ? 'dropped' : ''}">
-      ${profileLink}${editBtn}${discord}${checkTag}${checkBtn}${dropBtn}
+      ${profileLink}${editBtn}${discord}${decklistTag}${checkTag}${checkBtn}${dropBtn}
     </li>`;
   }).join('');
 }

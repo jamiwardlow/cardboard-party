@@ -515,6 +515,25 @@ def _find_player_by_guest_token(event: dict, token: str) -> dict | None:
     return next((p for p in event['players']
                  if p.get('guest_token') and p['guest_token'] == token), None)
 
+def _current_participant(event: dict):
+    """The player entry for whoever is making the request — a signed-in Google
+    player, or a guest holding their self-report token (X-Guest-Token header,
+    `guest_token` in the JSON body, or `t` query param). None if neither."""
+    user = get_current_user()
+    if user:
+        p = _find_player_by_google_id(event, user['id'])
+        if p:
+            return p
+    token = (request.headers.get('X-Guest-Token')
+             or (request.get_json(silent=True) or {}).get('guest_token')
+             or request.args.get('t'))
+    return _find_player_by_guest_token(event, token)
+
+def _decklist_locked(event: dict) -> bool:
+    """True once the decklist submission deadline has passed (edits read-only)."""
+    dd = (event.get('decklist_deadline') or '').strip()
+    return bool(dd and datetime.date.today().isoformat() > dd)
+
 def _redact_players(event: dict) -> None:
     """Strip guest self-report tokens before sending an event to clients. The
     token is a bearer secret — anyone holding it can report as that player and
@@ -523,10 +542,13 @@ def _redact_players(event: dict) -> None:
 
     Also strip discord_id — it's only used server-side to match a player to the
     Discord user reporting, and there's no need to expose the player↔Discord
-    mapping in public payloads."""
+    mapping in public payloads. Decklists are private (owner + organiser only), so
+    the content is replaced with a `has_decklist` flag for status badges."""
     for p in event.get('players', []):
         p.pop('guest_token', None)
         p.pop('discord_id', None)
+        p['has_decklist'] = bool((p.get('decklist') or {}).get('text', '').strip())
+        p.pop('decklist', None)
 
 def _enrich_players_discord(event: dict) -> None:
     """Refresh each linked player's `discord` from their account profile, which is
@@ -751,6 +773,7 @@ def api_create_event():
         # the in-event "Cut to Top N" action; the actual cut still executes later.
         'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
         'requires_decklists': bool(data.get('requires_decklists', False)),
+        'decklist_deadline': (data.get('decklist_deadline') or '').strip(),  # '' = no cutoff
         'round_timer_minutes': data.get('round_timer_minutes') if isinstance(data.get('round_timer_minutes'), int) and data.get('round_timer_minutes') >= 0 else 0,
         'round_started_at': '',   # ISO time the current round's timer started
         # Delayed delivery: hide newly-paired pairings / fresh standings from
@@ -849,7 +872,8 @@ def api_update_event(event_id):
                'event_type', 'format', 'description', 'entry_cost',
                'payment_url', 'date', 'start_time', 'num_rounds',
                'status', 'registration', 'registration_cap',
-               'registration_type', 'registration_start', 'registration_end', 'unenroll_end'}
+               'registration_type', 'registration_start', 'registration_end', 'unenroll_end',
+               'decklist_deadline'}
     updates = {k: v for k, v in data.items() if k in allowed}
     if 'name' in updates and not str(updates['name']).strip():
         return jsonify({'error': 'Event name is required'}), 400
@@ -873,6 +897,8 @@ def api_update_event(event_id):
         updates['brand_text'] = str(updates['brand_text'] or '')[:300]
     if 'start_time' in updates:
         updates['start_time'] = str(updates['start_time'] or '').strip()[:5]
+    if 'decklist_deadline' in updates:
+        updates['decklist_deadline'] = str(updates['decklist_deadline'] or '').strip()
     if 'prize_deadline_days' in updates:
         v = updates['prize_deadline_days']
         updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
@@ -1300,6 +1326,47 @@ def api_restart_timer(event_id):
     e['round_started_at'] = now
     discord_api.update_round_pairings(e)   # show the live countdown on the pairings card
     return jsonify({'round_started_at': now})
+
+
+@events_bp.route('/api/events/<event_id>/decklist', methods=['GET', 'POST'])
+def api_my_decklist(event_id):
+    """Submit/edit (POST) or read (GET) the requester's own decklist. Open to the
+    registered Google player or a guest holding their self-report token."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    p = _current_participant(e)
+    if not p:
+        return jsonify({'error': "You're not registered for this event."}), 403
+    locked = _decklist_locked(e)
+    if request.method == 'GET':
+        dl = p.get('decklist') or {}
+        return jsonify({'text': dl.get('text', ''), 'updated_at': dl.get('updated_at', ''),
+                        'locked': locked, 'deadline': e.get('decklist_deadline', '')})
+    if locked:
+        return jsonify({'error': 'The decklist deadline has passed.'}), 400
+    text = str((request.json or {}).get('text', ''))[:20000]
+    dl = {'text': text, 'updated_at': _now_iso()} if text.strip() else None
+    if set_player_field(event_id, p['id'], 'decklist', dl) is None:
+        return jsonify({'error': 'Could not save your decklist.'}), 400
+    return jsonify({'ok': True, 'updated_at': dl['updated_at'] if dl else '',
+                    'has_decklist': bool(dl)})
+
+
+@events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET'])
+@login_required
+def api_player_decklist(event_id, player_id):
+    """Organiser-only: read a specific player's submitted decklist."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    p = next((x for x in e['players'] if x['id'] == player_id), None)
+    if not p:
+        return jsonify({'error': 'Player not found'}), 404
+    dl = p.get('decklist') or {}
+    return jsonify({'name': p.get('name', ''), 'text': dl.get('text', ''),
+                    'updated_at': dl.get('updated_at', '')})
 
 
 @events_bp.route('/api/events/<event_id>/release', methods=['POST'])

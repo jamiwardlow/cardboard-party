@@ -76,6 +76,7 @@ a { color: var(--accent); }
 .site-footer a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
 .site-footer a:hover { color: var(--accent); }
 .about-text   { max-width: 640px; font-size: 1rem; line-height: 1.7; color: var(--text); }
+.decklist-btn.decklist-missing { color: var(--muted); }
 .login-choices { display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; max-width: 320px; }
 .login-choices .btn { width: 100%; justify-content: center; }
 /* Restore list indent (the global reset zeroes padding, so outside bullet
