@@ -19,6 +19,7 @@ from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER
 from routes.auth import get_current_user, login_required
 from gcp_secrets import get_secret
 import discord_api
+from decklist import validate_decklist
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import os
@@ -547,7 +548,10 @@ def _redact_players(event: dict) -> None:
     for p in event.get('players', []):
         p.pop('guest_token', None)
         p.pop('discord_id', None)
-        p['has_decklist'] = bool((p.get('decklist') or {}).get('text', '').strip())
+        dl = p.get('decklist') or {}
+        p['has_decklist'] = bool(dl.get('text', '').strip())
+        # Validity flag for the organiser roster badge (None when no list yet).
+        p['decklist_ok'] = bool((dl.get('validation') or {}).get('ok')) if p['has_decklist'] else None
         p.pop('decklist', None)
 
 def _enrich_players_discord(event: dict) -> None:
@@ -1342,15 +1346,17 @@ def api_my_decklist(event_id):
     if request.method == 'GET':
         dl = p.get('decklist') or {}
         return jsonify({'text': dl.get('text', ''), 'updated_at': dl.get('updated_at', ''),
+                        'validation': dl.get('validation'),
                         'locked': locked, 'deadline': e.get('decklist_deadline', '')})
     if locked:
         return jsonify({'error': 'The decklist deadline has passed.'}), 400
     text = str((request.json or {}).get('text', ''))[:20000]
-    dl = {'text': text, 'updated_at': _now_iso()} if text.strip() else None
+    validation = validate_decklist(text) if text.strip() else None
+    dl = {'text': text, 'updated_at': _now_iso(), 'validation': validation} if text.strip() else None
     if set_player_field(event_id, p['id'], 'decklist', dl) is None:
         return jsonify({'error': 'Could not save your decklist.'}), 400
     return jsonify({'ok': True, 'updated_at': dl['updated_at'] if dl else '',
-                    'has_decklist': bool(dl)})
+                    'has_decklist': bool(dl), 'validation': validation})
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET'])
@@ -1366,7 +1372,7 @@ def api_player_decklist(event_id, player_id):
         return jsonify({'error': 'Player not found'}), 404
     dl = p.get('decklist') or {}
     return jsonify({'name': p.get('name', ''), 'text': dl.get('text', ''),
-                    'updated_at': dl.get('updated_at', '')})
+                    'updated_at': dl.get('updated_at', ''), 'validation': dl.get('validation')})
 
 
 @events_bp.route('/api/events/<event_id>/release', methods=['POST'])

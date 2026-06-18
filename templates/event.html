@@ -377,6 +377,7 @@
     <textarea id="decklist-text" rows="16" spellcheck="false"
               placeholder="Paste your decklist here, e.g.&#10;4 Lightning Bolt&#10;...&#10;&#10;Sideboard&#10;2 Pyroblast"
               style="width:100%;font-family:var(--font-mono);font-size:0.9rem;padding:0.6rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)"></textarea>
+    <div id="decklist-result" class="decklist-result"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeDecklistModal()">Close</button>
       <button class="btn btn-primary" id="decklist-save-btn" onclick="saveMyDecklist()">Save decklist</button>
@@ -917,6 +918,19 @@ function renderDecklistButton() {
   btn.style.display = '';
 }
 
+function renderDecklistValidation(v, flash) {
+  const el = document.getElementById('decklist-result');
+  if (!v) { el.innerHTML = flash ? `<p class="dl-ok">${escapeHtml(flash)}</p>` : ''; return; }
+  let html = '';
+  if (flash) html += `<p class="dl-ok">${escapeHtml(flash)}</p>`;
+  html += `<p class="dl-counts">Maindeck: <strong>${v.maindeck_count}</strong> · Sideboard: ${v.sideboard_count}</p>`;
+  if (v.note) html += `<p class="dl-note">${escapeHtml(v.note)}</p>`;
+  if (v.ok) html += `<p class="dl-ok">✓ Looks valid.</p>`;
+  else if (v.issues && v.issues.length)
+    html += `<ul class="dl-issues">${v.issues.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+  el.innerHTML = html;
+}
+
 async function openMyDecklist() {
   const res = await fetch(`/api/events/${EVENT_ID}/decklist`, { headers: _guestHeaders() });
   if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not load your decklist.'); return; }
@@ -930,24 +944,29 @@ async function openMyDecklist() {
     d.locked ? `The deadline (${d.deadline}) has passed — your list is read-only.`
              : (state.decklist_deadline ? `Due by ${state.decklist_deadline}.` : '');
   document.getElementById('decklist-save-btn').style.display = d.locked ? 'none' : '';
+  renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
 }
 
 async function saveMyDecklist() {
-  const text = document.getElementById('decklist-text').value;
-  const res = await fetch(`/api/events/${EVENT_ID}/decklist`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ..._guestHeaders() },
-    body: JSON.stringify({ text }),
-  });
-  if (res.ok) {
+  const btn = document.getElementById('decklist-save-btn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const text = document.getElementById('decklist-text').value;
+    const res = await fetch(`/api/events/${EVENT_ID}/decklist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ..._guestHeaders() },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save your decklist.'); return; }
     const d = await res.json();
     if (myPlayer) myPlayer.has_decklist = d.has_decklist;
     const p = state.players.find(x => x.id === (myPlayer && myPlayer.id));
-    if (p) p.has_decklist = d.has_decklist;
-    closeDecklistModal();
-    render();
-  } else { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save your decklist.'); }
+    if (p) { p.has_decklist = d.has_decklist; p.decklist_ok = d.validation ? d.validation.ok : null; }
+    renderDecklistValidation(d.validation, 'Saved.');   // keep modal open to show feedback
+    renderPlayers();
+  } finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 function closeDecklistModal() {
@@ -966,6 +985,7 @@ async function openPlayerDecklist(playerId) {
   ta.value = d.text || '';
   ta.readOnly = true;
   document.getElementById('decklist-save-btn').style.display = 'none';
+  renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
 }
 
@@ -1324,7 +1344,9 @@ function renderPlayers() {
     // Decklist status — organisers see a button to view each player's list.
     let decklistTag = '';
     if (state.requires_decklists && !p.dropped && canManage()) {
-      decklistTag = `<button class="btn btn-sm decklist-btn${p.has_decklist ? '' : ' decklist-missing'}" onclick="openPlayerDecklist('${p.id}')">${p.has_decklist ? '📋 View list' : '📋 No list'}</button>`;
+      const label = !p.has_decklist ? '📋 No list'
+                  : (p.decklist_ok ? '📋 View list' : '⚠️ View list');
+      decklistTag = `<button class="btn btn-sm decklist-btn${p.has_decklist ? '' : ' decklist-missing'}" onclick="openPlayerDecklist('${p.id}')">${label}</button>`;
     }
     const profileLink = p.google_id
       ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(p.name)}</a>`
