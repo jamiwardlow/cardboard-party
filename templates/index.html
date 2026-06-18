@@ -253,6 +253,15 @@ async function init() {
   } else {
     allEl.innerHTML = events.map(eventCard).join('');
   }
+
+  // Arrived via "Duplicate event" (?duplicate=<id>) — open the create form
+  // pre-filled from that event so the user can review and tweak before creating.
+  const dup = new URLSearchParams(location.search).get('duplicate');
+  if (dup && me.signed_in) {
+    history.replaceState({}, '', '/');   // drop ?duplicate so a refresh won't reopen it
+    const r = await fetch(`/api/events/${encodeURIComponent(dup)}`);
+    if (r.ok) openDuplicateForm(await r.json());
+  }
 }
 
 // Expected round count, mirroring the event page: explicit num_rounds, else
@@ -399,6 +408,62 @@ function populateFormats() {
 function onFormatSelectChange() {
   const isCustom = document.getElementById('e-format-select').value === 'Custom';
   document.getElementById('e-format-custom').classList.toggle('hidden', !isCustom);
+}
+
+// Open the create modal pre-filled from an existing event (Duplicate event).
+// Reuses the normal create form/submit; the copy is created when the user clicks
+// Create, owned by them, with no players/rounds/Discord links/brand image.
+function openDuplicateForm(src) {
+  const set   = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+  const check = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  openCreateModal();
+  chooseMode(src.advanced ? 'advanced' : 'simple');
+  set('e-name', src.name);
+  set('e-type', src.event_type || 'One-day');
+  if (src.advanced) {
+    set('e-game', src.game);
+    populateFormats();   // refresh format options for this game
+    const fmts = GAME_FORMATS[src.game] || [];
+    if (src.format && fmts.includes(src.format)) {
+      set('e-format-select', src.format);
+    } else if (src.format) {
+      set('e-format-select', 'Custom');
+      set('e-format-custom', src.format);
+    }
+    onFormatSelectChange();
+  } else {
+    set('e-format', src.format);
+  }
+  set('e-structure', src.structure || '');
+  onStructureChange('e');
+  if (src.planned_cut_size) set('e-topcut', src.planned_cut_size);
+  document.querySelectorAll('#e-tags input').forEach(c => { c.checked = (src.tags || []).includes(c.value); });
+  set('e-description', src.description);
+  set('e-cost', src.entry_cost);
+  set('e-payment', src.payment_url);
+  set('e-brand-text', src.brand_text);
+  set('e-date', src.date);
+  set('e-time', src.start_time);
+  set('e-rounds', src.num_rounds || '');
+  set('e-cap', src.registration_cap || '');
+  set('e-round-timer', src.round_timer_minutes || '');
+  set('e-schedule', src.schedule);
+  set('e-rules', src.rules);
+  set('e-prizes', src.prizes);
+  set('e-contact', src.contact);
+  set('e-prize-deadline', src.prize_deadline_days || '');
+  set('e-reg-type', src.registration_type || 'open');
+  set('e-reg-start', src.registration_start);
+  set('e-reg-end', src.registration_end);
+  set('e-unenroll-end', src.unenroll_end);
+  set('e-entry-code', src.entry_code);
+  check('e-decklists', src.requires_decklists);
+  check('e-draws-frowned', src.intentional_draws_frowned);
+  check('e-delay-pairings', src.delay_pairings);
+  check('e-delay-standings', src.delay_standings);
+  check('e-require-checkin', src.require_check_in);
+  check('e-test-mode', src.test_mode);
+  document.getElementById('create-title').textContent = 'Duplicate event';
 }
 
 // The Top Cut size only applies to a "Swiss + Top Cut" structure. Prefix is
