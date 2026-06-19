@@ -91,6 +91,60 @@ def _scryfall_suggest(name: str) -> str:
     return ''
 
 
+_MOX_ID_RE = re.compile(r'moxfield\.com/decks/([A-Za-z0-9_-]+)')
+_MOX_ENDPOINTS = ('https://api2.moxfield.com/v3/decks/all/{id}',
+                  'https://api.moxfield.com/v2/decks/all/{id}')
+
+
+def _moxfield_to_text(data: dict) -> str:
+    """Convert a Moxfield deck JSON into our decklist text (maindeck + sideboard).
+    Handles the v3 `boards.<board>.cards` shape and the older v2 name-keyed shape."""
+    def lines(v3_board, v2_board):
+        boards = data.get('boards') or {}
+        cards = ((boards.get(v3_board) or {}).get('cards')) or {}
+        if cards:
+            return [f"{e.get('quantity', 1)} {(e.get('card') or {}).get('name', '')}".strip()
+                    for e in cards.values() if (e.get('card') or {}).get('name')]
+        flat = data.get(v2_board)
+        if isinstance(flat, dict):
+            return [f"{v.get('quantity', 1)} {k}" for k, v in flat.items() if k]
+        return []
+    main, side = lines('mainboard', 'mainboard'), lines('sideboard', 'sideboard')
+    out = list(main)
+    if side:
+        out += ['', 'Sideboard'] + side
+    return '\n'.join(out).strip()
+
+
+def import_moxfield(url: str):
+    """Fetch a public Moxfield deck and return (decklist_text, error). The text is
+    a snapshot — once saved it's the authoritative copy, unaffected by later edits
+    on Moxfield. Moxfield may block automated access; that returns a clear error."""
+    m = _MOX_ID_RE.search(url or '')
+    if not m:
+        return '', "That doesn't look like a Moxfield deck URL."
+    deck_id = m.group(1)
+    last_err = "Couldn't import from Moxfield — paste your list instead."
+    for ep in _MOX_ENDPOINTS:
+        try:
+            r = requests.get(ep.format(id=deck_id), headers=_HEADERS, timeout=10)
+        except requests.RequestException:
+            continue
+        if r.status_code == 404:
+            return '', 'Moxfield deck not found — is it set to public?'
+        if not r.ok:
+            last_err = ("Couldn't import from Moxfield (it may be blocking automated "
+                        "access) — paste your list instead.")
+            continue
+        try:
+            text = _moxfield_to_text(r.json())
+        except ValueError:
+            continue
+        if text:
+            return text, ''
+    return '', last_err
+
+
 def validate_decklist(text: str) -> dict:
     """Validate a pasted decklist: 60-card maindeck minimum + card-name check with
     suggestions. Returns a summary safe to store and show to players/organisers."""

@@ -19,7 +19,7 @@ from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER
 from routes.auth import get_current_user, login_required
 from gcp_secrets import get_secret
 import discord_api
-from decklist import validate_decklist
+from decklist import validate_decklist, import_moxfield
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import os
@@ -1357,6 +1357,23 @@ def api_my_decklist(event_id):
         return jsonify({'error': 'Could not save your decklist.'}), 400
     return jsonify({'ok': True, 'updated_at': dl['updated_at'] if dl else '',
                     'has_decklist': bool(dl), 'validation': validation})
+
+
+@events_bp.route('/api/events/<event_id>/decklist/import-moxfield', methods=['POST'])
+def api_import_moxfield(event_id):
+    """Convert a public Moxfield deck URL to decklist text for the requester to
+    review and save (we store the text, so it stays authoritative)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    if not _current_participant(e):
+        return jsonify({'error': "You're not registered for this event."}), 403
+    if _decklist_locked(e):
+        return jsonify({'error': 'The decklist deadline has passed.'}), 400
+    text, err = import_moxfield((request.json or {}).get('url', ''))
+    if err:
+        return jsonify({'error': err}), 400
+    return jsonify({'text': text})
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET'])

@@ -77,6 +77,9 @@ a { color: var(--accent); }
 .site-footer a:hover { color: var(--accent); }
 .about-text   { max-width: 640px; font-size: 1rem; line-height: 1.7; color: var(--text); }
 .decklist-btn.decklist-missing { color: var(--muted); }
+.mox-row { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+.mox-row input { flex: 1; padding: 0.4rem 0.6rem; border: 1px solid var(--border);
+                 border-radius: var(--radius); background: var(--bg); color: var(--text); font-size: 0.9rem; }
 .decklist-result { margin: 0.6rem 0 0; font-size: 0.9rem; }
 .decklist-result .dl-counts { color: var(--text); margin: 0.2rem 0; }
 .decklist-result .dl-ok { color: var(--green); margin: 0.2rem 0; }

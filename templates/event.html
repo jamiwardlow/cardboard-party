@@ -374,6 +374,10 @@
   <div class="modal">
     <h2 id="decklist-modal-title">Decklist</h2>
     <p id="decklist-modal-note" class="field-help" style="margin-bottom:0.6rem"></p>
+    <div id="moxfield-import" class="mox-row">
+      <input id="moxfield-url" type="url" placeholder="…or paste a Moxfield deck URL to import">
+      <button class="btn btn-sm" onclick="importMoxfield(this)">Import</button>
+    </div>
     <textarea id="decklist-text" rows="16" spellcheck="false"
               placeholder="Paste your decklist here, e.g.&#10;4 Lightning Bolt&#10;...&#10;&#10;Sideboard&#10;2 Pyroblast"
               style="width:100%;font-family:var(--font-mono);font-size:0.9rem;padding:0.6rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)"></textarea>
@@ -944,8 +948,29 @@ async function openMyDecklist() {
     d.locked ? `The deadline (${d.deadline}) has passed — your list is read-only.`
              : (state.decklist_deadline ? `Due by ${state.decklist_deadline}.` : '');
   document.getElementById('decklist-save-btn').style.display = d.locked ? 'none' : '';
+  document.getElementById('moxfield-import').style.display = d.locked ? 'none' : 'flex';
+  document.getElementById('moxfield-url').value = '';
   renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
+}
+
+async function importMoxfield(btn) {
+  const url = document.getElementById('moxfield-url').value.trim();
+  if (!url) return;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Importing…';
+  try {
+    const res = await fetch(`/api/events/${EVENT_ID}/decklist/import-moxfield`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ..._guestHeaders() },
+      body: JSON.stringify({ url }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { alert(d.error || 'Could not import from Moxfield.'); return; }
+    document.getElementById('decklist-text').value = d.text || '';
+    document.getElementById('decklist-result').innerHTML =
+      '<p class="dl-note">Imported from Moxfield — review and Save to submit.</p>';
+  } finally { btn.disabled = false; btn.textContent = orig; }
 }
 
 async function saveMyDecklist() {
@@ -985,6 +1010,7 @@ async function openPlayerDecklist(playerId) {
   ta.value = d.text || '';
   ta.readOnly = true;
   document.getElementById('decklist-save-btn').style.display = 'none';
+  document.getElementById('moxfield-import').style.display = 'none';
   renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
 }
