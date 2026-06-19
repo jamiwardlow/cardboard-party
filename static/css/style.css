@@ -80,6 +80,13 @@ a { color: var(--accent); }
 .mox-row { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
 .mox-row input { flex: 1; padding: 0.4rem 0.6rem; border: 1px solid var(--border);
                  border-radius: var(--radius); background: var(--bg); color: var(--text); font-size: 0.9rem; }
+/* Read-only decklist display (organiser view / after deadline) — a static text
+   block, deliberately not styled like an editable field. */
+.decklist-view { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.9rem;
+                 line-height: 1.5; color: var(--text); background: var(--bg2);
+                 border-left: 3px solid var(--border); border-radius: 0 6px 6px 0;
+                 padding: 0.6rem 0.8rem; max-height: 60vh; overflow: auto; }
+.decklist-view.empty { color: var(--muted); font-family: var(--font-body); font-style: italic; }
 .decklist-result { margin: 0.6rem 0 0; font-size: 0.9rem; }
 .decklist-result .dl-counts { color: var(--text); margin: 0.2rem 0; }
 .decklist-result .dl-ok { color: var(--green); margin: 0.2rem 0; }

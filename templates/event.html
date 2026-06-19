@@ -388,6 +388,7 @@
     <textarea id="decklist-text" rows="16" spellcheck="false"
               placeholder="Paste your decklist here, e.g.&#10;4 Lightning Bolt&#10;...&#10;&#10;Sideboard&#10;2 Pyroblast"
               style="width:100%;font-family:var(--font-mono);font-size:0.9rem;padding:0.6rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)"></textarea>
+    <div id="decklist-view" class="decklist-view" style="display:none"></div>
     <div id="decklist-result" class="decklist-result"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeDecklistModal()">Close</button>
@@ -961,11 +962,9 @@ async function openMyDecklist() {
   const res = await fetch(`/api/events/${EVENT_ID}/decklist`, { headers: _guestHeaders() });
   if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not load your decklist.'); return; }
   const d = await res.json();
-  const ta = document.getElementById('decklist-text');
-  ta.value = d.text || '';
-  ta.readOnly = !!d.locked;
+  setDecklistMode(!!d.locked, d.text || '');   // locked = read-only display
   document.getElementById('decklist-modal-title').textContent =
-    d.locked ? 'Your decklist (locked)' : (d.text ? 'Edit your decklist' : 'Submit your decklist');
+    d.locked ? 'Your decklist' : (d.text ? 'Edit your decklist' : 'Submit your decklist');
   const noteParts = [];
   if (state.validation_format && state.validation_format !== 'none')
     noteParts.push(`Validated for ${VALIDATION_LABELS[state.validation_format] || state.validation_format}.`);
@@ -977,6 +976,24 @@ async function openMyDecklist() {
   document.getElementById('moxfield-url').value = '';
   renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
+}
+
+// Switch the modal between editable (textarea) and read-only (static text block).
+function setDecklistMode(readonly, text) {
+  const ta = document.getElementById('decklist-text');
+  const view = document.getElementById('decklist-view');
+  if (readonly) {
+    ta.style.display = 'none';
+    view.style.display = 'block';
+    const has = (text || '').trim();
+    view.textContent = has ? text : 'No decklist submitted yet.';
+    view.classList.toggle('empty', !has);
+  } else {
+    view.style.display = 'none';
+    ta.style.display = '';
+    ta.readOnly = false;
+    ta.value = text || '';
+  }
 }
 
 async function importMoxfield(btn) {
@@ -1031,9 +1048,7 @@ async function openPlayerDecklist(playerId) {
   document.getElementById('decklist-modal-title').textContent = `${d.name}'s decklist`;
   document.getElementById('decklist-modal-note').textContent =
     d.updated_at ? `Submitted ${new Date(d.updated_at).toLocaleString()}.` : 'No decklist submitted yet.';
-  const ta = document.getElementById('decklist-text');
-  ta.value = d.text || '';
-  ta.readOnly = true;
+  setDecklistMode(true, d.text || '');
   document.getElementById('decklist-save-btn').style.display = 'none';
   document.getElementById('moxfield-import').style.display = 'none';
   renderDecklistValidation(d.validation);
