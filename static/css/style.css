@@ -86,7 +86,6 @@ a { color: var(--accent); }
                  line-height: 1.5; color: var(--text); background: var(--bg2);
                  border-left: 3px solid var(--border); border-radius: 0 6px 6px 0;
                  padding: 0.6rem 0.8rem; max-height: 60vh; overflow: auto; }
-.decklist-view.empty { color: var(--muted); font-family: var(--font-body); font-style: italic; }
 .decklist-result { margin: 0.6rem 0 0; font-size: 0.9rem; }
 .decklist-result .dl-counts { color: var(--text); margin: 0.2rem 0; }
 .decklist-result .dl-ok { color: var(--green); margin: 0.2rem 0; }

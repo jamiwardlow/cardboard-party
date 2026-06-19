@@ -984,10 +984,10 @@ function setDecklistMode(readonly, text) {
   const view = document.getElementById('decklist-view');
   if (readonly) {
     ta.style.display = 'none';
-    view.style.display = 'block';
     const has = (text || '').trim();
-    view.textContent = has ? text : 'No decklist submitted yet.';
-    view.classList.toggle('empty', !has);
+    // When empty, hide the block entirely — the modal note already says so.
+    view.style.display = has ? 'block' : 'none';
+    view.textContent = has ? text : '';
   } else {
     view.style.display = 'none';
     ta.style.display = '';
