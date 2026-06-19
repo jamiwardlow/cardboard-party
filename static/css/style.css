@@ -558,7 +558,8 @@ td.result { width: 1%; white-space: nowrap; }
      appearance:none hides the empty mm/dd/yyyy placeholder. So keep the native
      control, but let it size to its (small) content and cap it at the form width
      so it can't overflow — this keeps the placeholder visible AND fits. */
-  .modal input[type="date"] { width: auto; max-width: 100%; align-self: flex-start; }
+  .modal input[type="date"],
+  .modal input[type="time"] { width: auto; max-width: 100%; align-self: flex-start; }
 
   /* Let the nav wrap to a second line rather than overflow (admins have extra
      links: Organisers / Users / Settings + Webhooks + Sign out). */
