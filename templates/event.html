@@ -82,10 +82,10 @@
     <button class="btn btn-sm" onclick="cancelRegister()">Cancel</button>
   </div>
   <div id="register-buttons" style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
-    <!-- Signed in: one button. Not signed in: lead with account sign-in, offer guest as a fallback. -->
-    <a id="register-signin-btn" class="btn btn-primary btn-sm" href="/auth/login" style="display:none">Log in or create an account</a>
+    <!-- Not signed in: Register links to the login chooser. Signed in: opens the
+         register form. (Guest "join by name" was removed once Discord login existed.) -->
+    <a id="register-signin-btn" class="btn btn-primary btn-sm" href="/auth/login" style="display:none">Register for this event</a>
     <button id="register-self-btn" class="btn btn-primary btn-sm" style="display:none" onclick="showRegisterForm()">Register for this event</button>
-    <button id="register-guest-btn" class="btn btn-sm" style="display:none" onclick="showRegisterForm()">Join with your name</button>
   </div>
 </div>
 
@@ -899,18 +899,15 @@ function renderBanners() {
     const capText = cap ? ` (${active}/${cap} spots taken)` : '';
     let msg = `Registration is open${capText}.`;
     if (state.registration_end) msg += ` Closes ${state.registration_end}.`;
-    // Encourage an account (so results follow them across events), but keep
-    // guest-by-name as a fallback for those without a Google account.
-    msg += (me.signed_in
-      ? ''
-      : ' Log in or create an account to register and keep your results across events — or join with just your name.');
+    // Not signed in: the Register button leads to the login chooser (sign in or
+    // create an account), then they come back and register.
+    msg += (me.signed_in ? '' : ' Sign in or create an account to register.');
     document.getElementById('register-banner-msg').textContent = msg;
     const signinBtn = document.getElementById('register-signin-btn');
     signinBtn.href = '/auth/login?next=' +
       encodeURIComponent(window.location.pathname + window.location.search);
     signinBtn.style.display = me.signed_in ? 'none' : '';
-    document.getElementById('register-self-btn').style.display  = me.signed_in ? '' : 'none';
-    document.getElementById('register-guest-btn').style.display = me.signed_in ? 'none' : '';
+    document.getElementById('register-self-btn').style.display = me.signed_in ? '' : 'none';
     document.getElementById('register-buttons').classList.remove('hidden');
     document.getElementById('register-form').classList.add('hidden');
     regBanner.classList.remove('banner-closed');
@@ -1124,22 +1121,14 @@ function showRegisterForm() {
   const form = document.getElementById('register-form');
   form.classList.remove('hidden');
   form.style.display = 'flex';
-  const nameInput = document.getElementById('display-name-input');
-  // Signed-in users register under their Google name (not editable); only
-  // guests, who have no Google identity, type a name.
-  nameInput.style.display = me.signed_in ? 'none' : '';
+  // Signed-in users register under their account name (not editable here).
+  document.getElementById('display-name-input').style.display = 'none';
   // Show the entry-code box only when the event requires one.
   document.getElementById('entry-code-input').classList.toggle('hidden', !state.entry_code_required);
-  // Only ask for a Discord handle if we don't already have one on file (guests
-  // never do; signed-in users may already have it in their profile).
+  // Only ask for a Discord handle if we don't already have one on file.
   const discordInput = document.getElementById('discord-input');
   discordInput.style.display = me.has_discord ? 'none' : '';
-  if (me.signed_in) {
-    if (!me.has_discord) discordInput.focus();
-  } else {
-    nameInput.value = '';
-    nameInput.focus();
-  }
+  if (!me.has_discord) discordInput.focus();
 }
 
 function cancelRegister() {
@@ -1148,41 +1137,22 @@ function cancelRegister() {
 }
 
 async function submitRegister() {
+  // Registration is account-based (guest "join by name" was removed). Display
+  // name comes from the account, so we only send the optional discord/entry code.
   const discord = document.getElementById('discord-input').value.trim();
   const entry_code = document.getElementById('entry-code-input').value.trim();
-
-  // Signed-in users register against their Google account — their display name
-  // comes from Google, so we don't send one. Everyone else joins as a guest
-  // (and must supply a name) and gets a self-report token.
-  if (me.signed_in) {
-    const res = await fetch(`/api/events/${EVENT_ID}/register`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ discord, entry_code }),
-    });
-    if (res.ok) {
-      myPlayer = await res.json();
-      // Upsert: re-registering re-activates an existing (dropped) entry, so
-      // replace it in place rather than pushing a duplicate.
-      const i = state.players.findIndex(p => p.id === myPlayer.id);
-      if (i >= 0) state.players[i] = myPlayer; else state.players.push(myPlayer);
-      render();
-    }
-    else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
-    return;
-  }
-
-  const displayName = document.getElementById('display-name-input').value.trim();
-  if (!displayName) { document.getElementById('display-name-input').focus(); return; }
-  const res = await fetch(`/api/events/${EVENT_ID}/join`, {
+  const res = await fetch(`/api/events/${EVENT_ID}/register`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ display_name: displayName, discord, entry_code }),
+    body: JSON.stringify({ discord, entry_code }),
   });
   if (res.ok) {
-    const { player, token } = await res.json();
-    guestToken = token; guestPlayerId = player.id;
-    localStorage.setItem(GUEST_KEY, token);
-    await init();   // refetch so the new player shows in lists/standings
-  } else { const e = await res.json(); alert(e.error || 'Could not join.'); }
+    myPlayer = await res.json();
+    // Upsert: re-registering re-activates an existing (dropped) entry, so
+    // replace it in place rather than pushing a duplicate.
+    const i = state.players.findIndex(p => p.id === myPlayer.id);
+    if (i >= 0) state.players[i] = myPlayer; else state.players.push(myPlayer);
+    render();
+  } else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
 }
 
 function copyGuestLink(btn) {
