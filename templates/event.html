@@ -356,6 +356,13 @@
       <input id="ee-decklist-deadline" type="date">
       <span class="field-help">After this date, players can't submit or edit decklists.</span>
     </label>
+    <label class="ee-adv">Decklist validation
+      <select id="ee-validation-format">
+        <option value="none">No automatic validation</option>
+        <option value="premodern">Premodern</option>
+      </select>
+      <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
+    </label>
     <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-test-mode">
       <span>This event is in Test Mode
@@ -587,6 +594,7 @@ function openEditEventModal() {
   document.getElementById('ee-brand-msg').textContent = '';
   document.getElementById('ee-decklists').checked = !!state.requires_decklists;
   document.getElementById('ee-decklist-deadline').value = state.decklist_deadline || '';
+  document.getElementById('ee-validation-format').value = state.validation_format || 'none';
   document.getElementById('ee-cost').value        = state.entry_cost || '';
   document.getElementById('ee-payment').value     = state.payment_url || '';
   document.getElementById('ee-date').value        = state.date || '';
@@ -674,6 +682,12 @@ async function saveEventDetails() {
   if (rStart && rEnd && rEnd < rStart) {
     alert('Registration close date is before the open date.'); return;
   }
+  // Changing the validation format re-checks every submitted decklist — confirm.
+  const newFmt = document.getElementById('ee-validation-format').value;
+  if (newFmt !== (state.validation_format || 'none') && state.players.some(p => p.has_decklist)
+      && !confirm('Changing the decklist validation format will re-check all submitted decklists. Continue?')) {
+    return;
+  }
   const body = {
     name:             document.getElementById('ee-name').value,
     event_type:       document.getElementById('ee-type').value,
@@ -692,6 +706,7 @@ async function saveEventDetails() {
                         ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
     requires_decklists: document.getElementById('ee-decklists').checked,
     decklist_deadline: document.getElementById('ee-decklist-deadline').value,
+    validation_format: document.getElementById('ee-validation-format').value,
     prize_deadline_days: parseInt(document.getElementById('ee-prize-deadline').value) || 0,
     rules:            document.getElementById('ee-rules').value,
     schedule:         document.getElementById('ee-schedule').value,
@@ -926,6 +941,8 @@ function renderDecklistButton() {
   btn.style.display = '';
 }
 
+const VALIDATION_LABELS = { premodern: 'Premodern' };
+
 function renderDecklistValidation(v, flash) {
   const el = document.getElementById('decklist-result');
   if (!v) { el.innerHTML = flash ? `<p class="dl-ok">${escapeHtml(flash)}</p>` : ''; return; }
@@ -933,9 +950,13 @@ function renderDecklistValidation(v, flash) {
   if (flash) html += `<p class="dl-ok">${escapeHtml(flash)}</p>`;
   html += `<p class="dl-counts">Maindeck: <strong>${v.maindeck_count}</strong> · Sideboard: ${v.sideboard_count}</p>`;
   if (v.note) html += `<p class="dl-note">${escapeHtml(v.note)}</p>`;
-  if (v.ok) html += `<p class="dl-ok">✓ Looks valid.</p>`;
-  else if (v.issues && v.issues.length)
-    html += `<ul class="dl-issues">${v.issues.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>`;
+  if (v.format && v.format !== 'none') {
+    if (v.status === 'valid')
+      html += `<p class="dl-ok">✓ Legal for ${escapeHtml(VALIDATION_LABELS[v.format] || v.format)}.</p>`;
+    else if (v.issues && v.issues.length)
+      html += `<ul class="dl-issues">${v.issues.map(i =>
+        `<li class="dl-${i.severity}">${escapeHtml(i.message)}</li>`).join('')}</ul>`;
+  }
   el.innerHTML = html;
 }
 
@@ -948,9 +969,12 @@ async function openMyDecklist() {
   ta.readOnly = !!d.locked;
   document.getElementById('decklist-modal-title').textContent =
     d.locked ? 'Your decklist (locked)' : (d.text ? 'Edit your decklist' : 'Submit your decklist');
-  document.getElementById('decklist-modal-note').textContent =
-    d.locked ? `The deadline (${d.deadline}) has passed — your list is read-only.`
-             : (state.decklist_deadline ? `Due by ${state.decklist_deadline}.` : '');
+  const noteParts = [];
+  if (state.validation_format && state.validation_format !== 'none')
+    noteParts.push(`Validated for ${VALIDATION_LABELS[state.validation_format] || state.validation_format}.`);
+  if (d.locked) noteParts.push(`The deadline (${d.deadline}) has passed — your list is read-only.`);
+  else if (state.decklist_deadline) noteParts.push(`Due by ${state.decklist_deadline}.`);
+  document.getElementById('decklist-modal-note').textContent = noteParts.join(' ');
   document.getElementById('decklist-save-btn').style.display = d.locked ? 'none' : '';
   document.getElementById('moxfield-import').style.display = (MOXFIELD_IMPORT && !d.locked) ? 'flex' : 'none';
   document.getElementById('moxfield-url').value = '';
@@ -992,7 +1016,7 @@ async function saveMyDecklist() {
     const d = await res.json();
     if (myPlayer) myPlayer.has_decklist = d.has_decklist;
     const p = state.players.find(x => x.id === (myPlayer && myPlayer.id));
-    if (p) { p.has_decklist = d.has_decklist; p.decklist_ok = d.validation ? d.validation.ok : null; }
+    if (p) { p.has_decklist = d.has_decklist; p.decklist_status = d.validation ? d.validation.status : null; }
     renderDecklistValidation(d.validation, 'Saved.');   // keep modal open to show feedback
     renderPlayers();
   } finally { btn.disabled = false; btn.textContent = orig; }
@@ -1374,8 +1398,9 @@ function renderPlayers() {
     // Decklist status — organisers see a button to view each player's list.
     let decklistTag = '';
     if (state.requires_decklists && !p.dropped && canManage()) {
+      const flagged = p.decklist_status === 'errors' || p.decklist_status === 'warnings';
       const label = !p.has_decklist ? '📋 No list'
-                  : (p.decklist_ok ? '📋 View list' : '⚠️ View list');
+                  : (flagged ? '⚠️ View list' : '📋 View list');
       decklistTag = `<button class="btn btn-sm decklist-btn${p.has_decklist ? '' : ' decklist-missing'}" onclick="openPlayerDecklist('${p.id}')">${label}</button>`;
     }
     const profileLink = p.google_id

@@ -19,7 +19,7 @@ from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER
 from routes.auth import get_current_user, login_required
 from gcp_secrets import get_secret
 import discord_api
-from decklist import validate_decklist, import_moxfield
+from decklist import validate_decklist, import_moxfield, VALIDATION_FORMATS
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import os
@@ -550,8 +550,10 @@ def _redact_players(event: dict) -> None:
         p.pop('discord_id', None)
         dl = p.get('decklist') or {}
         p['has_decklist'] = bool(dl.get('text', '').strip())
-        # Validity flag for the organiser roster badge (None when no list yet).
-        p['decklist_ok'] = bool((dl.get('validation') or {}).get('ok')) if p['has_decklist'] else None
+        # Validation status for the organiser roster badge (None when no list yet):
+        # 'valid' | 'warnings' | 'errors' | 'unchecked' | 'none'.
+        p['decklist_status'] = ((dl.get('validation') or {}).get('status', 'none')
+                                if p['has_decklist'] else None)
         p.pop('decklist', None)
 
 def _enrich_players_discord(event: dict) -> None:
@@ -778,6 +780,7 @@ def api_create_event():
         'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
         'requires_decklists': bool(data.get('requires_decklists', False)),
         'decklist_deadline': (data.get('decklist_deadline') or '').strip(),  # '' = no cutoff
+        'validation_format': data.get('validation_format') if data.get('validation_format') in VALIDATION_FORMATS else 'none',
         'round_timer_minutes': data.get('round_timer_minutes') if isinstance(data.get('round_timer_minutes'), int) and data.get('round_timer_minutes') >= 0 else 0,
         'round_started_at': '',   # ISO time the current round's timer started
         # Delayed delivery: hide newly-paired pairings / fresh standings from
@@ -877,7 +880,7 @@ def api_update_event(event_id):
                'payment_url', 'date', 'start_time', 'num_rounds',
                'status', 'registration', 'registration_cap',
                'registration_type', 'registration_start', 'registration_end', 'unenroll_end',
-               'decklist_deadline'}
+               'decklist_deadline', 'validation_format'}
     updates = {k: v for k, v in data.items() if k in allowed}
     if 'name' in updates and not str(updates['name']).strip():
         return jsonify({'error': 'Event name is required'}), 400
@@ -903,6 +906,8 @@ def api_update_event(event_id):
         updates['start_time'] = str(updates['start_time'] or '').strip()[:5]
     if 'decklist_deadline' in updates:
         updates['decklist_deadline'] = str(updates['decklist_deadline'] or '').strip()
+    if 'validation_format' in updates and updates['validation_format'] not in VALIDATION_FORMATS:
+        updates['validation_format'] = 'none'
     if 'prize_deadline_days' in updates:
         v = updates['prize_deadline_days']
         updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
@@ -917,8 +922,20 @@ def api_update_event(event_id):
         updates['payment_url'], err = _normalize_payment_url(updates['payment_url'])
         if err:
             return jsonify({'error': err}), 400
+    old_format = e.get('validation_format', 'none')
     save_event(event_id, updates)
     e.update(updates)
+    # Changing the validation format re-checks every submitted decklist so their
+    # status stays accurate (the client confirms before sending the change).
+    if updates.get('validation_format', old_format) != old_format:
+        revalidated = False
+        for p in e.get('players', []):
+            dl = p.get('decklist')
+            if dl and (dl.get('text') or '').strip():
+                dl['validation'] = validate_decklist(dl['text'], updates['validation_format'])
+                revalidated = True
+        if revalidated:
+            save_event(event_id, {'players': e['players']})
     _CARD_FIELDS = {'name', 'event_type', 'format', 'date', 'start_time', 'entry_cost', 'description',
                     'registration', 'registration_cap', 'registration_type',
                     'registration_start', 'registration_end', 'entry_code'}
@@ -1351,7 +1368,7 @@ def api_my_decklist(event_id):
     if locked:
         return jsonify({'error': 'The decklist deadline has passed.'}), 400
     text = str((request.json or {}).get('text', ''))[:20000]
-    validation = validate_decklist(text) if text.strip() else None
+    validation = validate_decklist(text, e.get('validation_format', 'none')) if text.strip() else None
     dl = {'text': text, 'updated_at': _now_iso(), 'validation': validation} if text.strip() else None
     if set_player_field(event_id, p['id'], 'decklist', dl) is None:
         return jsonify({'error': 'Could not save your decklist.'}), 400

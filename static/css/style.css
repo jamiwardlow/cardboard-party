@@ -84,8 +84,11 @@ a { color: var(--accent); }
 .decklist-result .dl-counts { color: var(--text); margin: 0.2rem 0; }
 .decklist-result .dl-ok { color: var(--green); margin: 0.2rem 0; }
 .decklist-result .dl-note { color: var(--muted); margin: 0.2rem 0; }
-.decklist-result .dl-issues { margin: 0.3rem 0 0; padding-left: 1.2rem; color: var(--danger); }
+.decklist-result .dl-issues { margin: 0.3rem 0 0; padding-left: 1.2rem; }
 .decklist-result .dl-issues li { margin: 0.15rem 0; }
+.decklist-result .dl-error { color: var(--danger); }
+.decklist-result .dl-warning { color: var(--pink); }
+.decklist-result .dl-info { color: var(--muted); }
 .login-choices { display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; max-width: 320px; }
 .login-choices .btn { width: 100%; justify-content: center; }
 /* Restore list indent (the global reset zeroes padding, so outside bullet

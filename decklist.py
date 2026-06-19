@@ -15,6 +15,12 @@ SCRYFALL = 'https://api.scryfall.com'
 _HEADERS = {'User-Agent': 'CardboardParty/1.0 (+https://cardboardparty.gg)',
             'Accept': 'application/json'}
 MAINDECK_MIN = 60
+SIDEBOARD_MAX = 15
+COPY_LIMIT = 4
+
+# Deck-validation formats (the values double as Scryfall `legalities` keys).
+# 'none' = no automatic validation. Designed to add legacy/commander/etc. later.
+VALIDATION_FORMATS = {'none': 'No automatic validation', 'premodern': 'Premodern'}
 
 _MAIN_HEADERS = {'deck', 'maindeck', 'main', 'mainboard'}
 _SIDE_HEADERS = {'sideboard', 'sb', 'sideboardcards'}
@@ -60,24 +66,33 @@ def parse_decklist(text: str):
     return main, side
 
 
-def _scryfall_unknown(names):
-    """(unknown_names, reached). `reached` is False if we couldn't reach Scryfall,
-    so a network failure is never reported as bad card names."""
-    unknown = []
+def _scryfall_cards(names):
+    """(by_name, not_found, reached). by_name maps a lowercased card/face name to
+    {'name', 'type_line', 'legalities'}; not_found lists names Scryfall didn't know.
+    `reached` is False on a network/API failure (so it's never read as bad names)."""
+    by_name, not_found = {}, []
     for i in range(0, len(names), 75):                 # collection endpoint caps at 75
         batch = names[i:i + 75]
         try:
             r = requests.post(f'{SCRYFALL}/cards/collection', headers=_HEADERS,
                               json={'identifiers': [{'name': n} for n in batch]}, timeout=10)
             if not r.ok:
-                return [], False
-            for nf in r.json().get('not_found', []):
-                if nf.get('name'):
-                    unknown.append(nf['name'])
-        except requests.RequestException:
-            return [], False
+                return {}, [], False
+            j = r.json()
+        except (requests.RequestException, ValueError):
+            return {}, [], False
+        for c in j.get('data', []):
+            entry = {'name': c.get('name', ''), 'type_line': c.get('type_line', ''),
+                     'legalities': c.get('legalities', {})}
+            by_name[entry['name'].lower()] = entry
+            for face in (c.get('card_faces') or []):   # DFC / split: index each face name
+                if face.get('name'):
+                    by_name[face['name'].lower()] = entry
+        for nf in j.get('not_found', []):
+            if nf.get('name'):
+                not_found.append(nf['name'])
         time.sleep(0.1)                                # be polite to Scryfall
-    return unknown, True
+    return by_name, not_found, True
 
 
 def _scryfall_suggest(name: str) -> str:
@@ -145,29 +160,59 @@ def import_moxfield(url: str):
     return '', last_err
 
 
-def validate_decklist(text: str) -> dict:
-    """Validate a pasted decklist: 60-card maindeck minimum + card-name check with
-    suggestions. Returns a summary safe to store and show to players/organisers."""
+def validate_decklist(text: str, fmt: str = 'none') -> dict:
+    """Validate a decklist for a given format. Returns a structured summary (safe to
+    store and show): maindeck/sideboard counts, severity-tagged issues, and a status
+    (none/valid/errors/unchecked). For a recognised format it checks card legality
+    (Scryfall), the 60-card maindeck minimum, the 15-card sideboard maximum, and the
+    4-copy limit (basic lands exempt). 'none' = no automatic validation."""
+    fmt = fmt if fmt in VALIDATION_FORMATS else 'none'
     main, side = parse_decklist(text)
     main_count = sum(c for c, _ in main)
     side_count = sum(c for c, _ in side)
-    names = list({n for _, n in main + side})
-    unknown, reached = _scryfall_unknown(names)
+    result = {'format': fmt, 'maindeck_count': main_count, 'sideboard_count': side_count,
+              'issues': [], 'status': 'valid', 'ok': True}
+    if fmt == 'none':
+        result['status'] = 'none'
+        return result
 
-    issues, unknown_out = [], []
-    if main_count < MAINDECK_MIN:
-        issues.append(f'Maindeck has {main_count} card{"" if main_count == 1 else "s"}; '
-                      f'a constructed deck needs at least {MAINDECK_MIN}.')
-    for n in unknown[:15]:                             # cap suggestion lookups
-        sug = _scryfall_suggest(n)
-        unknown_out.append({'name': n, 'suggestion': sug})
-        issues.append(f'Unrecognized card: "{n}"' + (f' — did you mean "{sug}"?' if sug else '.'))
-
-    result = {
-        'maindeck_count': main_count, 'sideboard_count': side_count,
-        'unknown': unknown_out, 'issues': issues,
-        'card_check': reached, 'ok': reached and not issues,
-    }
+    by_name, not_found, reached = _scryfall_cards(list({n for _, n in main + side}))
     if not reached:
-        result['note'] = "Couldn't reach the card database, so card names weren't checked."
+        result.update(status='unchecked', ok=False,
+                      note="Couldn't reach the card database, so the list wasn't validated.")
+        return result
+
+    issues = []
+    def add(sev, msg):
+        issues.append({'severity': sev, 'message': msg})
+
+    label = VALIDATION_FORMATS[fmt]
+    if main_count < MAINDECK_MIN:
+        add('error', f'Maindeck has {main_count} card{"" if main_count == 1 else "s"}; '
+                     f'needs at least {MAINDECK_MIN}.')
+    if side_count > SIDEBOARD_MAX:
+        add('error', f'Sideboard has {side_count} cards; the maximum is {SIDEBOARD_MAX}.')
+    for n in not_found[:15]:
+        sug = _scryfall_suggest(n)
+        add('error', f'Unrecognized card: "{n}"' + (f' — did you mean "{sug}"?' if sug else '.'))
+
+    totals = {}
+    for c, n in main + side:
+        totals[n.lower()] = totals.get(n.lower(), 0) + c
+    for n in {n for _, n in main + side}:
+        card = by_name.get(n.lower())
+        if not card:
+            continue                                   # already flagged as unrecognized
+        if 'basic' not in card.get('type_line', '').lower() and totals[n.lower()] > COPY_LIMIT:
+            add('error', f'{totals[n.lower()]} copies of "{card["name"]}" — the limit is {COPY_LIMIT}.')
+        legal = (card.get('legalities') or {}).get(fmt)
+        if legal == 'banned':
+            add('error', f'"{card["name"]}" is banned in {label}.')
+        elif legal == 'not_legal':
+            add('error', f'"{card["name"]}" is not legal in {label}.')
+
+    has_error = any(i['severity'] == 'error' for i in issues)
+    result['issues'] = issues
+    result['status'] = 'errors' if has_error else ('warnings' if issues else 'valid')
+    result['ok'] = not issues
     return result
