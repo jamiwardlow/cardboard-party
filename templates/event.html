@@ -554,15 +554,13 @@ function downloadIcs() {
 }
 
 function render() {
-  renderStatus();
-  renderOrganizer();
-  renderOwnerActions();
-  renderBanners();
-  renderIdBanner();
-  renderRoundTimer();
-  renderRounds();
-  renderPlayers();
-  renderStandings();
+  // Run each section independently so one failing section can't blank the rest
+  // of the page (e.g. registration/decklist controls staying hidden).
+  for (const fn of [renderStatus, renderOrganizer, renderOwnerActions, renderBanners,
+                    renderIdBanner, renderRoundTimer, renderRounds, renderPlayers,
+                    renderStandings]) {
+    try { fn(); } catch (err) { console.error(`render: ${fn.name} failed`, err); }
+  }
 }
 
 // Show who's running the event so players know who to contact for help.
