@@ -342,21 +342,22 @@ td.vs   { color: var(--muted); text-align: center; width: 2rem; padding: 0;
           font-family: var(--font-mono); font-size: 0.75rem; }
 td.result { width: 1%; white-space: nowrap; }
 
-/* On mobile, stack player names above result */
+/* On mobile, stack the result under the players — but full-width so it uses the
+   whole row instead of wrapping into a skinny column (the base td.result width:1%
+   was the culprit). */
 @media (max-width: 480px) {
   .pairings thead { display: none; }
   .pairings tr    { display: grid;
                     grid-template-columns: 1fr auto 1fr;
-                    grid-template-rows: auto auto;
                     padding: 0.6rem 0.75rem;
                     border-bottom: 1px solid var(--border);
-                    gap: 0.1rem 0; }
+                    gap: 0.15rem 0; }
   .pairings td    { padding: 0; border: none; }
   .pairings td:nth-child(1) { grid-column: 1; grid-row: 1; }
-  .pairings td.vs           { grid-column: 2; grid-row: 1; padding: 0 0.4rem; }
+  .pairings td.vs           { grid-column: 2; grid-row: 1; width: auto; padding: 0 0.4rem; }
   .pairings td:nth-child(3) { grid-column: 3; grid-row: 1; text-align: right; }
-  .pairings td.result       { grid-column: 1 / -1; grid-row: 2;
-                              padding-top: 0.35rem; white-space: normal; }
+  .pairings td.result       { grid-column: 1 / -1; grid-row: 2; width: auto;
+                              white-space: normal; padding-top: 0.35rem; text-align: center; }
 }
 
 /* ── Standings table ──────────────────────────────────────────────────────── */
