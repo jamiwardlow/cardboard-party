@@ -374,7 +374,7 @@
   <div class="modal">
     <h2 id="decklist-modal-title">Decklist</h2>
     <p id="decklist-modal-note" class="field-help" style="margin-bottom:0.6rem"></p>
-    <div id="moxfield-import" class="mox-row">
+    <div id="moxfield-import" class="mox-row" style="display:none">
       <input id="moxfield-url" type="url" placeholder="…or paste a Moxfield deck URL to import">
       <button class="btn btn-sm" onclick="importMoxfield(this)">Import</button>
     </div>
@@ -393,6 +393,10 @@
 {% block scripts %}
 <script>
 const EVENT_ID = '{{ event.id }}';
+// Moxfield blocks automated API access from our servers, so the import UI is
+// hidden (manual paste still works). Flip to true if we get Moxfield API access;
+// the backend endpoint + import logic are already in place.
+const MOXFIELD_IMPORT = false;
 let state        = null;
 let me           = null;
 let myPlayer     = null;
@@ -948,7 +952,7 @@ async function openMyDecklist() {
     d.locked ? `The deadline (${d.deadline}) has passed — your list is read-only.`
              : (state.decklist_deadline ? `Due by ${state.decklist_deadline}.` : '');
   document.getElementById('decklist-save-btn').style.display = d.locked ? 'none' : '';
-  document.getElementById('moxfield-import').style.display = d.locked ? 'none' : 'flex';
+  document.getElementById('moxfield-import').style.display = (MOXFIELD_IMPORT && !d.locked) ? 'flex' : 'none';
   document.getElementById('moxfield-url').value = '';
   renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
