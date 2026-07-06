@@ -124,7 +124,11 @@
   </label>
   <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
     <input type="checkbox" id="ee-decklists"{% if event.requires_decklists %} checked{% endif %}>
-    <span>Require decklists</span>
+    <span>Submit decklists</span>
+  </label>
+  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+    <input type="checkbox" id="ee-decklists-required"{% if event.decklists_required | default(event.requires_decklists) %} checked{% endif %}>
+    <span>Decklists are required</span>
   </label>
   <label{% if not adv %} class="ee-adv"{% endif %}>Decklist deadline
     <input id="ee-decklist-deadline" type="date" value="{{ event.decklist_deadline | default('') | e }}">
@@ -403,6 +407,7 @@ async function saveEventDetails() {
     planned_cut_size: document.getElementById('ee-structure').value === 'swiss_top_cut'
                         ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
     requires_decklists: document.getElementById('ee-decklists').checked,
+    decklists_required: document.getElementById('ee-decklists-required').checked,
     decklist_deadline:  document.getElementById('ee-decklist-deadline').value,
     validation_format:  document.getElementById('ee-validation-format').value,
     allow_proxies:     document.getElementById('ee-allow-proxies').checked,

@@ -161,9 +161,13 @@
   </label>
   <label class="checkbox-row">
     <input type="checkbox" id="e-decklists"{% if source and source.requires_decklists %} checked{% endif %} onchange="onDecklistsChange()">
-    <span>Require decklists</span>
+    <span>Submit decklists</span>
   </label>
   <div id="e-decklist-opts"{% if not source or not source.requires_decklists %} class="hidden"{% endif %}>
+    <label class="checkbox-row">
+      <input type="checkbox" id="e-decklists-required"{% if source and (source.decklists_required | default(source.requires_decklists)) %} checked{% endif %}>
+      <span>Decklists are required</span>
+    </label>
     <label>Decklist deadline
       <input id="e-decklist-deadline" type="date" value="{{ source.decklist_deadline | default('') | e }}">
       <span class="field-help">After this date, players can't submit or edit decklists.</span>
@@ -479,6 +483,7 @@ async function submitCreateEvent() {
   };
   {% if mode == 'advanced' %}
   body.requires_decklists  = document.getElementById('e-decklists').checked;
+  body.decklists_required  = document.getElementById('e-decklists-required').checked;
   body.decklist_deadline   = document.getElementById('e-decklist-deadline').value;
   body.validation_format   = document.getElementById('e-validation-format').value;
   body.allow_proxies       = document.getElementById('e-allow-proxies').checked;

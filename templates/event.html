@@ -129,7 +129,7 @@
   {% if has_extra %}
   <div class="event-extra flow-block" data-section="description">
     {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
-    {% if event.requires_decklists %}<p class="event-note">📋 Decklists required</p>{% endif %}
+    {% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required</p>{% endif %}
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
     <p class="event-cost">
@@ -1827,7 +1827,7 @@ function openPlayerDetails(playerId) {
   meta.textContent = p.discord ? `Discord: ${p.discord}` : '';
   meta.style.display = p.discord ? '' : 'none';
   const acts = [`<button class="btn" onclick="pdRun('rename')">✎ Edit display name</button>`];
-  if (state.requires_decklists && !p.dropped) {
+  if ((state.decklists_required ?? state.requires_decklists) && !p.dropped) {
     if (!p.has_decklist) {
       // Nothing to open yet — a static badge, not a button.
       acts.push(`<div class="pd-static">📋 No decklist yet</div>`);

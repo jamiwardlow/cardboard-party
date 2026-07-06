@@ -1219,6 +1219,7 @@ def api_create_event():
         # the in-event "Cut to Top N" action; the actual cut still executes later.
         'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
         'requires_decklists': bool(data.get('requires_decklists', False)),
+        'decklists_required': bool(data.get('decklists_required', False)),
         'decklist_deadline': (data.get('decklist_deadline') or '').strip(),  # '' = no cutoff
         'validation_format': data.get('validation_format') if data.get('validation_format') in VALIDATION_FORMATS else 'none',
         # Print-legality policy (Premodern/Old School): which physical printings are
@@ -1362,7 +1363,7 @@ def api_update_event(event_id):
     _require_manage(e)
     data = request.json or {}
     allowed = {'name', 'advanced', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
-               'requires_decklists', 'entry_code', 'intentional_draws_frowned',
+               'requires_decklists', 'decklists_required', 'entry_code', 'intentional_draws_frowned',
                'round_timer_minutes', 'auto_start_timer',
                'delay_pairings', 'delay_standings', 'require_check_in',
                'brand_text',
@@ -1399,6 +1400,8 @@ def api_update_event(event_id):
         updates['registration_type'] = 'open'
     if 'requires_decklists' in updates:
         updates['requires_decklists'] = bool(updates['requires_decklists'])
+    if 'decklists_required' in updates:
+        updates['decklists_required'] = bool(updates['decklists_required'])
     for f in ('allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_ie'):
         if f in updates:
             updates[f] = bool(updates[f])
