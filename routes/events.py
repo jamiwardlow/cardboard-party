@@ -26,6 +26,7 @@ from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import os
 import re
+import requests
 import threading
 import time
 import uuid
@@ -3028,3 +3029,90 @@ def api_delete_avatar():
     google_pic = profile.get('google_picture', '')
     session['user']['picture'] = google_pic  # revert nav to Google picture
     return jsonify({'avatar_url': google_pic})
+
+
+@events_bp.route('/api/events/<event_id>/submit-mtgdecks', methods=['POST'])
+@login_required
+def api_submit_mtgdecks(event_id):
+    """Organiser: push completed event results and decklists to MTGDecks.net."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+
+    api_key = get_secret('MTGDECKS_API_KEY')
+    if not api_key:
+        return jsonify({'error': 'MTGDecks API key is not configured on this server.'}), 503
+
+    rounds  = e.get('rounds', [])
+    active  = [p for p in e.get('players', []) if not p.get('dropped')]
+    standings = compute_standings(e['players'], rounds)
+    rank_map  = {s['id']: i + 1 for i, s in enumerate(standings)}
+
+    def match_record(pid):
+        w = l = t = 0
+        for rnd in rounds:
+            for m in rnd:
+                if m.get('is_bye'):
+                    continue
+                if pid not in (m['player1_id'], m['player2_id']):
+                    continue
+                result = m.get('result')
+                if not result:
+                    continue
+                if result in DRAW_RESULTS:
+                    t += 1
+                elif m.get('winner_id') == pid:
+                    w += 1
+                else:
+                    l += 1
+        return w, l, t
+
+    decks = []
+    for p in active:
+        dl   = p.get('decklist') or {}
+        text = (dl.get('text') or '').strip()
+        if not text:
+            continue
+        pid  = p['id']
+        w, l, t = match_record(pid)
+        deck = {'player': p.get('name', ''), 'rank': rank_map.get(pid, len(active)),
+                'w': w, 'l': l, 't': t, 'txt_decklist': text}
+        if dl.get('name'):
+            deck['name'] = dl['name']
+        decks.append(deck)
+
+    if not decks:
+        return jsonify({'error': 'No players have submitted decklists.'}), 400
+
+    owner     = get_user_profile(e.get('owner_id', '')) or {}
+    organizer = owner.get('name', '')
+    event_obj = {'name': e['name'], 'date': e.get('date', ''),
+                 'format': e.get('format', ''), 'attendee': len(active)}
+    if organizer:
+        event_obj['organizer'] = organizer
+
+    try:
+        resp = requests.post(
+            'https://mtgdecks.net/api/importEvent',
+            json={'Event': event_obj, 'Decks': decks},
+            headers={'Authorization': f'Bearer {api_key}'},
+            params={'discard_failed_decks': 'true'},
+            timeout=30,
+        )
+    except Exception as ex:
+        return jsonify({'error': f'Network error reaching MTGDecks: {ex}'}), 502
+
+    if resp.status_code == 201:
+        try:
+            data = resp.json()
+        except Exception:
+            data = {}
+        return jsonify({'ok': True, 'url': data.get('url', ''), 'submitted': len(decks)})
+
+    try:
+        err = resp.json()
+    except Exception:
+        err = {}
+    msg = err.get('message') or err.get('error') or f'MTGDecks returned {resp.status_code}.'
+    return jsonify({'error': msg}), 400

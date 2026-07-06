@@ -40,6 +40,7 @@
       </div>
     </details>
     <button class="btn btn-sm hidden" id="btn-duplicate" onclick="duplicateEvent()">Duplicate event</button>
+    <button class="btn btn-sm hidden" id="btn-mtgdecks" onclick="openMtgDecksModal()">Submit to MTGDecks</button>
   </div>
   <div class="event-facts">
     <p class="event-when"><span class="event-datetime">{{ event.date }}{% if event.start_time %} · {{ event.start_time | time12 }}{% endif %}</span>{% if event.location %}<span class="event-loc">📍 <a class="loc-link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&amp;query={{ event.location|urlencode }}{% if event.place_id %}&amp;query_place_id={{ event.place_id|urlencode }}{% endif %}">{{ event.location }}</a></span>{% endif %}</p>
@@ -262,6 +263,18 @@ Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (r
 </div>{# .event-flow #}
 </div>{# .event-layout #}
 
+<!-- Submit to MTGDecks modal -->
+<div id="mtgdecks-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Submit to MTGDecks</h2>
+    <div id="mtgdecks-body" style="margin:0.75rem 0"></div>
+    <div class="modal-actions">
+      <button class="btn" id="mtgdecks-cancel-btn" onclick="closeMtgDecksModal()">Cancel</button>
+      <button class="btn btn-primary" id="mtgdecks-submit-btn" onclick="submitToMtgDecks()">Submit</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit pairings modal -->
 <div id="edit-modal" class="modal-backdrop hidden">
   <div class="modal">
@@ -433,6 +446,60 @@ async function deleteEvent() {
 // reads ?duplicate and populates the modal); the user reviews, then creates.
 function duplicateEvent() {
   window.location.href = '/events/new?duplicate=' + encodeURIComponent(EVENT_ID);
+}
+
+function openMtgDecksModal() {
+  const active = state.players.filter(p => !p.dropped);
+  const withDeck = active.filter(p => p.has_decklist).length;
+  const missing  = active.length - withDeck;
+  const body = document.getElementById('mtgdecks-body');
+  const submitBtn = document.getElementById('mtgdecks-submit-btn');
+  const cancelBtn = document.getElementById('mtgdecks-cancel-btn');
+  submitBtn.disabled = withDeck === 0;
+  submitBtn.textContent = 'Submit';
+  cancelBtn.textContent = 'Cancel';
+  if (withDeck === 0) {
+    body.innerHTML = '<p>No players have submitted decklists yet.</p>';
+  } else {
+    let html = `<p>${withDeck} of ${active.length} player${active.length === 1 ? '' : 's'} will be submitted.`;
+    if (missing > 0) html += ` <strong>${missing} without a decklist will be skipped.</strong>`;
+    html += '</p>';
+    body.innerHTML = html;
+  }
+  document.getElementById('mtgdecks-modal').classList.remove('hidden');
+}
+
+function closeMtgDecksModal() {
+  document.getElementById('mtgdecks-modal').classList.add('hidden');
+}
+
+async function submitToMtgDecks() {
+  const body      = document.getElementById('mtgdecks-body');
+  const submitBtn = document.getElementById('mtgdecks-submit-btn');
+  const cancelBtn = document.getElementById('mtgdecks-cancel-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting…';
+  try {
+    const res  = await fetch(`/api/events/${EVENT_ID}/submit-mtgdecks`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      body.innerHTML = `<p style="color:var(--danger)">${escapeHtml(data.error || 'Submission failed.')}</p>`;
+      submitBtn.textContent = 'Retry';
+      submitBtn.disabled = false;
+      return;
+    }
+    let html = `<p>${data.submitted} decklist${data.submitted === 1 ? '' : 's'} submitted successfully.</p>`;
+    if (data.url) {
+      html += `<p><a href="${escapeHtml(data.url)}" target="_blank" rel="noopener">View on MTGDecks →</a></p>`;
+    }
+    body.innerHTML = html;
+    submitBtn.style.display = 'none';
+    cancelBtn.textContent = 'Close';
+  } catch (_) {
+    body.innerHTML = `<p style="color:var(--danger)">Network error — please try again.</p>`;
+    submitBtn.textContent = 'Retry';
+    submitBtn.disabled = false;
+  }
 }
 
 // Identify a returning guest from a magic-link token (?t=) or one saved in this
@@ -657,6 +724,8 @@ function renderStatus() {
 function renderOwnerActions() {
   // Duplicate is available to any signed-in user, not just the organiser.
   document.getElementById('btn-duplicate').classList.toggle('hidden', !me.signed_in);
+  document.getElementById('btn-mtgdecks').classList.toggle(
+    'hidden', !canManage() || !state.requires_decklists || !state.rounds.length);
   if (!canManage()) return;
   document.getElementById('owner-actions').classList.remove('hidden');
   document.getElementById('player-actions').classList.remove('hidden');
