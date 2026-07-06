@@ -80,10 +80,10 @@ def _no_store_dynamic(resp):
 # so fall back to the process start time so a restart picks up edits.
 _ASSET_VERSION = os.environ.get('GAE_VERSION') or str(int(time.time()))
 
-# Public, HTTP-referrer-restricted Google Maps key (like GOOGLE_CLIENT_ID, it's sent
-# to browsers, so it lives in app.yaml env_variables, not Secret Manager). Empty when
-# unset → the Maps features degrade to a plain text field + a View-on-Google-Maps link.
-MAPS_API_KEY = os.environ.get('MAPS_API_KEY', '')
+# HTTP-referrer-restricted Google Maps key. Fetched from Secret Manager (secret name:
+# MAPS_API_KEY) so it stays out of source control. Empty when unset → Maps features
+# degrade gracefully to a plain text field + a View-on-Google-Maps link.
+MAPS_API_KEY = get_secret('MAPS_API_KEY')
 
 @app.context_processor
 def inject_globals():

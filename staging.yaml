@@ -40,6 +40,5 @@ env_variables:
   # Staging's bot command is /cpstaging so it doesn't collide with prod's /cparty
   # in a shared Discord server (both run the same code).
   DISCORD_COMMAND_NAME: cpstaging
-  # Google Maps (Places autocomplete + maps). Public, HTTP-referrer-restricted key —
-  # the same key serves prod (app.yaml); restrict it to both hosts in the Console.
-  MAPS_API_KEY: "AIzaSyDMxQqafNXtkSTDYyan2K4Fa4W0aj5j174"
+  # MAPS_API_KEY is NOT stored here — it lives in Secret Manager (secret name:
+  # MAPS_API_KEY) and is fetched at startup by gcp_secrets.py.
