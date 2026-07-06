@@ -1827,10 +1827,12 @@ function openPlayerDetails(playerId) {
   meta.textContent = p.discord ? `Discord: ${p.discord}` : '';
   meta.style.display = p.discord ? '' : 'none';
   const acts = [`<button class="btn" onclick="pdRun('rename')">✎ Edit display name</button>`];
-  if ((state.decklists_required ?? state.requires_decklists) && !p.dropped) {
+  if (state.requires_decklists && !p.dropped) {
     if (!p.has_decklist) {
-      // Nothing to open yet — a static badge, not a button.
-      acts.push(`<div class="pd-static">📋 No decklist yet</div>`);
+      if (state.decklists_required ?? state.requires_decklists) {
+        // Nothing to open yet — a static badge, not a button.
+        acts.push(`<div class="pd-static">📋 No decklist yet</div>`);
+      }
     } else {
       const flagged = p.decklist_status === 'errors' || p.decklist_status === 'warnings';
       acts.push(`<button class="btn" onclick="pdRun('decklist')">${flagged ? '⚠️ View decklist' : '📋 View decklist'}</button>`);
