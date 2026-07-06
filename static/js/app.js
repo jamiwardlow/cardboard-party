@@ -156,10 +156,19 @@ async function attachPlaceAutocomplete(inputId) {
   let items = [], seq = 0;
 
   const position = () => {
-    const r = input.getBoundingClientRect();
-    dd.style.left = `${r.left}px`; dd.style.top = `${r.bottom + 2}px`; dd.style.width = `${r.width}px`;
+    const r  = input.getBoundingClientRect();
+    const vv = window.visualViewport;
+    // getBoundingClientRect() is relative to the layout viewport; position:fixed
+    // is relative to the visual viewport. On iOS Safari the two diverge when the
+    // virtual keyboard appears, pushing the visual viewport up inside the layout
+    // viewport. Subtracting the visual-viewport offsets keeps the dropdown under
+    // the input after the keyboard slides in.
+    dd.style.left  = `${r.left   - (vv ? vv.offsetLeft : 0)}px`;
+    dd.style.top   = `${r.bottom - (vv ? vv.offsetTop  : 0) + 2}px`;
+    dd.style.width = `${r.width}px`;
   };
   const hide = () => { dd.style.display = 'none'; };
+  const reposition = () => { if (dd.style.display !== 'none') position(); };
 
   input.addEventListener('input', async () => {
     delete placeData[inputId];                 // typing invalidates a prior selection
@@ -197,7 +206,13 @@ async function attachPlaceAutocomplete(inputId) {
   });
 
   input.addEventListener('blur', () => setTimeout(hide, 150));
-  window.addEventListener('scroll', () => { if (dd.style.display !== 'none') position(); }, true);
+  // Reposition on scroll (desktop) or visual-viewport change (iOS keyboard).
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', reposition);
+    window.visualViewport.addEventListener('scroll', reposition);
+  } else {
+    window.addEventListener('scroll', reposition, true);
+  }
 }
 
 // Location + coords to submit for an input. Coords only count when the captured
