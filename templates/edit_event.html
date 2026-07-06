@@ -122,7 +122,7 @@
   <label{% if not adv %} class="ee-adv"{% endif %}>Contact
     <textarea id="ee-contact" rows="2" placeholder="Optional — how to reach the organiser with questions">{{ event.contact | default('') | e }}</textarea>
   </label>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row section-toggle{% if not adv %} ee-adv{% endif %}">
     <input type="checkbox" id="ee-decklists"{% if event.requires_decklists %} checked{% endif %}>
     <span>Submit decklists</span>
   </label>

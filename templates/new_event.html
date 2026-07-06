@@ -159,7 +159,7 @@
   <label>Contact
     <textarea id="e-contact" rows="2" placeholder="Optional — how to reach the organiser with questions">{{ source.contact | default('') | e }}</textarea>
   </label>
-  <label class="checkbox-row">
+  <label class="checkbox-row section-toggle">
     <input type="checkbox" id="e-decklists"{% if source and source.requires_decklists %} checked{% endif %} onchange="onDecklistsChange()">
     <span>Submit decklists</span>
   </label>
