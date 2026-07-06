@@ -7,7 +7,7 @@
 </div>
 
 {% if mode is none %}
-<p><a href="/">← Back to events</a></p>
+<p style="margin-bottom:0.75rem"><a href="/">← Back to events</a></p>
 <div class="mode-cards">
   <a class="mode-card" href="/events/new{% if source %}?mode=simple&amp;duplicate={{ source.id | e }}{% else %}?mode=simple{% endif %}">
     <strong>Simple</strong>
@@ -23,9 +23,11 @@
 <div class="modal" style="max-height:none;overflow-y:visible;width:min(520px,100%);margin:1.5rem auto 3rem;">
   <h2>{% if source %}Duplicate event{% else %}New event — {{ 'Advanced' if mode == 'advanced' else 'Simple' }}{% endif %}</h2>
 
+  {% if not source or not source.advanced %}
   <p style="font-size:0.88rem;margin-bottom:0.75rem">
     <a href="/events/new{% if source %}?duplicate={{ source.id | e }}{% endif %}">← Change mode</a>
   </p>
+  {% endif %}
 
   <div id="create-errors" class="form-errors hidden"></div>
 
