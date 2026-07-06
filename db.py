@@ -1,3 +1,4 @@
+import time
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 
@@ -88,9 +89,24 @@ def list_events() -> list[dict]:
 
 _ADMIN_DOC = 'config/admins'
 
+# The admins list is read on nearly every request (is_admin / _can_manage — once
+# per non-owned event in the events listing) but changes very rarely, so cache it
+# in-process with a short TTL. Writes invalidate it locally; other instances pick
+# up a change within the TTL. A restart/redeploy always starts fresh.
+_admins_cache = {'data': None, 'ts': 0.0}
+_ADMINS_TTL = 30.0
+
+def _invalidate_admins_cache():
+    _admins_cache['data'] = None
+
 def get_admins() -> list[dict]:
+    now = time.time()
+    if _admins_cache['data'] is not None and (now - _admins_cache['ts']) < _ADMINS_TTL:
+        return _admins_cache['data']
     doc = get_db().document(_ADMIN_DOC).get()
-    return doc.to_dict().get('admins', []) if doc.exists else []
+    admins = doc.to_dict().get('admins', []) if doc.exists else []
+    _admins_cache['data'], _admins_cache['ts'] = admins, now
+    return admins
 
 def is_admin(google_id: str) -> bool:
     return any(a['id'] == google_id for a in get_admins())
@@ -101,10 +117,12 @@ def add_admin(google_id: str, email: str, name: str):
         return  # already an admin
     admins.append({'id': google_id, 'email': email, 'name': name})
     get_db().document(_ADMIN_DOC).set({'admins': admins})
+    _invalidate_admins_cache()
 
 def remove_admin(google_id: str):
     admins = [a for a in get_admins() if a['id'] != google_id]
     get_db().document(_ADMIN_DOC).set({'admins': admins})
+    _invalidate_admins_cache()
 
 
 # ── Firestore nested-array workaround ─────────────────────────────────────────
@@ -139,6 +157,9 @@ def get_user_profile(google_id: str) -> dict:
 
 def save_user_profile(google_id: str, data: dict):
     get_db().collection('users').document(google_id).set(data, merge=True)
+
+def delete_user_profile(google_id: str):
+    get_db().collection('users').document(google_id).delete()
 
 def list_users() -> list[dict]:
     """All known user profiles, each including its google_id (the document id)."""
@@ -187,3 +208,61 @@ def set_invite_optout(discord_id: str, opted_out: bool = True):
 
 def is_invite_opted_out(discord_id: str) -> bool:
     return get_db().collection('invite_optouts').document(str(discord_id)).get().exists
+
+
+# ── Event activity log ───────────────────────────────────────────────────────
+# Append-only audit of notable actions on an event (e.g. waitlist promotions),
+# stored one doc per entry so the log can grow without bloating the event
+# document. Queried by event_id (single-field equality, no composite index) and
+# sorted by timestamp in Python — same shape as the invites collection above.
+
+def add_event_log(event_id: str, entry: dict):
+    """Append an audit entry for an event. `entry` carries the action/actor/detail
+    and an ISO `at` timestamp (set by the caller); event_id is added here."""
+    get_db().collection('event_logs').add({**entry, 'event_id': str(event_id)})
+
+def list_event_log(event_id: str, limit: int = 200) -> list[dict]:
+    """An event's audit entries, newest first."""
+    q = get_db().collection('event_logs').where(
+        filter=FieldFilter('event_id', '==', str(event_id))).stream()
+    entries = [d.to_dict() for d in q]
+    entries.sort(key=lambda x: x.get('at', ''), reverse=True)
+    return entries[:limit]
+
+
+# ── Waitlist (transactional promotion) ───────────────────────────────────────
+
+def promote_waitlist_entry(event_id: str, wid: str, build_player, promoter: dict, now: str):
+    """Promote a waitlisted entry into the players list, transactionally so two
+    organisers can't both fill the last seat. `build_player(record, index)` returns
+    the new player dict. Returns one of:
+      ('ok', player) | ('full', None) | ('gone', None) | ('missing', None)
+    ('missing' = no such still-waitlisted entry; 'gone' = event deleted)."""
+    db = get_db()
+    ref = db.collection('events').document(event_id)
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def _apply(txn):
+        snapshot = ref.get(transaction=txn)
+        if not snapshot.exists:
+            return ('gone', None)
+        data = snapshot.to_dict()
+        players = data.get('players', [])
+        waitlist = data.get('waitlist', [])
+        rec = next((w for w in waitlist if w.get('id') == wid), None)
+        if not rec or rec.get('status') != 'waitlisted':
+            return ('missing', None)
+        cap = data.get('registration_cap', 0)
+        active = [p for p in players if not p.get('dropped')]
+        if cap and len(active) >= cap:
+            return ('full', None)
+        player = build_player(rec, len(players))
+        players.append(player)
+        rec['status'] = 'promoted'
+        rec['promoted_at'] = now
+        rec['promoted_by'] = promoter
+        txn.update(ref, {'players': players, 'waitlist': waitlist})
+        return ('ok', player)
+
+    return _apply(transaction)

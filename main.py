@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 from flask import Flask, request, redirect
 from routes.auth import auth_bp
@@ -22,6 +23,13 @@ app.config.update(
     SESSION_COOKIE_SECURE=_is_prod,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
+    # Keep people signed in across browser/app restarts. Without this, Flask sends a
+    # non-persistent session cookie (no Max-Age), which mobile Safari/Chrome routinely
+    # evict on backgrounding or tab recycling — silently logging users out. Login marks
+    # the session permanent (see routes/auth.py), so this lifetime applies to it; with
+    # SESSION_REFRESH_EACH_REQUEST (Flask default True) the 30-day window slides forward
+    # on each visit, so active users effectively stay signed in.
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
 )
 
 app.register_blueprint(auth_bp)
@@ -72,9 +80,14 @@ def _no_store_dynamic(resp):
 # so fall back to the process start time so a restart picks up edits.
 _ASSET_VERSION = os.environ.get('GAE_VERSION') or str(int(time.time()))
 
+# Public, HTTP-referrer-restricted Google Maps key (like GOOGLE_CLIENT_ID, it's sent
+# to browsers, so it lives in app.yaml env_variables, not Secret Manager). Empty when
+# unset → the Maps features degrade to a plain text field + a View-on-Google-Maps link.
+MAPS_API_KEY = os.environ.get('MAPS_API_KEY', '')
+
 @app.context_processor
-def inject_asset_version():
-    return {'asset_v': _ASSET_VERSION}
+def inject_globals():
+    return {'asset_v': _ASSET_VERSION, 'maps_api_key': MAPS_API_KEY}
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)

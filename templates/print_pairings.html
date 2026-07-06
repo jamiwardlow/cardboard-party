@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ event.name }} — {{ round_label }} pairings</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           color: #111; margin: 2rem; }
+    h1 { font-size: 1.4rem; margin: 0 0 0.25rem; }
+    .sub { color: #555; margin: 0 0 1.25rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #ccc;
+             vertical-align: baseline; }
+    th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #555; }
+    td.table-num { font-weight: 700; white-space: nowrap; }
+    td.vs { color: #888; width: 2rem; }
+    .label { color: #555; font-weight: 400; font-size: 0.85em; }
+    .bye { color: #888; font-style: italic; }
+    .tbd { color: #888; }
+    .print-btn { margin-bottom: 1.25rem; padding: 0.5rem 1rem; font-size: 0.95rem;
+                 border: 1px solid #888; border-radius: 6px; background: #f3f3f3; cursor: pointer; }
+    @media print {
+      body { margin: 0.5in; }
+      .print-btn { display: none; }
+      th, td { border-bottom: 1px solid #000; }
+    }
+  </style>
+</head>
+<body>
+  <button class="print-btn" onclick="window.print()">Print this sheet</button>
+  <h1>{{ event.name }}</h1>
+  <p class="sub">{{ round_label }} pairings{% if event.date %} · {{ event.date }}{% endif %}</p>
+  <table>
+    <thead>
+      <tr>
+        {% if tables_enabled %}<th>Table</th>{% endif %}
+        <th>Player 1</th>
+        <th></th>
+        <th>Player 2</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        {% if tables_enabled %}
+        <td class="table-num">
+          {%- if r.is_bye %}—
+          {%- elif r.table %}{{ r.table }}{% if r.label %} <span class="label">{{ r.label }}</span>{% endif %}
+          {%- else %}<span class="tbd">TBD</span>{% endif %}
+        </td>
+        {% endif %}
+        <td>{{ r.p1 }}</td>
+        <td class="vs">{% if not r.is_bye %}vs{% endif %}</td>
+        <td>{% if r.is_bye %}<span class="bye">Bye</span>{% else %}{{ r.p2 }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

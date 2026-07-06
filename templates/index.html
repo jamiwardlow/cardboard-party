@@ -4,22 +4,54 @@
 {% block content %}
 <div class="page-header">
   <h1>Events</h1>
-  {% if user %}
-    <button class="btn btn-primary" onclick="openCreateModal()">+ New event</button>
-  {% endif %}
+  <button class="btn btn-primary" onclick="openCreateModal()">+ New event</button>
+</div>
+
+<!-- Nudge Google-signed-in users with no linked Discord to link it (dismissible). -->
+<div id="link-discord-banner" class="banner hidden" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+  <span>Link your Discord so the bot recognises you and any events you joined from Discord connect to this account.</span>
+  <span style="margin-left:auto;display:flex;gap:0.5rem">
+    <a class="btn btn-sm btn-primary" href="/auth/login/discord?link=1&amp;next=/">Link Discord</a>
+    <button class="btn btn-sm" onclick="dismissLinkDiscord()">Dismiss</button>
+  </span>
 </div>
 
 <!-- Signed-in sections -->
 <div id="my-sections" class="hidden">
   <div id="section-organized" class="hidden">
-    <h2>My organized events</h2>
-    <div id="list-organized" class="card-grid"></div>
+    <h2 class="section-toggle" role="button" tabindex="0" aria-expanded="true"
+        onclick="toggleMySection(this, 'list-organized')">
+      My organized events <span class="round-caret" aria-hidden="true">▾</span>
+    </h2>
+    <div id="list-organized" class="card-grid section-body"></div>
   </div>
   <div id="section-registered" class="hidden">
-    <h2>My registered events</h2>
-    <div id="list-registered" class="card-grid"></div>
+    <h2 class="section-toggle" role="button" tabindex="0" aria-expanded="true"
+        onclick="toggleMySection(this, 'list-registered')">
+      My registered events <span class="round-caret" aria-hidden="true">▾</span>
+    </h2>
+    <div id="list-registered" class="card-grid section-body"></div>
   </div>
   <h2>All events</h2>
+</div>
+
+<div id="all-events-controls" class="events-controls">
+  <input id="ev-search" type="search" placeholder="Search by location…"
+         oninput="renderAllEvents()" aria-label="Search events by location">
+  <label class="events-sort">Sort
+    <select id="ev-sort" onchange="renderAllEvents()">
+      <option value="default">Active first, newest</option>
+      <option value="location">Location (A–Z)</option>
+    </select>
+  </label>
+  <label class="events-sort">
+    <input type="checkbox" id="ev-near" onchange="onNearMeToggle()"> Near me
+    <select id="ev-radius" onchange="renderAllEvents()">
+      <option value="25">25 mi</option>
+      <option value="50">50 mi</option>
+      <option value="100">100 mi</option>
+    </select>
+  </label>
 </div>
 
 <div id="event-list" class="card-grid">
@@ -51,12 +83,31 @@
     <!-- Step 1: the form (shared, with advanced-only extras) -->
     <div id="create-form" class="hidden">
       <div id="create-errors" class="form-errors hidden"></div>
+      <label>Name
+        <input id="e-name" type="text" placeholder="Friday Night Draft">
+      </label>
       <label class="adv-only">Game
         <select id="e-game" onchange="populateFormats()"></select>
         <span class="field-help">More games coming soon.</span>
       </label>
-      <label>Name
-        <input id="e-name" type="text" placeholder="Friday Night Draft">
+      <label class="adv-only">Brand text
+        <input id="e-brand-text" type="text" maxlength="300" placeholder="Optional — series, organiser, sponsor, or community">
+        <span class="field-help">A brand image can be added after creating the event.</span>
+      </label>
+      <label>Date
+        <input id="e-date" type="date">
+      </label>
+      <label>Start time
+        <input id="e-time" type="time">
+      </label>
+      <label>Location
+        <input id="e-location" type="text" maxlength="200" placeholder="Optional — venue or city">
+      </label>
+      <label class="adv-only">Entry cost
+        <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
+      </label>
+      <label class="adv-only">Payment link
+        <input id="e-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
       </label>
       <label>Type
         <select id="e-type">
@@ -71,6 +122,15 @@
         <select id="e-format-select" onchange="onFormatSelectChange()"></select>
         <input id="e-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
       </label>
+      <div class="adv-only field-group">
+        <span class="field-label">Tags</span>
+        <div class="chip-options" id="e-tags">
+          <label class="chip"><input type="checkbox" value="Weekly Play"> Weekly Play</label>
+          <label class="chip"><input type="checkbox" value="Prerelease"> Prerelease</label>
+          <label class="chip"><input type="checkbox" value="Regional Championship Qualifier"> Regional Championship Qualifier</label>
+          <label class="chip"><input type="checkbox" value="Spotlight Series"> Spotlight Series</label>
+        </div>
+      </div>
       <label class="adv-only">Structure
         <select id="e-structure" onchange="onStructureChange('e')">
           <option value="">— Select —</option>
@@ -87,16 +147,10 @@
         </select>
         <span class="field-help">Seeds the playoff bracket; you confirm the cut when Swiss ends.</span>
       </label>
-      <div class="adv-only field-group">
-        <span class="field-label">Tags</span>
-        <div class="chip-options" id="e-tags">
-          <label class="chip"><input type="checkbox" value="Weekly Play"> Weekly Play</label>
-          <label class="chip"><input type="checkbox" value="Prerelease"> Prerelease</label>
-          <label class="chip"><input type="checkbox" value="Regional Championship Qualifier"> Regional Championship Qualifier</label>
-          <label class="chip"><input type="checkbox" value="Spotlight Series"> Spotlight Series</label>
-        </div>
-      </div>
-      <label>Description
+      <label id="e-rounds-row">Number of rounds
+        <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto">
+      </label>
+      <label id="e-description-row">Description
         <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
       </label>
       <label class="adv-only">Schedule
@@ -114,27 +168,47 @@
       <label class="adv-only">Contact
         <textarea id="e-contact" rows="2" placeholder="Optional — how to reach the organiser with questions"></textarea>
       </label>
-      <label class="adv-only">Brand text
-        <input id="e-brand-text" type="text" maxlength="300" placeholder="Optional — series, organiser, sponsor, or community">
-        <span class="field-help">A brand image can be added after creating the event.</span>
+      <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-decklists" onchange="onDecklistsChange('e')">
+        <span>Require decklists</span>
       </label>
-      <label class="adv-only">Entry cost
-        <input id="e-cost" type="text" placeholder="e.g. $10 or Free">
-      </label>
-      <label class="adv-only">Payment link
-        <input id="e-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
-      </label>
-      <label>Date
-        <input id="e-date" type="date">
-      </label>
-      <label>Start time
-        <input id="e-time" type="time">
-        <span class="field-help">Optional — when the event begins.</span>
-      </label>
-      <label>Number of rounds
-        <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto">
-      </label>
-      <label>Registration cap
+      <div id="e-decklist-opts" class="hidden">
+        <label>Decklist deadline
+          <input id="e-decklist-deadline" type="date">
+          <span class="field-help">After this date, players can't submit or edit decklists.</span>
+        </label>
+        <label style="margin-top:0.9rem">Decklist validation
+          <select id="e-validation-format">
+            <option value="none">No automatic validation</option>
+            <option value="premodern">Premodern</option>
+          </select>
+          <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
+        </label>
+        <div class="field-group print-legality">
+          <span class="field-label">Allowed card printings</span>
+          <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
+          <label class="checkbox-row"><input type="checkbox" id="e-allow-proxies" onchange="onProxyToggle('e')"> <span>Proxies allowed</span></label>
+          <div id="e-proxy-opts" class="hidden" style="margin:0.15rem 0 0.4rem 1.6rem">
+            <label>Proxy limit
+              <select id="e-proxy-policy" onchange="onProxyToggle('e')">
+                <option value="unlimited">No limit</option>
+                <option value="limited">Up to a set number</option>
+                <option value="custom">Custom policy</option>
+              </select>
+            </label>
+            <label id="e-proxy-limit-wrap" class="hidden">Max proxies per deck
+              <input id="e-proxy-limit" type="number" min="0" max="999" placeholder="e.g. 10">
+            </label>
+            <label>Proxy policy details
+              <input id="e-proxy-note" type="text" maxlength="500" placeholder="Optional — e.g. must be clearly marked">
+            </label>
+          </div>
+          <label class="checkbox-row"><input type="checkbox" id="e-allow-gold"> <span>Gold-border cards allowed</span></label>
+          <label class="checkbox-row"><input type="checkbox" id="e-allow-ce"> <span>Collector’s Edition (CE) allowed</span></label>
+          <label class="checkbox-row"><input type="checkbox" id="e-allow-ie"> <span>International Edition (IE) allowed</span></label>
+        </div>
+      </div>
+      <label class="cap-field">Registration cap
         <input id="e-cap" type="number" min="2" max="256" placeholder="No cap">
       </label>
       <label class="adv-only">Registration type
@@ -144,23 +218,67 @@
         </select>
         <span class="field-help">Invite only disables self sign-up — you add players yourself.</span>
       </label>
+      <label class="adv-only">Entry code
+        <input id="e-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
+      </label>
       <label class="adv-only">Registration opens
         <input id="e-reg-start" type="date">
       </label>
       <label class="adv-only">Registration closes
         <input id="e-reg-end" type="date">
       </label>
-      <label class="adv-only">Unenrollment deadline
-        <input id="e-unenroll-end" type="date">
-        <span class="field-help">After this date, players can't withdraw themselves.</span>
+      <div class="adv-only field-group group-divider">
+        <span class="field-label">Drop &amp; refund policy</span>
+        <label class="checkbox-row no-divider"><input type="checkbox" id="e-self-drop" checked> <span>Allow players to drop themselves</span></label>
+        <label>Drop deadline
+          <input id="e-unenroll-end" type="date">
+          <span class="field-help">After this date, players can't drop themselves.</span>
+        </label>
+        <label>Drop policy
+          <textarea id="e-drop-policy" rows="2" placeholder="Optional — when and how players may drop"></textarea>
+        </label>
+        <label>Refund policy
+          <textarea id="e-refund-policy" rows="2" placeholder="Optional — whether refunds are available (no payments are processed here)"></textarea>
+        </label>
+        <label>Refund window closes
+          <input id="e-refund-window" type="date">
+          <span class="field-help">Optional — the last day refunds are offered.</span>
+        </label>
+      </div>
+      <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-require-checkin">
+        <span>Require check-in
+          <span class="field-help">Only players you check in get paired.</span>
+        </span>
       </label>
-      <label class="adv-only">Entry code
-        <input id="e-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
+      <label class="adv-only checkbox-row">
+        <input type="checkbox" id="e-tables" onchange="onTablesChange('e')">
+        <span>Assign tables
+          <span class="field-help">Give each pairing a table number for in-person seating.</span>
+        </span>
       </label>
-      <label>Round timer (minutes)
-        <input id="e-round-timer" type="number" min="0" max="180" placeholder="No timer">
-        <span class="field-help">Shows a countdown to players each round.</span>
-      </label>
+      <div id="e-table-opts" class="hidden">
+        <label>First table number
+          <input id="e-table-start" type="number" min="1" max="999" placeholder="1"
+                 oninput="onTableConfigChange('e')">
+        </label>
+        <label>Last table number
+          <input id="e-table-end" type="number" min="1" max="999" placeholder="e.g. 50"
+                 oninput="onTableConfigChange('e')">
+          <span class="field-help">The range of physical tables available.</span>
+        </label>
+        <label>Reserved / unavailable tables
+          <input id="e-table-excluded" type="text" placeholder="e.g. 13, 21-24"
+                 oninput="onTableConfigChange('e')">
+          <span class="field-help">Held out of automatic assignment.</span>
+        </label>
+        <label>Labeled tables
+          <input id="e-table-labels" type="text" placeholder="e.g. 1:Feature Match, 2:Coverage"
+                 oninput="onTableConfigChange('e')">
+          <span class="field-help">Labeled tables are placed manually, so they're held out of auto-assignment too.</span>
+        </label>
+        <span id="e-table-warn" class="field-help" style="color:var(--danger)"></span>
+      </div>
       <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-delay-pairings">
         <span>Delay pairings
@@ -173,10 +291,14 @@
           <span class="field-help">Standings stay hidden from players until you release them.</span>
         </span>
       </label>
-      <label class="adv-only checkbox-row">
-        <input type="checkbox" id="e-require-checkin">
-        <span>Require check-in
-          <span class="field-help">Only players you check in get paired.</span>
+      <label class="timer-field">Round timer (minutes)
+        <input id="e-round-timer" type="number" min="0" max="180" placeholder="No timer">
+        <span class="field-help">Shows a countdown to players each round.</span>
+      </label>
+      <label class="adv-only checkbox-row no-divider">
+        <input type="checkbox" id="e-auto-start-timer">
+        <span>Start the timer when pairings are released
+          <span class="field-help">Auto-starts the round timer when pairings go live — right away if posted immediately, or when you release delayed pairings. Off by default; start it manually with the button.</span>
         </span>
       </label>
       <label class="adv-only checkbox-row">
@@ -186,17 +308,15 @@
         </span>
       </label>
       <label class="adv-only checkbox-row">
-        <input type="checkbox" id="e-decklists">
-        <span>Require decklists
-          <span class="field-help">Players are told a decklist is required for this event.</span>
-        </span>
-      </label>
-      <label class="adv-only checkbox-row">
         <input type="checkbox" id="e-test-mode">
         <span>This event is in Test Mode
           <span class="field-help">Hidden from public event discovery — only you see it.</span>
         </span>
       </label>
+      <p class="form-discord-link">
+        <a href="/discord-bot" target="_blank" rel="noopener">Manage this event on Discord</a>
+        <span class="field-help">Players can register, report results, and follow standings via DM or a linked channel.</span>
+      </p>
       <div class="modal-actions">
         <button class="btn" onclick="backToModeChoice()">← Back</button>
         <button class="btn btn-primary" onclick="submitCreateEvent()">Create</button>
@@ -209,6 +329,77 @@
 {% block scripts %}
 <script>
 let me = null;
+let allEvents = [];   // every event, for the All-events search/sort controls
+
+// Collapse/expand a "My …" section (header click toggles its card grid).
+function toggleMySection(header, bodyId) {
+  const collapsed = document.getElementById(bodyId).classList.toggle('collapsed');
+  header.classList.toggle('collapsed', collapsed);
+  header.setAttribute('aria-expanded', String(!collapsed));
+}
+let userLoc = null;   // {lat,lng} once the user opts into "Near me"
+
+// Render the All-events list applying the location search / sort / near-me controls.
+function renderAllEvents() {
+  const allEl = document.getElementById('event-list');
+  if (!allEvents.length) { allEl.innerHTML = '<p class="empty">No events yet.</p>'; return; }
+  const q = (document.getElementById('ev-search').value || '').trim().toLowerCase();
+  const sortBy = document.getElementById('ev-sort').value;
+  const nearOn = document.getElementById('ev-near').checked && userLoc;
+  const radius = parseInt(document.getElementById('ev-radius').value) || 50;
+  let list = q ? allEvents.filter(e => (e.location || '').toLowerCase().includes(q))
+               : allEvents.slice();
+  if (nearOn) {
+    // Only events with coordinates, within the radius, nearest first.
+    list = list.filter(e => e.lat != null && e.lng != null &&
+                            haversineMiles(userLoc.lat, userLoc.lng, e.lat, e.lng) <= radius);
+    list.sort((a, b) => haversineMiles(userLoc.lat, userLoc.lng, a.lat, a.lng) -
+                        haversineMiles(userLoc.lat, userLoc.lng, b.lat, b.lng));
+  } else if (sortBy === 'location') {
+    list.sort((a, b) => {
+      const al = (a.location || '').toLowerCase(), bl = (b.location || '').toLowerCase();
+      if (!al !== !bl) return al ? -1 : 1;     // events without a location sink last
+      return al.localeCompare(bl) || (b.date || '').localeCompare(a.date || '');
+    });
+  } else {
+    // Default: completed events sink, newest first within each group.
+    list.sort((a, b) => {
+      const af = isComplete(a) ? 1 : 0, bf = isComplete(b) ? 1 : 0;
+      if (af !== bf) return af - bf;
+      return (b.date || '').localeCompare(a.date || '');
+    });
+  }
+  allEl.innerHTML = list.length ? list.map(eventCard).join('')
+    : `<p class="empty">${nearOn ? `No events within ${radius} mi.` : 'No events match your search.'}</p>`;
+}
+
+// "Near me" toggle — ask the browser for the user's location, then filter by distance.
+function onNearMeToggle() {
+  if (!document.getElementById('ev-near').checked) { userLoc = null; renderAllEvents(); return; }
+  if (!navigator.geolocation) {
+    alert('Location isn’t available in this browser.');
+    document.getElementById('ev-near').checked = false; return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos => { userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; renderAllEvents(); },
+    ()  => { alert('Couldn’t get your location. Allow location access to use “Near me.”');
+             document.getElementById('ev-near').checked = false; userLoc = null; renderAllEvents(); }
+  );
+}
+
+// Turn the Location field into a Places autocomplete once Maps is ready.
+whenMapsReady(() => attachPlaceAutocomplete('e-location'));
+
+// One-time, dismissible nudge for signed-in accounts with no linked Discord.
+function maybeShowLinkDiscordBanner() {
+  if (!me.signed_in || me.discord_linked || !me.discord_enabled) return;
+  if (localStorage.getItem('cbpLinkDiscordDismissed')) return;
+  document.getElementById('link-discord-banner').classList.remove('hidden');
+}
+function dismissLinkDiscord() {
+  localStorage.setItem('cbpLinkDiscordDismissed', '1');
+  document.getElementById('link-discord-banner').classList.add('hidden');
+}
 
 async function init() {
   const [eventsRes, meRes] = await Promise.all([
@@ -217,6 +408,7 @@ async function init() {
   ]);
   const events = await eventsRes.json();
   me = await meRes.json();
+  maybeShowLinkDiscordBanner();
 
   // Completed events sink to the back; within each group, newest first. This
   // keeps your active and not-yet-started events at the top of every list.
@@ -247,12 +439,8 @@ async function init() {
     }
   }
 
-  const allEl = document.getElementById('event-list');
-  if (!events.length) {
-    allEl.innerHTML = '<p class="empty">No events yet.</p>';
-  } else {
-    allEl.innerHTML = events.map(eventCard).join('');
-  }
+  allEvents = events;
+  renderAllEvents();
 
   // Arrived via "Duplicate event" (?duplicate=<id>) — open the create form
   // pre-filled from that event so the user can review and tweak before creating.
@@ -261,6 +449,13 @@ async function init() {
     history.replaceState({}, '', '/');   // drop ?duplicate so a refresh won't reopen it
     const r = await fetch(`/api/events/${encodeURIComponent(dup)}`);
     if (r.ok) openDuplicateForm(await r.json());
+  }
+
+  // Clicked "+ New event" while signed out — after login we land back here with
+  // ?new=1; open the create form so they continue where they intended.
+  if (new URLSearchParams(location.search).get('new') && me.signed_in) {
+    history.replaceState({}, '', '/');   // drop ?new so a refresh won't reopen it
+    openCreateModal();
   }
 }
 
@@ -281,11 +476,12 @@ function bracketRoundName(matchCount) {
   return `Top ${matchCount * 2}`;
 }
 
-// An event is complete once every expected Swiss round has been paired (the
-// condition that shows "Event complete" on the event page), or — if cut to a
-// playoff — once the bracket final has a winner. status === 'finished' is
-// honoured too, but it's never set automatically.
+// Completion is computed server-side (`complete`) — the slim listing drops each
+// match's `result`, so the client can't tell a finished round (wins/draws/byes)
+// from one whose final round is still being played. Fall back to the old
+// paired-round heuristic only if the flag is somehow missing.
 function isComplete(e) {
+  if (typeof e.complete === 'boolean') return e.complete;
   const rounds = e.rounds || [];
   const last = rounds[rounds.length - 1];
   if (isBracketRound(last)) return last.length === 1 && !!last[0].winner_id;
@@ -305,8 +501,10 @@ function fmtTime(hhmm) {
 function eventCard(e) {
   const activePlayers = (e.players || []).filter(p => !p.dropped).length;
   const cap     = e.registration_cap ? ` / ${e.registration_cap}` : '';
+  const full    = e.registration_cap && activePlayers >= e.registration_cap;
   const regTag  = e.registration === 'open'
-    ? `<span class="reg-open">Registration open${cap}</span>`
+    ? (full ? `<span class="reg-waitlist">Waitlist</span>`
+            : `<span class="reg-open">Registration open${cap}</span>`)
     : `<span class="reg-closed">Registration closed</span>`;
   const rounds  = e.rounds || [];
   const last    = rounds[rounds.length - 1];
@@ -325,6 +523,7 @@ function eventCard(e) {
     ${gameLine}
     <div class="card-meta">${escapeHtml(e.event_type || 'One-day')} · ${escapeHtml(e.date || '')}${fmtTime(e.start_time) ? ' · ' + escapeHtml(fmtTime(e.start_time)) : ''}</div>
     <div class="card-meta">${escapeHtml(e.format || '')}</div>
+    ${e.location ? `<div class="card-meta card-location">📍 ${escapeHtml(e.location)}</div>` : ''}
     ${e.description ? `<div class="card-description">${escapeHtml(e.description)}</div>` : ''}
     ${e.entry_cost ? `<div class="card-meta">Entry: ${escapeHtml(e.entry_cost)}</div>` : ''}
     <div class="card-meta">${activePlayers} players${cap ? ' (cap: ' + e.registration_cap + ')' : ''}</div>
@@ -343,6 +542,12 @@ const GAME_FORMATS = {
 let createMode = null;   // 'simple' | 'advanced'
 
 function openCreateModal() {
+  // Creating an event requires an account — send signed-out users to login
+  // first, returning here so they can pick up right where they left off.
+  if (me && !me.signed_in) {
+    window.location = '/auth/login?next=' + encodeURIComponent('/?new=1');
+    return;
+  }
   createMode = null;
   document.getElementById('e-date').value = new Date().toISOString().slice(0, 10);
   document.getElementById('create-title').textContent = 'New event';
@@ -369,12 +574,21 @@ function chooseMode(mode) {
   createMode = mode;
   clearCreateErrors();
   const adv = mode === 'advanced';
+  const form = document.getElementById('create-form');
+  form.classList.toggle('mode-advanced', adv);
+  form.classList.toggle('mode-simple', !adv);
   document.querySelectorAll('#create-form .adv-only')
     .forEach(el => el.classList.toggle('hidden', !adv));
   document.getElementById('format-simple').classList.toggle('hidden', adv);
   document.getElementById('format-advanced').classList.toggle('hidden', !adv);
+  // Description/Number-of-rounds swap order between the two layouts: Advanced
+  // shows rounds first, Simple shows Description first. Same DOM nodes, reordered.
+  const descRow = document.getElementById('e-description-row');
+  const roundsRow = document.getElementById('e-rounds-row');
+  if (adv) roundsRow.parentNode.insertBefore(roundsRow, descRow);
+  else     descRow.parentNode.insertBefore(descRow, roundsRow);
   if (adv) {
-    populateFormats(); onStructureChange('e');
+    populateFormats(); onStructureChange('e'); onDecklistsChange('e'); onTablesChange('e');
   } else {
     // Advanced-only dependent sub-fields aren't tagged .adv-only (their
     // visibility is driven by other inputs, not the mode), so the bulk toggle
@@ -382,6 +596,8 @@ function chooseMode(mode) {
     // Advanced doesn't linger on the Simple form. Values stay in the DOM, so
     // switching back to Advanced restores them (a draft across the switch).
     document.getElementById('e-topcut-wrap').classList.add('hidden');
+    document.getElementById('e-decklist-opts').classList.add('hidden');
+    document.getElementById('e-table-opts').classList.add('hidden');
   }
   document.getElementById('create-title').textContent =
     adv ? 'New event — Advanced' : 'New event — Simple';
@@ -393,6 +609,23 @@ function backToModeChoice() {
   document.getElementById('create-form').classList.add('hidden');
   document.getElementById('create-mode-choice').classList.remove('hidden');
   document.getElementById('create-title').textContent = 'New event';
+}
+
+// Decklist deadline/validation only apply when decklists are required, so reveal
+// them with the "Require decklists" checkbox (like e-topcut-wrap follows structure).
+function onDecklistsChange(prefix) {
+  const on = document.getElementById(`${prefix}-decklists`).checked;
+  document.getElementById(`${prefix}-decklist-opts`).classList.toggle('hidden', !on);
+}
+
+// Table settings reveal with the "Assign tables" checkbox; the capacity warning
+// is checked against the registration cap (the most players we expect).
+function onTablesChange(prefix) {
+  toggleTableOpts(prefix);
+  onTableConfigChange(prefix);
+}
+function onTableConfigChange(prefix) {
+  refreshTableWarning(prefix, parseInt(document.getElementById('e-cap').value) || 0);
 }
 
 // Fill the Advanced format dropdown from the selected game.
@@ -444,6 +677,10 @@ function openDuplicateForm(src) {
   set('e-brand-text', src.brand_text);
   set('e-date', src.date);
   set('e-time', src.start_time);
+  set('e-location', src.location);
+  if (src.lat != null && src.lng != null)
+    placeData['e-location'] = { location: src.location || '', lat: src.lat, lng: src.lng, place_id: src.place_id || '' };
+  else delete placeData['e-location'];
   set('e-rounds', src.num_rounds || '');
   set('e-cap', src.registration_cap || '');
   set('e-round-timer', src.round_timer_minutes || '');
@@ -456,12 +693,34 @@ function openDuplicateForm(src) {
   set('e-reg-start', src.registration_start);
   set('e-reg-end', src.registration_end);
   set('e-unenroll-end', src.unenroll_end);
+  check('e-self-drop', src.self_service_drop_enabled !== false);
+  set('e-drop-policy', src.drop_policy_text);
+  set('e-refund-policy', src.refund_policy_text);
+  set('e-refund-window', src.refund_window_end);
   set('e-entry-code', src.entry_code);
   check('e-decklists', src.requires_decklists);
+  set('e-decklist-deadline', src.decklist_deadline || '');
+  set('e-validation-format', src.validation_format || 'none');
+  check('e-allow-proxies', src.allow_proxies);
+  check('e-allow-gold', src.allow_gold_border);
+  check('e-allow-ce', src.allow_ce);
+  check('e-allow-ie', src.allow_ie);
+  set('e-proxy-policy', src.proxy_policy || 'unlimited');
+  set('e-proxy-limit', src.proxy_limit || '');
+  set('e-proxy-note', src.proxy_note || '');
+  onProxyToggle('e');
+  onDecklistsChange('e');   // reflect the duplicated "require decklists" state
+  check('e-tables', src.tables_enabled);
+  set('e-table-start', src.table_start || '');
+  set('e-table-end', src.table_end || '');
+  set('e-table-excluded', formatTableList(src.tables_excluded));
+  set('e-table-labels', formatTableLabels(src.table_labels));
+  onTablesChange('e');      // reflect the duplicated "assign tables" state
   check('e-draws-frowned', src.intentional_draws_frowned);
   check('e-delay-pairings', src.delay_pairings);
   check('e-delay-standings', src.delay_standings);
   check('e-require-checkin', src.require_check_in);
+  check('e-auto-start-timer', src.auto_start_timer);
   check('e-test-mode', src.test_mode);
   document.getElementById('create-title').textContent = 'Duplicate event';
 }
@@ -537,6 +796,7 @@ async function submitCreateEvent() {
     format = document.getElementById('e-format').value;
   }
 
+  const place = placeFields('e-location');
   const body = {
     name:             document.getElementById('e-name').value,
     advanced:         adv,
@@ -552,6 +812,10 @@ async function submitCreateEvent() {
     payment_url:      adv ? document.getElementById('e-payment').value : '',
     date:             document.getElementById('e-date').value,
     start_time:       document.getElementById('e-time').value,
+    location:         place.location,
+    lat:              place.lat,
+    lng:              place.lng,
+    place_id:         place.place_id,
     num_rounds:       numRounds,
     registration_cap: cap,
     brand_text:       adv ? document.getElementById('e-brand-text').value : '',
@@ -559,6 +823,20 @@ async function submitCreateEvent() {
   };
   if (adv) {
     body.requires_decklists  = document.getElementById('e-decklists').checked;
+    body.decklist_deadline   = document.getElementById('e-decklist-deadline').value;
+    body.validation_format   = document.getElementById('e-validation-format').value;
+    body.allow_proxies       = document.getElementById('e-allow-proxies').checked;
+    body.allow_gold_border   = document.getElementById('e-allow-gold').checked;
+    body.allow_ce            = document.getElementById('e-allow-ce').checked;
+    body.allow_ie            = document.getElementById('e-allow-ie').checked;
+    body.proxy_policy        = document.getElementById('e-proxy-policy').value;
+    body.proxy_limit         = parseInt(document.getElementById('e-proxy-limit').value) || 0;
+    body.proxy_note          = document.getElementById('e-proxy-note').value;
+    body.tables_enabled      = document.getElementById('e-tables').checked;
+    body.table_start         = parseInt(document.getElementById('e-table-start').value) || 1;
+    body.table_end           = parseInt(document.getElementById('e-table-end').value) || 0;
+    body.tables_excluded     = parseTableList(document.getElementById('e-table-excluded').value);
+    body.table_labels        = parseTableLabels(document.getElementById('e-table-labels').value);
     body.prize_deadline_days = parseInt(document.getElementById('e-prize-deadline').value) || 0;
     body.rules    = document.getElementById('e-rules').value;
     body.schedule = document.getElementById('e-schedule').value;
@@ -568,11 +846,16 @@ async function submitCreateEvent() {
     body.registration_start = document.getElementById('e-reg-start').value;
     body.registration_end   = document.getElementById('e-reg-end').value;
     body.unenroll_end        = document.getElementById('e-unenroll-end').value;
+    body.self_service_drop_enabled = document.getElementById('e-self-drop').checked;
+    body.drop_policy_text          = document.getElementById('e-drop-policy').value;
+    body.refund_policy_text        = document.getElementById('e-refund-policy').value;
+    body.refund_window_end         = document.getElementById('e-refund-window').value;
     body.entry_code                  = document.getElementById('e-entry-code').value;
     body.intentional_draws_frowned   = document.getElementById('e-draws-frowned').checked;
     body.delay_pairings              = document.getElementById('e-delay-pairings').checked;
     body.delay_standings             = document.getElementById('e-delay-standings').checked;
     body.require_check_in            = document.getElementById('e-require-checkin').checked;
+    body.auto_start_timer            = document.getElementById('e-auto-start-timer').checked;
   }
   const res = await fetch('/api/events', {
     method: 'POST', headers: {'Content-Type': 'application/json'},

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Sign-in problem — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ heading or "We couldn’t finish signing you in" }}</h1>
+</div>
+
+<div class="login-choices">
+  {% if message %}
+  <p class="about-text" style="margin-bottom:1rem">{{ message }}</p>
+  {% else %}
+  <p class="about-text" style="margin-bottom:1rem">
+    Your browser didn’t send back the security cookie we set when you started
+    signing in, so we stopped to keep your account safe. This usually happens in
+    privacy-focused browsers (such as DuckDuckGo) that block cookies during sign-in.
+  </p>
+  <p class="about-text" style="margin-bottom:1rem">
+    Please try again. If it keeps happening, sign in with Safari, Chrome, or another
+    standard browser, or allow cookies for this site.
+  </p>
+  {% endif %}
+  <a class="btn btn-primary" href="/auth/login{% if next %}?next={{ next | urlencode }}{% endif %}">Try signing in again</a>
+</div>
+{% endblock %}

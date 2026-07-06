@@ -85,7 +85,7 @@ a { color: var(--accent); }
 .decklist-view { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.9rem;
                  line-height: 1.5; color: var(--text); background: var(--bg2);
                  border-left: 3px solid var(--border); border-radius: 0 6px 6px 0;
-                 padding: 0.6rem 0.8rem; max-height: 60vh; overflow: auto; }
+                 padding: 0.6rem 0.8rem; }
 .decklist-result { margin: 0.6rem 0 0; font-size: 0.9rem; }
 .decklist-result .dl-counts { color: var(--text); margin: 0.2rem 0; }
 .decklist-result .dl-ok { color: var(--green); margin: 0.2rem 0; }
@@ -125,18 +125,54 @@ ul.about-text { padding-left: 1.25rem; }
   border-radius: 99px; padding: 0.05rem 0.55rem; margin-right: 0.4rem; vertical-align: middle; }
 
 /* Event branding */
-.event-brand     { margin-bottom: 1.25rem; }
-.event-brand-img { display: block; width: 100%; max-height: 240px; object-fit: cover;
-                   border: 1px solid var(--border); border-radius: var(--radius); }
-.event-brand-text { font-size: 0.95rem; color: var(--muted); margin-top: 0.6rem; }
-.brand-preview   { max-width: 100%; max-height: 140px; border: 1px solid var(--border);
-                   border-radius: var(--radius); object-fit: cover; }
+/* Brand: a logo/poster in the upper-right of the event header. Shown at natural
+   aspect (square, portrait, or landscape) — contained, never cropped. */
+.event-brand     { flex-shrink: 0; width: 260px; max-width: 46%; text-align: center; }
+.event-brand-link { display: block; cursor: zoom-in; }
+/* Size to the image's natural aspect within the column, so the border hugs the
+   image itself instead of a full-width box with letterboxed blank space. */
+.event-brand-img { display: block; width: auto; height: auto; max-width: 100%; max-height: 420px;
+                   margin: 0 auto; border: 1px solid var(--border);
+                   border-radius: var(--radius); }
+.event-brand-text { font-size: 0.9rem; color: var(--muted); margin-top: 0.5rem; }
+.brand-preview   { max-width: 100%; max-height: 180px; border: 1px solid var(--border);
+                   border-radius: var(--radius); object-fit: contain; }
 
 .page-header  { display: flex; justify-content: space-between; align-items: flex-start;
                 gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
 .page-header h1 { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600;
                   line-height: 1.15; letter-spacing: -0.01em; }
 .title-row    { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+/* Event-page layout: a flex column (title/banners/status, then the section flow). */
+.event-layout    { display: flex; flex-direction: column; }
+.event-facts     { margin-bottom: 1rem; }   /* quick facts sit atop the Description block */
+
+/* Event-page header: full-width title row, then details (left) + brand (upper-right). */
+.event-head      { margin-bottom: 1rem; }
+.event-head h1   { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600;
+                   line-height: 1.15; letter-spacing: -0.01em; }
+.event-body      { display: flex; justify-content: space-between; align-items: flex-start;
+                   gap: 2.5rem; margin-bottom: 1.5rem; }
+.event-body-main { flex: 1; min-width: 0; }  /* info + details flow here; brand is the rail */
+.event-info      { min-width: 0; }
+@media (max-width: 600px) {
+  .event-body  { flex-direction: column; }
+  .event-brand { width: 100%; max-width: 340px; order: -1; }  /* poster up top on mobile */
+}
+
+/* Masonry flow from the Description down. layoutEventFlow() (JS) orders the section
+   blocks per event stage and, when wide, deals them into two columns (.flow-col a/b)
+   dropping each into the shorter one to close gaps. Narrow viewports get one column.
+   Pre-JS, the blocks are direct children of #event-flow and just stack. */
+#event-flow { display: flex; flex-direction: column; gap: 1.4rem; margin-top: 1rem; }
+#event-flow.two { flex-direction: row; gap: 2rem; align-items: flex-start; }
+.flow-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 1.4rem; }
+.flow-block { margin: 0; }                          /* the flex gap owns spacing */
+.flow-block > :first-child { margin-top: 0; }       /* no double top gap in a column */
+#event-flow .event-brand { width: 100%; max-width: 100%; }   /* fill its column */
+#event-flow .event-brand-img { max-height: 340px; }
+#event-flow .event-description { max-width: none; }
 
 /* "Add to calendar" disclosure menu (native <details>). */
 .cal-menu { position: relative; display: inline-block; }
@@ -154,6 +190,16 @@ ul.about-text { padding-left: 1.25rem; }
                       border-color: transparent; font-weight: 600; }
 #btn-share:hover    { background: #7c3aed; border-color: transparent; }
 .subtitle     { color: var(--muted); font-size: 0.88rem; margin-top: 0.25rem; }
+/* Prominent date/time/location shown just below the event title. */
+.event-facts  { margin-top: 0.5rem; }
+.event-when   { color: var(--text); font-size: 1.05rem; font-weight: 600;
+                line-height: 1.35; margin-top: 0.35rem; margin-bottom: 0.15rem;
+                /* date/time and location are whole units — when they don't fit,
+                   location wraps to its own line instead of breaking mid-text. */
+                display: flex; flex-wrap: wrap; column-gap: 0.5rem; row-gap: 0.4rem;
+                align-items: baseline; }
+.event-when .event-datetime { white-space: nowrap; }
+.event-when .loc-link { color: var(--accent); text-decoration-color: rgba(167,139,250,0.5); }
 .event-description { color: var(--text); font-size: 0.92rem; line-height: 1.6;
                      white-space: pre-wrap; max-width: 640px; margin-top: 0.6rem; }
 .event-cost   { font-size: 0.9rem; color: var(--muted); margin-top: 0.5rem;
@@ -171,6 +217,36 @@ ul.about-text { padding-left: 1.25rem; }
 h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
      margin: 1.5rem 0 0.6rem; text-transform: uppercase; letter-spacing: 0.08em;
      color: var(--accent); }
+
+/* A section heading with inline actions on the right (the Rounds heading carries
+   the Pair-round / Cut / Release-pairings controls). */
+.section-head { display: flex; align-items: center; justify-content: space-between;
+                gap: 0.75rem; flex-wrap: wrap; margin: 1.5rem 0 0.6rem; }
+.section-head h2 { margin: 0; }
+.round-actions-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+/* All-events search + sort controls (location). */
+.events-controls { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;
+                   margin-bottom: 1rem; }
+.events-controls input[type="search"] { flex: 1 1 14rem; min-width: 0; padding: 0.45rem 0.7rem;
+   border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2);
+   color: var(--text); font-size: 0.9rem; }
+.events-sort { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;
+   color: var(--muted); }
+.events-sort select { padding: 0.4rem 0.5rem; border: 1px solid var(--border);
+   border-radius: var(--radius); background: var(--bg2); color: var(--text); font-size: 0.85rem; }
+
+/* The event's location, linking out to Google Maps. */
+.loc-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.loc-link:hover { color: var(--accent); }
+
+/* New Places API autocomplete dropdown (custom, themed) under a Location field. */
+.place-suggest { position: fixed; z-index: 1000; background: var(--bg2);
+                 border: 1px solid var(--border); border-radius: var(--radius);
+                 box-shadow: 0 8px 24px rgba(0,0,0,0.4); overflow: hidden; }
+.place-suggest-item { padding: 0.5rem 0.7rem; font-size: 0.88rem; cursor: pointer;
+                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.place-suggest-item:hover, .place-suggest-item.active { background: var(--accent-soft); }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
 .btn          { display: inline-flex; align-items: center; justify-content: center;
@@ -195,6 +271,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .btn-danger:hover  { background: var(--danger-bg); border-color: var(--danger); }
 
 .action-row   { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.role-tag     { color: var(--accent); font-weight: 600; font-size: 0.85rem; }
 
 /* ── Cards ────────────────────────────────────────────────────────────────── */
 .card-grid  { display: grid;
@@ -218,10 +295,12 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
                     -webkit-box-orient: vertical; overflow: hidden; }
 .card-status { margin-top: 0.5rem; }
 
-.reg-open, .reg-closed, .reg-active, .reg-done {
+.reg-open, .reg-closed, .reg-active, .reg-done, .reg-waitlist {
               display: inline-block; font-size: 0.72rem; font-weight: 600;
               border-radius: 99px; padding: 0.15rem 0.65rem;
               text-transform: uppercase; letter-spacing: 0.04em; }
+.reg-waitlist { background: var(--pink-soft); color: var(--pink);
+              border: 1px solid rgba(244, 114, 182, 0.35); }
 .reg-open   { background: var(--green-soft); color: var(--green);
               border: 1px solid rgba(74, 222, 128, 0.35); }
 .reg-closed { background: var(--bg3); color: var(--muted);
@@ -245,6 +324,36 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .field-help { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 400; margin-top: 0.2rem; }
 .modal label.checkbox-row { flex-direction: row; align-items: flex-start; gap: 0.55rem; text-indent: 0;
               padding-top: 0.75rem; margin-top: 0.35rem; border-top: 1px solid var(--border); }
+/* Group the round timer with its auto-start toggle: the divider sits above the
+   timer field, and the toggle below it has no divider of its own. */
+.modal label.timer-field { padding-top: 0.75rem; margin-top: 0.35rem; border-top: 1px solid var(--border); }
+.modal label.checkbox-row.no-divider { padding-top: 0; margin-top: 0; border-top: none; }
+/* Divider above Registration cap (starts the registration group), like the timer
+   divider. Both appear on Advanced and the edit modal, but not on the Simple
+   create form (no fields above them there that need separating). */
+.modal label.cap-field { padding-top: 0.75rem; margin-top: 0.35rem; border-top: 1px solid var(--border); }
+.mode-simple label.timer-field,
+.mode-simple label.cap-field { padding-top: 0; margin-top: 0; border-top: none; }
+.modal .field-group.group-divider { border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.95rem; }
+.modal .field-group.group-divider > .field-label { font-size: 1rem; }
+/* Waitlist roster (organiser view) + activity log */
+/* Search boxes (waitlist / activity / players) — matched to the add-player input. */
+.waitlist-search { width: 100%; padding: 0.38rem 0.6rem; margin-bottom: 0.6rem;
+                   background: var(--bg); color: var(--text);
+                   border: 1px solid var(--border); border-radius: var(--radius);
+                   font-size: 0.9rem; font-family: var(--font-body); }
+.waitlist-search:focus { outline: none; border-color: var(--accent); }
+.waitlist-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0;
+                border-bottom: 1px solid var(--border); }
+.waitlist-row .wl-pos { flex: 0 0 1.6rem; text-align: right; color: var(--muted);
+                        font-variant-numeric: tabular-nums; }
+.waitlist-row .wl-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.waitlist-row .wl-meta { font-size: 0.75rem; color: var(--muted); }
+.waitlist-row .wl-actions { flex: 0 0 auto; display: flex; gap: 0.4rem; }
+.activity-log { list-style: none; padding: 0; margin: 0; }
+.activity-log li { display: flex; gap: 0.6rem; padding: 0.3rem 0; font-size: 0.85rem;
+                   border-bottom: 1px solid var(--border); }
+.activity-log .act-when { color: var(--muted); flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 /* Outrank `.modal input { width:100% }` so the checkbox stays its natural size
    instead of stretching full-width and pushing the label off to the right. */
 .modal .checkbox-row input { width: auto; flex: 0 0 auto; margin-top: 0.3rem; }
@@ -264,6 +373,14 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* Field group with its own label (used for the tag multi-select) */
 .field-group { display: flex; flex-direction: column; gap: 0.5rem; }
 .field-label { font-size: 0.88rem; font-weight: 500; padding-left: 0.4rem; }
+/* "Allowed card printings": a divider line above the group, with the toggles
+   stacked tightly (no gaps between the checkbox rows). */
+.print-legality { border-top: 1px solid var(--border); margin-top: 0.5rem;
+                  padding-top: 0.95rem; gap: 0.3rem; }
+/* Outrank `.modal label.checkbox-row` (which draws a divider above each toggle) so
+   the printing toggles read as one group with no lines between them. */
+.modal .print-legality label.checkbox-row { gap: 0.5rem; border-top: none;
+                                             padding-top: 0; margin-top: 0; }
 .chip-options { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .chip-options .chip { display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
               user-select: none; text-indent: 0;
@@ -286,25 +403,25 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .event-note { font-size: 0.85rem; color: var(--accent); margin: 0.5rem 0 0; }
 
 /* Round timer */
-#round-timer { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;
-               background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-               padding: 0.6rem 1rem; }
+/* Per-round action box + countdown, stacked below the "Round X" heading inside
+   the round card. */
+.round-actions-box { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+               padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+.round-timer-box { display: flex; align-items: center; gap: 0.75rem;
+               padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
 .timer-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .timer-text  { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; color: var(--text);
                margin-right: auto; font-variant-numeric: tabular-nums;
                /* Nudge up: the tall monospace glyphs carry descender space that
                   makes the countdown sit low next to "Round time". */
                position: relative; top: -2px; }
-/* Idle ("Not started") state: match the "Round time" label rather than the big
-   monospace countdown, which reads awkwardly for words (and sits level with it). */
-.timer-text.timer-idle { font-family: var(--font-body); font-size: 0.78rem; font-weight: 500;
-               text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); top: 0; }
-#round-timer.timer-up { border-color: var(--danger); background: var(--danger-bg); }
+#round-timer.timer-up { background: var(--danger-bg); }
 #round-timer.timer-up .timer-text { color: var(--danger); }
 
 /* Player-communication blocks (plain text, collapsible) */
 .event-comms { margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.event-comms details { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); }
+.event-comms details { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+              overflow: hidden; }  /* clip the summary hover background to the rounded corners */
 .event-comms summary { cursor: pointer; user-select: none; padding: 0.6rem 1rem;
               font-family: var(--font-display); font-weight: 500; font-size: 0.95rem; }
 .event-comms summary:hover { background: var(--bg3); }
@@ -339,31 +456,49 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .section-body.collapsed { display: none; }
 
 /* ── Pairings table ───────────────────────────────────────────────────────── */
-.pairings               { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-.pairings td            { padding: 0.55rem 1rem; border-bottom: 1px solid var(--border);
-                          vertical-align: middle; }
-.pairings tr:last-child td { border-bottom: none; }
-.pairings td:first-child   { font-weight: 500; }
-td.vs   { color: var(--muted); text-align: center; width: 2rem; padding: 0;
-          font-family: var(--font-mono); font-size: 0.75rem; }
-td.result { width: 1%; white-space: nowrap; }
+/* Each match is a CSS grid row so the table assignment (when present) sits on its
+   own line above the names — the same at every width. Desktop keeps the result on
+   the right of the names row; mobile (below) stacks it underneath. */
+.pairings               { width: 100%; font-size: 0.88rem; }
+.pairings tr            { display: grid;
+                          grid-template-columns: max-content auto max-content 1fr;
+                          align-items: center; gap: 0.1rem 0;
+                          padding: 0.55rem 1rem; border-bottom: 1px solid var(--border); }
+.pairings tr:last-child { border-bottom: none; }
+/* Organiser Discord panel (connect / announce / role controls) on the event page. */
+.discord-line { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; font-size: 0.9rem; }
+/* Server/channel dropdowns styled to match our pill buttons (purple border + soft fill). */
+.discord-select { padding: 0.3rem 0.7rem; font-size: 0.82rem; font-family: var(--font-body);
+                  color: var(--text); background: var(--accent-soft);
+                  border: 1px solid var(--accent); border-radius: 99px; cursor: pointer; }
+/* The signed-in player's own match (floated to the top of the current round). */
+.pairings tr.my-match   { background: var(--accent-soft); }
+.pairings td            { padding: 0; border: none; }
+.pairings td.table-cell { grid-column: 1 / -1; padding-bottom: 0.25rem; }
+.pairings td.p1   { grid-column: 1; font-weight: 500; }
+.pairings td.vs   { grid-column: 2; color: var(--muted); text-align: center;
+                    padding: 0 0.55rem; font-family: var(--font-mono); font-size: 0.75rem; }
+.pairings td.p2   { grid-column: 3; }
+.pairings td.result { grid-column: 4; justify-self: end; white-space: nowrap; }
+.table-badge { color: var(--accent); font-family: var(--font-mono); font-weight: 700;
+               font-size: 0.82rem; white-space: nowrap; }
+.table-tbd   { color: var(--muted); font-size: 0.8rem; }
+/* Organiser's editable table chip — looks like the badge, clickable to reassign.
+   Roomier padding + margin than the static badge so it's an easy tap target and
+   sits clear of the names on both desktop and mobile. */
+.table-edit-btn { font-family: var(--font-mono); font-weight: 700; font-size: 0.8rem;
+                  color: var(--accent); padding: 0.35rem 0.8rem; margin: 0.15rem 0 0.45rem; }
+.table-edit-btn.table-tbd { color: var(--muted); font-weight: 400; }
 
-/* On mobile, stack the result under the players — but full-width so it uses the
-   whole row instead of wrapping into a skinny column (the base td.result width:1%
-   was the culprit). */
+/* On mobile, drop to three columns and stack the result full-width underneath the
+   players (instead of keeping it in a right-hand column). The table badge still
+   leads on its own line via .table-cell spanning all columns. */
 @media (max-width: 480px) {
-  .pairings thead { display: none; }
-  .pairings tr    { display: grid;
-                    grid-template-columns: 1fr auto 1fr;
-                    padding: 0.6rem 0.75rem;
-                    border-bottom: 1px solid var(--border);
-                    gap: 0.15rem 0; }
-  .pairings td    { padding: 0; border: none; }
-  .pairings td:nth-child(1) { grid-column: 1; grid-row: 1; }
-  .pairings td.vs           { grid-column: 2; grid-row: 1; width: auto; padding: 0 0.4rem; }
-  .pairings td:nth-child(3) { grid-column: 3; grid-row: 1; text-align: right; }
-  .pairings td.result       { grid-column: 1 / -1; grid-row: 2; width: auto;
-                              white-space: normal; padding-top: 0.35rem; text-align: center; }
+  .pairings tr    { grid-template-columns: 1fr auto 1fr; padding: 0.6rem 0.75rem; }
+  .pairings td.vs     { padding: 0 0.4rem; }
+  .pairings td.p2     { text-align: right; }
+  .pairings td.result { grid-column: 1 / -1; justify-self: stretch;
+                        white-space: normal; padding-top: 0.35rem; text-align: center; }
 }
 
 /* ── Standings table ──────────────────────────────────────────────────────── */
@@ -400,6 +535,10 @@ td.result { width: 1%; white-space: nowrap; }
 .checkin-tag.in  { color: var(--green); background: var(--green-soft); border: 1px solid rgba(74,222,128,0.35); }
 .checkin-tag.out { color: var(--muted); background: var(--bg3); border: 1px solid var(--border); }
 .checkin-btn { flex-shrink: 0; }
+/* The "✓ Checked in" toggle reads as a confirmed/green state; click to undo. */
+.checkin-btn.checked { color: var(--green); border-color: rgba(74,222,128,0.45);
+                       background: var(--green-soft); }
+.checkin-btn.checked:hover { border-color: var(--green); }
 .edit-name-btn { flex-shrink: 0; background: none; border: none; color: var(--muted);
             padding: 0.1rem 0.35rem; font-size: 0.95rem; line-height: 1; cursor: pointer; }
 .edit-name-btn:hover { color: var(--text); }
@@ -434,6 +573,9 @@ td.result { width: 1%; white-space: nowrap; }
                           display: flex; align-items: center; justify-content: center;
                           z-index: 100; padding: 1rem; }
 .modal-backdrop.hidden  { display: none; }
+/* Confirm / alert / prompt are meta-dialogs — they can be opened from within another
+   modal (e.g. the edit-event form), so they must stack above it, not behind. */
+#confirm-modal, #prompt-modal { z-index: 110; }
 .modal          { background: var(--bg2); border: 1px solid var(--border);
                   border-radius: var(--radius); padding: 1.5rem;
                   width: min(460px, 100%); display: flex; flex-direction: column;
@@ -456,6 +598,7 @@ td.result { width: 1%; white-space: nowrap; }
 .modal input:focus, .modal select:focus, .modal textarea:focus
                 { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
 .modal-actions  { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.25rem; }
+.form-discord-link { text-align: left; margin: 0.9rem 0 0; font-size: 0.9rem; }
 
 .pairing-row        { display: flex; align-items: center; gap: 0.6rem;
                       margin-bottom: 0.65rem; }
@@ -486,6 +629,10 @@ td.result { width: 1%; white-space: nowrap; }
                       justify-content: center; gap: 0.75rem; padding: 0.65rem; }
 .result-btn.draw .score { font-size: 1rem; }
 .result-btn.draw:hover  { border-color: var(--green); background: var(--green-soft); }
+.result-confirm-msg { text-align: center; font-size: 1rem; margin: 1rem 0; padding: 0 0.5rem; }
+.confirm-modal-msg  { font-size: 0.95rem; line-height: 1.5; white-space: pre-wrap; margin: 0.25rem 0 0; }
+.prompt-modal-input { width: 100%; margin-top: 0.75rem; padding: 0.45rem 0.6rem;
+              border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.95rem; }
 
 /* Highlight winner side — purple for p1, pink for p2 */
 .result-btn.p1-wins:hover { border-color: var(--accent); }
@@ -592,6 +739,84 @@ td.result { width: 1%; white-space: nowrap; }
     padding-right: 2.1rem;
   }
 }
+
+/* ── Discord "join us" card (About) ──────────────────────────────────────────
+   Custom card instead of Discord's iframe widget, which renders white corners
+   against our dark background. Live server name/online count come from the public
+   widget JSON when available, with a static fallback. */
+.discord-card { display: flex; align-items: center; gap: 0.9rem; max-width: 360px;
+                margin-top: 0.6rem; padding: 0.85rem 1rem; background: var(--bg2);
+                border: 1px solid var(--border); border-radius: var(--radius);
+                text-decoration: none; color: var(--text);
+                transition: border-color 0.15s, background 0.15s; }
+.discord-card:hover { border-color: var(--accent); background: var(--bg3); }
+.discord-card-icon { flex-shrink: 0; width: 44px; height: 44px; display: flex;
+                     align-items: center; justify-content: center;
+                     background: #5865f2; border-radius: 50%; }
+.discord-card-icon svg { width: 26px; height: 20px; fill: #fff; }
+.discord-card-body { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 0; }
+.discord-card-name { font-weight: 600; }
+.discord-card-online { font-size: 0.82rem; color: var(--muted); display: inline-flex;
+                       align-items: center; gap: 0.4rem; }
+.discord-card-online .dot { width: 8px; height: 8px; border-radius: 50%;
+                            background: var(--green); display: inline-block; }
+.discord-card-cta { flex-shrink: 0; font-size: 0.82rem; font-weight: 600; color: #fff;
+                    background: #5865f2; border-radius: 99px; padding: 0.35rem 0.9rem; }
+.discord-card:hover .discord-card-cta { background: #4752c4; }
+
+/* A player's pinned fixed-seat button reads as "set" with an accent outline. */
+.fixed-table-btn.has-fixed { border-color: var(--accent); color: var(--accent); }
+
+/* Player-details modal: stacked, full-width action buttons. */
+.pd-discord { color: var(--muted); font-size: 0.85rem; margin: 0.15rem 0 0; }
+.player-details-actions { display: flex; flex-direction: column; gap: 0.5rem;
+                          margin: 0.75rem 0 1rem; }
+.player-details-actions .btn { width: 100%; justify-content: center; }
+.player-details-actions .pd-static { color: var(--muted); font-size: 0.9rem;
+                                     text-align: center; padding: 0.4rem 0; }
+
+/* Roomier tap targets on mobile for the roster controls and the player-details
+   menu options — easier to hit on a phone while running an event. */
+@media (max-width: 480px) {
+  .checkin-btn, .player-details-btn { padding: 0.5rem 0.95rem; min-height: 2.5rem; }
+  .player-details-actions { gap: 0.6rem; }
+  .player-details-actions .btn { padding: 0.8rem 1rem; min-height: 3rem; font-size: 0.95rem; }
+}
+
+/* Decklist submission: which print tags the event allows + how to mark a line. */
+.decklist-print-help { font-size: 0.83rem; color: #cdc8e6; background: var(--bg3);
+                       border: 1px solid var(--border); border-radius: var(--radius);
+                       padding: 0.5rem 0.7rem; margin-bottom: 0.6rem; line-height: 1.5; }
+.decklist-print-help strong { color: var(--text); }
+.decklist-print-help code { font-family: var(--font-mono); }
+.decklist-print-help summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.decklist-print-help .print-body { margin-top: 0.45rem; }
+.decklist-print-help ul, .decklist-print-help p { margin: 0; }
+.decklist-print-help ul.print-allowed { margin-top: 0; padding-left: 1.25rem; }
+.decklist-print-help .print-mark  { margin-top: 0.55rem; }
+.decklist-print-help .print-proxy { margin-top: 0.75rem; }   /* space above Proxy policy */
+
+/* Organizer Decklists table (Epic 4). */
+.decklist-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.decklist-table th, .decklist-table td { padding: 0.5rem 0.75rem;
+                   border-bottom: 1px solid var(--border); text-align: left; }
+.decklist-table th { background: var(--bg3); color: var(--muted); font-size: 0.74rem;
+                     text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+.decklist-table th[onclick] { cursor: pointer; user-select: none; }
+.decklist-table tbody tr:hover td { background: var(--accent-soft); }
+/* Keep a wide roster from overflowing the page; scroll the table itself instead. */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 480px) {
+  .decklist-table th, .decklist-table td { padding: 0.4rem 0.45rem; font-size: 0.82rem; }
+  .decklist-table th { white-space: normal; }   /* let "Maindeck"/"Sideboard" wrap */
+}
+.proxy-ovr { color: var(--green); font-size: 0.78rem; text-transform: uppercase;
+             letter-spacing: 0.04em; cursor: help; }
+.dv-name-row { display: flex; gap: 0.5rem; align-items: center; }
+.dv-name-row input { flex: 1; min-width: 0; }
+/* Decklist view: note + issues + proxy-override grouped tightly together. */
+.dv-meta { display: flex; flex-direction: column; gap: 0.4rem; }
+.dv-meta > * { margin: 0; }
 
 /* ── Misc ─────────────────────────────────────────────────────────────────── */
 .loading, .empty { color: var(--muted); font-size: 0.9rem; padding: 1rem 0; }

@@ -33,6 +33,7 @@ PONG = 1
 CHANNEL_MESSAGE = 4          # reply with a message
 DEFERRED_MESSAGE = 5         # "thinking…", edit later (for work that may exceed 3s)
 UPDATE_MESSAGE = 7           # edit the message a component is attached to
+MODAL = 9                    # pop up a text-input form (collects the optional note)
 
 EPHEMERAL = 1 << 6           # message flag: only the invoking user sees it
 
@@ -40,6 +41,7 @@ EPHEMERAL = 1 << 6           # message flag: only the invoking user sees it
 ACTION_ROW = 1
 BUTTON = 2
 STRING_SELECT = 3
+TEXT_INPUT = 4               # a modal's text field
 # Button styles: 1 primary, 2 secondary, 3 success (green), 4 danger (red)
 
 
@@ -68,6 +70,33 @@ def _reply(content: str, ephemeral: bool = True):
     return jsonify({'type': CHANNEL_MESSAGE, 'data': data})
 
 
+def _message_modal(custom_id: str, title: str, placeholder: str):
+    """Pop up a single-field form asking for an optional message to include with an
+    announcement/invitation. `custom_id` carries the event (and target) so the
+    submit handler knows what to post. Max length leaves room for our own prefix."""
+    return jsonify({'type': MODAL, 'data': {
+        'custom_id': custom_id,
+        'title': title[:45],
+        'components': [{'type': ACTION_ROW, 'components': [{
+            'type': TEXT_INPUT,
+            'custom_id': 'message',
+            'label': 'Message (optional)',
+            'style': 2,                 # paragraph (multi-line)
+            'required': False,
+            'max_length': 1800,
+            'placeholder': placeholder[:100],
+        }]}]}})
+
+
+def _modal_text(body, field: str = 'message') -> str:
+    """Pull a submitted text-input value out of a MODAL_SUBMIT body."""
+    for row in (body.get('data') or {}).get('components') or []:
+        for c in row.get('components') or []:
+            if c.get('custom_id') == field:
+                return (c.get('value') or '').strip()
+    return ''
+
+
 @discord_bp.route('/discord/interactions', methods=['POST'])
 def interactions():
     if not _verify_signature(request):
@@ -82,7 +111,7 @@ def interactions():
     if itype == MESSAGE_COMPONENT:
         return _handle_component(body)
     if itype == MODAL_SUBMIT:
-        return _reply('That action is not available yet.')
+        return _handle_modal(body)
     abort(400)
 
 
@@ -108,14 +137,16 @@ def _handle_command(body):
     sub = ((data.get('options') or [{}])[0]).get('name')
     if sub == 'register':
         return _register_picker()
+    if sub == 'drop':
+        return _drop_picker(body)
     if sub == 'report':
         return _report_menu(body)
     if sub == 'standings':
         return _standings_menu()
     if sub == 'link':
-        return _link_menu()
+        return _link_menu(body)
     if sub == 'announce':
-        return _announce_menu()
+        return _announce_menu(body)
     if sub == 'invite':
         return _invite_menu(body)
     if sub == 'help':
@@ -131,6 +162,7 @@ def _help():
         '🃏 **Cardboard Party — bot commands**',
         '',
         f'`/{c} register` — Register yourself for an event.',
+        f'`/{c} drop` — Drop yourself from an event you registered for.',
         f'`/{c} report` — Report the result of your match.',
         f'`/{c} standings` — Show an event\'s standings.',
         f'`/{c} invite` — DM someone an invitation to register for an event.',
@@ -142,12 +174,13 @@ def _help():
     return _reply('\n'.join(lines))
 
 
-def _announce_menu():
-    """Pick an event to post in the current channel with a one-click Register button."""
+def _announce_menu(body):
+    """Pick one of your events to post in the current channel with a Register button
+    (or Join Waitlist when the event is full)."""
     from routes.events import discord_registerable_events
-    events = discord_registerable_events()
+    events = discord_registerable_events(owner_discord_id=_interaction_user(body)[0], include_full=True)
     if not events:
-        return _reply('There are no events open for registration to announce.')
+        return _reply('You don’t own any events open for sign-ups to announce.')
     options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
     select = {'type': STRING_SELECT, 'custom_id': 'cbp_announce_select',
               'placeholder': 'Which event do you want to post here?', 'options': options}
@@ -169,9 +202,9 @@ def _invite_menu(body):
     if not target_id:
         return _reply('Please choose someone to invite.')
     from routes.events import discord_registerable_events
-    events = discord_registerable_events()
+    events = discord_registerable_events(owner_discord_id=_interaction_user(body)[0], include_full=True)
     if not events:
-        return _reply('There are no events open for registration to invite anyone to.')
+        return _reply('You don’t own any events open for sign-ups to invite anyone to.')
     options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
     select = {'type': STRING_SELECT, 'custom_id': f'cbp_invite_select:{target_id}',
               'placeholder': 'Which event do you want to invite them to?', 'options': options}
@@ -193,12 +226,23 @@ def _invite_action_row(eid, registered):
     return [{'type': ACTION_ROW, 'components': [toggle, view]}]
 
 
-def _link_menu():
-    """Pick an event whose pairings should auto-post in the current channel."""
+def _waitlist_action_row(eid, on_waitlist):
+    """Action row for a full event's card/DM: a Join/Leave Waitlist toggle plus a
+    View-details link."""
+    toggle = ({'type': BUTTON, 'style': 4, 'label': 'Leave Waitlist', 'custom_id': f'cbp_wl_leave_btn:{eid}'}
+              if on_waitlist else
+              {'type': BUTTON, 'style': 3, 'label': 'Join Waitlist', 'custom_id': f'cbp_waitlist_btn:{eid}'})
+    view = {'type': BUTTON, 'style': 5, 'label': 'View details',
+            'url': f"{request.host_url.rstrip('/')}/events/{eid}"}
+    return [{'type': ACTION_ROW, 'components': [toggle, view]}]
+
+
+def _link_menu(body):
+    """Pick one of your events whose pairings should auto-post in this channel."""
     from routes.events import discord_linkable_events
-    events = discord_linkable_events()
+    events = discord_linkable_events(owner_discord_id=_interaction_user(body)[0])
     if not events:
-        return _reply('No events to link yet.')
+        return _reply('You don’t own any events to link yet.')
     options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
     select = {'type': STRING_SELECT, 'custom_id': 'cbp_link_select',
               'placeholder': 'Which event posts pairings here?', 'options': options}
@@ -244,6 +288,23 @@ def _register_picker():
         'components': [{'type': ACTION_ROW, 'components': [select]}]}})
 
 
+def _drop_picker(body):
+    """Reply with an ephemeral select menu of events the user is registered for, so
+    they can drop themselves — works for ghost players who registered via a button
+    without an account (matched by their Discord ID/handle)."""
+    from routes.events import discord_droppable_events
+    discord_id, display = _interaction_user(body)
+    events = discord_droppable_events(discord_id, _interaction_username(body), display)
+    if not events:
+        return _reply("You're not registered for any events right now.")
+    options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
+    select = {'type': STRING_SELECT, 'custom_id': 'cbp_drop_select',
+              'placeholder': 'Choose an event to drop from', 'options': options}
+    return jsonify({'type': CHANNEL_MESSAGE, 'data': {
+        'flags': EPHEMERAL, 'content': 'Which event do you want to drop from?',
+        'components': [{'type': ACTION_ROW, 'components': [select]}]}})
+
+
 def _report_menu(body, in_place=False):
     """Entry for /cparty report: 0 matches → notice; 1 → result buttons; many → picker.
 
@@ -253,8 +314,8 @@ def _report_menu(body, in_place=False):
     reported' confirmation. Channel posts and the slash command spawn a fresh
     ephemeral message instead (the channel button is shared by the whole round)."""
     from routes.events import discord_open_matches
-    discord_id, _ = _interaction_user(body)
-    matches = discord_open_matches(discord_id)
+    discord_id, display = _interaction_user(body)
+    matches = discord_open_matches(discord_id, _interaction_username(body), display)
     if not matches:
         return _reply('You have no matches to report right now.')
     if len(matches) == 1:
@@ -302,12 +363,27 @@ def _handle_component(body):
         values = (body.get('data') or {}).get('values') or []
         if not values:
             return _update('No event selected.')
+        eid = values[0]
         result, err = register_player_via_discord(
-            values[0], discord_id, name, _interaction_username(body))
+            eid, discord_id, name, _interaction_username(body))
         if err:
             return _update(f'⚠️ {err}')
         return _update(f"✅ Registered for **{result['event_name']}** as "
-                       f"**{result['player']['name']}**. Report results here with `/{COMMAND_NAME} report`.")
+                       f"**{result['player']['name']}**. Report results here with `/{COMMAND_NAME} report`.",
+                       f"{request.host_url.rstrip('/')}/events/{eid}")
+
+    if custom_id == 'cbp_drop_select':
+        from routes.events import withdraw_player_via_discord
+        val = ((body.get('data') or {}).get('values') or [''])[0]
+        if not val:
+            return _update('No event selected.')
+        ename, err = withdraw_player_via_discord(
+            val, discord_id, _interaction_username(body), name)
+        if err:
+            return _update(f'⚠️ {err}')
+        return _update(f"✅ You've dropped from **{ename}**. Changed your mind? "
+                       f"Register again with `/{COMMAND_NAME} register`.",
+                       f"{request.host_url.rstrip('/')}/events/{val}")
 
     if custom_id == 'cbp_report_select':
         from routes.events import discord_match_context
@@ -316,7 +392,7 @@ def _handle_component(body):
             eid, ri, mi = val.split(':'); ri, mi = int(ri), int(mi)
         except ValueError:
             return _update('Sorry, that selection was invalid.')
-        ctx = discord_match_context(eid, ri, mi, discord_id)
+        ctx = discord_match_context(eid, ri, mi, discord_id, _interaction_username(body), name)
         if not ctx:
             return _update("That doesn't look like an open match of yours anymore.")
         return jsonify({'type': UPDATE_MESSAGE, 'data': _report_buttons(ctx)})
@@ -336,17 +412,12 @@ def _handle_component(body):
         return _update(f"✅ **{name}** pairings will post in this channel each round.")
 
     if custom_id == 'cbp_announce_select':
-        from routes.events import announce_event_to_channel
+        # Event chosen → ask for an optional note, then post on modal submit.
         val = ((body.get('data') or {}).get('values') or [''])[0]
-        channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
-        name, posted = announce_event_to_channel(val, channel_id, request.host_url)
-        if name is None:
-            return _update('That event no longer exists.')
-        if not posted:
-            return _update("I couldn't post here — check that I have permission to send "
-                           "messages in this channel.")
-        return _update(f"✅ Posted **{name}** in this channel with a Register button. "
-                       "It'll update automatically when registration fills or closes.")
+        if not val:
+            return _update('No event selected.')
+        return _message_modal(f'cbp_announce_modal:{val}', 'Announce event',
+                              'Optional — posted above the event card.')
 
     if custom_id.startswith('cbp_reg_btn:'):
         # One-tap Register button (on a channel announce card or a DM invitation).
@@ -369,29 +440,74 @@ def _handle_component(body):
         # Withdraw button on a DM invitation → drop/remove, then toggle back to Register.
         from routes.events import withdraw_player_via_discord
         eid = custom_id.split(':', 1)[1]
-        ename, err = withdraw_player_via_discord(eid, discord_id)
+        ename, err = withdraw_player_via_discord(eid, discord_id, _interaction_username(body), name)
         if err:
             return _reply(f'⚠️ {err}')
         return jsonify({'type': UPDATE_MESSAGE, 'data': {
             'content': f"You've withdrawn from **{ename}**. Changed your mind? Tap Register.",
             'components': _invite_action_row(eid, registered=False)}})
 
+    if custom_id.startswith('cbp_waitlist_btn:'):
+        # Join Waitlist button (on a full event's announce card or invitation DM).
+        from routes.events import waitlist_player_via_discord
+        eid = custom_id.split(':', 1)[1]
+        result, err = waitlist_player_via_discord(eid, discord_id, name, _interaction_username(body))
+        if err:
+            return _reply(f'⚠️ {err}')
+        confirm = (f"✅ You're on the waitlist for **{result['event_name']}** "
+                   f"(position {result['position']}). We'll let the organiser promote you "
+                   "if a spot opens.")
+        # On a DM card, flip Join → Leave Waitlist in place; a shared channel card
+        # just gets an ephemeral confirmation.
+        if body.get('message') and not body.get('guild_id'):
+            return jsonify({'type': UPDATE_MESSAGE, 'data': {
+                'content': confirm, 'components': _waitlist_action_row(eid, on_waitlist=True)}})
+        return _reply(confirm)
+
+    if custom_id.startswith('cbp_wl_leave_btn:'):
+        # Leave Waitlist toggle on a DM card → remove, then flip back to Join Waitlist.
+        from routes.events import waitlist_leave_via_discord
+        eid = custom_id.split(':', 1)[1]
+        ename, err = waitlist_leave_via_discord(eid, discord_id, _interaction_username(body), name)
+        if err:
+            return _reply(f'⚠️ {err}')
+        return jsonify({'type': UPDATE_MESSAGE, 'data': {
+            'content': f"You've left the waitlist for **{ename}**. Changed your mind? Tap Join Waitlist.",
+            'components': _waitlist_action_row(eid, on_waitlist=False)}})
+
     if custom_id.startswith('cbp_invite_select:'):
-        # Event chosen for an invite → DM the target the registration card.
-        from routes.events import invite_player_via_discord
+        # Event chosen for an invite → ask for an optional note, then DM on submit.
         target_id = custom_id.split(':', 1)[1]
         values = (body.get('data') or {}).get('values') or []
         if not values:
             return _update('No event selected.')
-        msg, err = invite_player_via_discord(
-            values[0], discord_id, target_id, name, request.host_url)
-        return _update(f'⚠️ {err}' if err else f'✅ {msg}')
+        return _message_modal(f'cbp_invite_modal:{target_id}:{values[0]}', 'Invite to event',
+                              'Optional — a personal note added to your invitation.')
 
     if custom_id == 'cbp_invite_optout':
         # "Don't invite me" button on an invitation DM.
         from db import set_invite_optout
         set_invite_optout(discord_id, True)
         return _reply("Got it — you won't receive event invites from Cardboard Party anymore.")
+
+    if custom_id.startswith('cbp_report_btn:'):
+        # "Report my result" on a pairing DM — the button carries its own match
+        # (cbp_report_btn:<eid>:<ri>:<mi>), so report that exact pairing directly
+        # instead of offering a picker. Tapped on the player's own DM (a message,
+        # no guild), so edit it in place into the result buttons.
+        from routes.events import discord_match_context
+        try:
+            _, eid, ri, mi = custom_id.split(':'); ri, mi = int(ri), int(mi)
+        except ValueError:
+            return _update('Sorry, that button was invalid.')
+        ctx = discord_match_context(eid, ri, mi, discord_id, _interaction_username(body), name)
+        if not ctx:
+            return _update("That doesn't look like an open match of yours anymore.")
+        data = _report_buttons(ctx)
+        if bool(body.get('message')) and not body.get('guild_id'):
+            data = {k: v for k, v in data.items() if k != 'flags'}   # editing a non-ephemeral DM
+            return jsonify({'type': UPDATE_MESSAGE, 'data': data})
+        return jsonify({'type': CHANNEL_MESSAGE, 'data': data})
 
     if custom_id == 'cbp_report_btn':
         # "Report my result" → the report flow for the clicker. If it was tapped on
@@ -407,25 +523,62 @@ def _handle_component(body):
             _, eid, ri, mi, code = custom_id.split(':'); ri, mi = int(ri), int(mi)
         except ValueError:
             return _update('Sorry, that button was invalid.')
-        msg, err = report_result_via_discord(eid, ri, mi, discord_id, code, request.host_url)
+        msg, err = report_result_via_discord(eid, ri, mi, discord_id, code, request.host_url,
+                                             _interaction_username(body), name)
         if err:
             return _update(f'⚠️ {err}')
-        return _reported(f'✅ {msg}')
+        return _reported(f'✅ {msg}', f"{request.host_url.rstrip('/')}/events/{eid}")
 
     return _reply('That action is not available yet.')
 
 
-def _update(content: str):
-    """Edit the (ephemeral) message a component is on, clearing its controls."""
-    return jsonify({'type': UPDATE_MESSAGE, 'data': {'content': content, 'components': []}})
+def _handle_modal(body):
+    """Handle a submitted message form for announce/invite — post/DM with the note."""
+    custom_id = (body.get('data') or {}).get('custom_id') or ''
+    discord_id, name = _interaction_user(body)
+    message = _modal_text(body)
+
+    if custom_id.startswith('cbp_announce_modal:'):
+        from routes.events import announce_event_to_channel
+        eid = custom_id.split(':', 1)[1]
+        channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
+        ename, posted = announce_event_to_channel(eid, channel_id, request.host_url, message)
+        if ename is None:
+            return _reply('That event no longer exists.')
+        if not posted:
+            return _reply("I couldn't post here — check that I have permission to send "
+                          "messages in this channel.")
+        return _reply(f"✅ Posted **{ename}** in this channel with a Register button. "
+                      "It'll update automatically when registration fills or closes.")
+
+    if custom_id.startswith('cbp_invite_modal:'):
+        from routes.events import invite_player_via_discord
+        _, target_id, eid = custom_id.split(':', 2)
+        msg, err = invite_player_via_discord(
+            eid, discord_id, target_id, name, request.host_url, message)
+        return _reply(f'⚠️ {err}' if err else f'✅ {msg}')
+
+    return _reply('That action is not available yet.')
 
 
-def _reported(content: str):
+def _update(content: str, event_url: str = ''):
+    """Edit the (ephemeral) message a component is on, clearing its controls. When
+    `event_url` is given, keep a single 'View details' link button so the player
+    can jump to the event page from the confirmation."""
+    components = ([{'type': ACTION_ROW, 'components': [
+        {'type': BUTTON, 'style': 5, 'label': 'View details', 'url': event_url}]}]
+        if event_url else [])
+    return jsonify({'type': UPDATE_MESSAGE, 'data': {'content': content, 'components': components}})
+
+
+def _reported(content: str, event_url: str = ''):
     """Edit the result-entry message after a successful report: swap the buttons
-    for a single greyed-out, disabled 'Result reported' button so it's clear the
-    result is in and can't be entered again."""
-    button = {'type': BUTTON, 'style': 2, 'label': 'Result reported',
-              'custom_id': 'cbp_reported_noop', 'disabled': True}
+    for a greyed-out, disabled 'Result reported' button so it's clear the result is
+    in and can't be entered again, keeping the 'View on the web' link alongside it."""
+    row = [{'type': BUTTON, 'style': 2, 'label': 'Result reported',
+            'custom_id': 'cbp_reported_noop', 'disabled': True}]
+    if event_url:
+        row.append({'type': BUTTON, 'style': 5, 'label': 'View on the web', 'url': event_url})
     return jsonify({'type': UPDATE_MESSAGE, 'data': {
         'content': content,
-        'components': [{'type': ACTION_ROW, 'components': [button]}]}})
+        'components': [{'type': ACTION_ROW, 'components': row}]}})

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Decklists — {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="title-row"><h1>Decklists</h1></div>
+    <p class="subtitle"><a href="/events/{{ event.id }}">← {{ event.name }}</a></p>
+  </div>
+</div>
+
+<div id="decklists-wrap"><p class="loading">Loading…</p></div>
+
+<!-- View a player's decklist: editable deck name, proxy override, and the list -->
+<div id="dv-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="dv-title">Decklist</h2>
+    <label>Deck name
+      <span class="dv-name-row">
+        <input id="dv-name" type="text" maxlength="120" placeholder="e.g. Mono-Red Burn">
+        <button class="btn btn-sm" onclick="saveDvName()">Save</button>
+      </span>
+    </label>
+    <div class="dv-meta">
+      <p id="dv-note" class="field-help"></p>
+      <div id="dv-result" class="decklist-result"></div>
+      <div id="dv-proxy"></div>
+    </div>
+    <div id="dv-view" class="decklist-view"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeDv()">Close</button></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const EVENT_ID = "{{ event.id }}";
+let rows = [], allowProxies = false, sortKey = 'player_name', sortDir = 1, dvPlayerId = null;
+
+async function load() {
+  const res = await fetch(`/api/events/${EVENT_ID}/decklists`);
+  if (!res.ok) {
+    document.getElementById('decklists-wrap').innerHTML = '<p class="empty">Could not load decklists.</p>';
+    return;
+  }
+  const d = await res.json();
+  rows = d.players || []; allowProxies = !!d.allow_proxies;
+  render();
+}
+
+function setSort(key) {
+  if (sortKey === key) sortDir = -sortDir; else { sortKey = key; sortDir = 1; }
+  render();
+}
+
+function render() {
+  const wrap = document.getElementById('decklists-wrap');
+  if (!rows.length) { wrap.innerHTML = '<p class="empty">No registered players yet.</p>'; return; }
+  const sorted = rows.slice().sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (typeof av === 'string' || typeof bv === 'string') {
+      av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase();
+    } else { av = av || 0; bv = bv || 0; }
+    return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
+  });
+  const arrow = k => sortKey === k ? (sortDir === 1 ? ' ▲' : ' ▼') : '';
+  const head = `<tr>
+      <th onclick="setSort('player_name')">Player${arrow('player_name')}</th>
+      <th onclick="setSort('deck_name')">Decklist${arrow('deck_name')}</th>
+      <th onclick="setSort('maindeck')">Maindeck${arrow('maindeck')}</th>
+      <th onclick="setSort('sideboard')">Sideboard${arrow('sideboard')}</th>
+      ${allowProxies ? `<th onclick="setSort('proxy_count')">Proxy${arrow('proxy_count')}</th>` : ''}
+    </tr>`;
+  const body = sorted.map(r => {
+    const player = r.google_id
+      ? `<a href="/players/${encodeURIComponent(r.google_id)}">${escapeHtml(r.player_name)}</a>`
+      : escapeHtml(r.player_name);
+    const decklist = r.has_decklist
+      ? `<a href="#" onclick="viewDeck('${r.player_id}');return false">${r.deck_name ? escapeHtml(r.deck_name) : 'View decklist'}</a>`
+      : '<span class="text-muted">—</span>';
+    return `<tr>
+        <td>${player}</td>
+        <td>${decklist}</td>
+        <td>${r.has_decklist ? r.maindeck : '—'}</td>
+        <td>${r.has_decklist ? r.sideboard : '—'}</td>
+        ${allowProxies ? `<td>${!r.has_decklist ? '—' : (r.proxy_count + (r.proxy_override ? ` <span class="proxy-ovr" title="${escapeHtml(r.proxy_override_note)}">override</span>` : ''))}</td>` : ''}
+      </tr>`;
+  }).join('');
+  wrap.innerHTML = `<div class="table-scroll"><table class="decklist-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+async function viewDeck(pid) {
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(pid)}/decklist`);
+  if (!res.ok) { alert('Could not load that decklist.'); return; }
+  const d = await res.json();
+  dvPlayerId = pid;
+  document.getElementById('dv-title').textContent = `${d.name}'s decklist`;
+  document.getElementById('dv-name').value = d.deck_name || '';
+  const v = d.validation || {};
+  const note = [];
+  if (v.maindeck_count != null) note.push(`${v.maindeck_count} maindeck · ${v.sideboard_count} sideboard`);
+  if (allowProxies && v.proxy_count) note.push(`${v.proxy_count} proxies`);
+  document.getElementById('dv-note').textContent = note.join(' · ');
+  const issues = (v.issues || []);
+  document.getElementById('dv-result').innerHTML = issues.length
+    ? '<ul class="dl-issues">' + issues.map(i =>
+        `<li class="dl-${i.severity}">${escapeHtml(i.message)}</li>`).join('') + '</ul>'
+    : '';
+  document.getElementById('dv-view').textContent = d.text || '';
+  const dvp = document.getElementById('dv-proxy');
+  if (allowProxies) {
+    dvp.style.display = '';
+    dvp.innerHTML = d.proxy_override
+      ? `<p class="dl-note">⚠️ Proxy validation overridden — ${escapeHtml(d.proxy_override_note)} `
+        + `<button class="btn btn-sm" onclick="clearProxyOverride('${pid}')">Clear</button></p>`
+      : `<button class="btn btn-sm" onclick="setProxyOverride('${pid}')">Override proxy check</button>`;
+  } else { dvp.style.display = 'none'; }
+  document.getElementById('dv-modal').classList.remove('hidden');
+}
+function closeDv() { document.getElementById('dv-modal').classList.add('hidden'); }
+
+async function setProxyOverride(pid) {
+  const note = prompt('Note for overriding proxy validation (required):', '');
+  if (note === null) return;
+  if (!note.trim()) { alert('A note is required to override.'); return; }
+  await sendProxyOverride(pid, true, note);
+}
+async function clearProxyOverride(pid) { await sendProxyOverride(pid, false, ''); }
+
+async function sendProxyOverride(pid, override, note) {
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(pid)}/proxy-override`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ override, note }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not update the override.'); return; }
+  const r = rows.find(x => x.player_id === pid);
+  if (r) { r.proxy_override = override; r.proxy_override_note = override ? note.trim() : ''; }
+  render(); viewDeck(pid);   // refresh the open modal
+}
+
+async function saveDvName() {
+  const name = document.getElementById('dv-name').value;
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(dvPlayerId)}/decklist-name`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save the deck name.'); return; }
+  const r = rows.find(x => x.player_id === dvPlayerId); if (r) r.deck_name = name.trim();
+  render();   // update the Decklist column link (modal stays open)
+}
+
+load();
+</script>
+{% endblock %}

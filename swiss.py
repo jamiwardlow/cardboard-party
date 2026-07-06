@@ -11,6 +11,7 @@ next round following Swiss rules:
 """
 
 import math
+import random
 from typing import Optional
 
 
@@ -21,7 +22,7 @@ BYE_PLAYER_ID = '__bye__'
 DRAW_RESULTS = ('draw', '0-0-3')
 
 
-def pair_round(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
+def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = False) -> list[dict]:
     """
     Generate pairings for the next round.
 
@@ -42,8 +43,14 @@ def pair_round(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
     bye_hist = _bye_history(rounds)
     opp_hist = _opponent_history(rounds)
 
-    # Sort by points desc, then by name for determinism
-    active.sort(key=lambda p: (-points[p['id']], p['name']))
+    # Sort by points desc. Normally tie-break by name for a deterministic, stable
+    # pairing; on a re-pair, shuffle first so equal-point players get a *different*
+    # valid pairing (sort is stable, so the random order survives within a bracket).
+    if shuffle:
+        random.shuffle(active)
+        active.sort(key=lambda p: -points[p['id']])
+    else:
+        active.sort(key=lambda p: (-points[p['id']], p['name']))
 
     # Handle bye for odd player count
     bye_player_id: Optional[str] = None
@@ -60,6 +67,7 @@ def pair_round(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
             'winner_id':  bye_player_id,
             'result':     '2-0-0',
             'is_bye':     True,
+            'table':      None,   # byes are never seated at a table
         })
 
     return pairings
@@ -101,7 +109,51 @@ def _make_pairing(p1: dict, p2: dict) -> dict:
         'winner_id':  None,
         'result':     None,
         'is_bye':     False,
+        'table':      None,   # filled in by assign_tables() when tables are enabled
     }
+
+
+def assign_tables(matches: list[dict], players: list[dict], settings: dict) -> list[dict]:
+    """Set each match's 'table' in place from the event's table settings.
+
+    `settings` carries tables_enabled / table_start / table_end / tables_excluded /
+    table_labels (the event doc works directly). Rules:
+      - Byes never get a table (None).
+      - A player with a positive int 'fixed_table' keeps that exact table every
+        round; it's removed from the auto pool so nothing else lands on it.
+      - Remaining matches fill the range [start..end] in pairing order (which
+        already tracks standings), skipping reserved (excluded) and labeled tables
+        (labeled tables are placed manually) and any fixed tables.
+      - If tables are off, the range is unset/invalid, or the pool runs out, the
+        affected matches get table=None (the UI shows "Table TBD").
+    """
+    start = settings.get('table_start') or 1
+    end = settings.get('table_end') or 0
+    if not settings.get('tables_enabled') or not end or end < start:
+        for m in matches:
+            m['table'] = None
+        return matches
+
+    excluded = {int(n) for n in (settings.get('tables_excluded') or [])}
+    labeled = {int(k) for k in (settings.get('table_labels') or {})}
+    fixed = {p['id']: p['fixed_table'] for p in players
+             if isinstance(p.get('fixed_table'), int) and p['fixed_table'] > 0}
+    claimed = set(fixed.values())
+
+    pool = [n for n in range(start, end + 1)
+            if n not in excluded and n not in labeled and n not in claimed]
+    nxt = iter(pool)
+    for m in matches:
+        if m.get('is_bye'):
+            m['table'] = None
+            continue
+        # Honour a fixed seat. If BOTH players are fixed to different tables, the
+        # lower-numbered table wins (venue priority) — the organiser is alerted to
+        # the clash in the UI and can override it manually.
+        ft1, ft2 = fixed.get(m.get('player1_id')), fixed.get(m.get('player2_id'))
+        ft = min(ft1, ft2) if (ft1 and ft2) else (ft1 or ft2)
+        m['table'] = ft if ft else next(nxt, None)
+    return matches
 
 
 def _choose_bye(players: list[dict], points: dict, bye_hist: set) -> str:
@@ -316,7 +368,7 @@ CUT_SIZES = (4, 8, 16)
 def _bracket_match(p1_id: str, p2_id: str) -> dict:
     return {'player1_id': p1_id, 'player2_id': p2_id,
             'winner_id': None, 'result': None, 'is_bye': False,
-            'stage': 'bracket'}
+            'stage': 'bracket', 'table': None}
 
 
 def bracket_seed_order(n: int) -> list[int]:

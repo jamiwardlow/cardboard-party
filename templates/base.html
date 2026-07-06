@@ -51,6 +51,11 @@
   </footer>
 
   <script src="/static/js/app.js?v={{ asset_v }}"></script>
+  {% if maps_api_key %}
+  <!-- Google Maps (Places autocomplete + maps). Key is public, restricted by HTTP
+       referrer. Loaded after app.js so its onGoogleMaps callback is defined. -->
+  <script async src="https://maps.googleapis.com/maps/api/js?key={{ maps_api_key }}&libraries=places&loading=async&callback=onGoogleMaps"></script>
+  {% endif %}
   <script>
     fetch('/auth/me').then(r => r.json()).then(me => {
       if (!me.signed_in) return;

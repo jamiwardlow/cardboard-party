@@ -16,7 +16,9 @@
         Pronounced: {{ profile.pronunciation }}
       </div>
       <div class="profile-discord" id="profile-discord-display">
-        {% if profile.discord %}Discord: {{ profile.discord }}{% endif %}
+        {# Show the handle if it looks like one (a single token). A value with a
+           space is a display name typed into the old free-text field, not a handle. #}
+        {% if profile.discord and ' ' not in profile.discord %}Discord: {{ profile.discord }}{% endif %}
       </div>
     </div>
   </div>
@@ -28,17 +30,43 @@
 <div id="profile-about-display" class="profile-about"
      {% if not profile.about %}style="display:none"{% endif %}>{{ profile.about }}</div>
 
+<!-- Admin tools: merge/delete this profile (global admins, viewing someone else). -->
+<div id="admin-profile-tools" class="hidden"
+     style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+            padding:1rem 1.25rem;margin-bottom:1.5rem;max-width:420px;">
+  <strong style="font-size:0.9rem">Admin tools</strong>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">
+    <button class="btn btn-sm" onclick="toggleMergeBox()">Merge into another profile…</button>
+    <button class="btn btn-sm btn-danger" onclick="adminDeleteProfile()">Delete profile</button>
+  </div>
+  <div id="merge-box" class="hidden" style="margin-top:0.75rem">
+    <input id="merge-search" type="text" placeholder="Search name, Discord, or email"
+           oninput="searchMergeTargets()"
+           style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
+    <ul id="merge-results" style="list-style:none;padding:0;margin:0.4rem 0 0;max-height:220px;overflow:auto;"></ul>
+    <span class="field-help" style="display:block;margin-top:0.35rem">Reassigns all of this player's events to the chosen profile, then deletes this one.</span>
+  </div>
+  <div id="admin-tools-msg" style="font-size:0.85rem;margin-top:0.5rem"></div>
+</div>
+
 <!-- Edit profile form (hidden by default) -->
 <div id="edit-profile-form" class="hidden"
      style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
             padding:1.25rem;margin-bottom:1.5rem;max-width:400px;display:flex;flex-direction:column;gap:0.75rem;">
   <strong>Edit profile</strong>
-  <label style="font-size:0.88rem;font-weight:500">
-    Discord handle
-    <input id="edit-discord" type="text" value="{{ profile.discord or '' }}"
-           placeholder="e.g. username or username#1234"
-           style="margin-top:0.25rem;width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;">
-  </label>
+  <div id="edit-discord-section" style="font-size:0.88rem;font-weight:500">
+    Discord
+    {% if profile.discord_linked %}
+    <div style="font-weight:400;margin-top:0.25rem">Linked: <strong>{{ profile.discord }}</strong></div>
+    {% elif discord_enabled %}
+    <div style="font-weight:400;margin-top:0.35rem">
+      <a class="btn btn-sm" href="/auth/login/discord?link=1&amp;next={{ request.path | urlencode }}">Link Discord</a>
+      <span class="field-help" style="display:block;margin-top:0.3rem">Link your Discord so your handle shows here and the bot recognises you.</span>
+    </div>
+    {% else %}
+    <div class="field-help" style="font-weight:400;margin-top:0.25rem">Discord linking isn’t available right now.</div>
+    {% endif %}
+  </div>
   <label id="edit-pronouns-label" style="font-size:0.88rem;font-weight:500">
     Pronouns
     <input id="edit-pronouns" type="text" value="{{ profile.pronouns or '' }}" maxlength="40"
@@ -159,29 +187,68 @@
 const PROFILE_GOOGLE_ID = '{{ google_id }}';
 
 let isSelf = false;        // viewing my own profile (full edit)
-let isAdminViewer = false; // a global admin viewing someone else (discord only)
+let isAdmin = false;       // a global admin (can merge/delete other profiles)
 
-// The owner edits everything; a global admin may edit another user's Discord.
+// The owner edits their own profile; a global admin gets merge/delete tools on
+// anyone else's. The Discord handle isn't free-text (it comes from linking), so
+// there's no handle editing here.
 Promise.all([
   fetch('/auth/me').then(r => r.json()),
   fetch('/api/admins').then(r => r.ok),   // 200 only for admins
 ]).then(([me, admin]) => {
   isSelf = !!(me.signed_in && me.user.id === PROFILE_GOOGLE_ID);
-  isAdminViewer = !isSelf && !!admin;
-  if (isSelf || isAdminViewer) {
-    document.getElementById('profile-owner-actions').classList.remove('hidden');
-  }
+  isAdmin = !!admin;
+  if (isSelf) document.getElementById('profile-owner-actions').classList.remove('hidden');
+  if (isAdmin && !isSelf) document.getElementById('admin-profile-tools').classList.remove('hidden');
 });
 
+function toggleMergeBox() {
+  document.getElementById('merge-box').classList.toggle('hidden');
+}
+
+let _mergeSearchTimer = null;
+function searchMergeTargets() {
+  clearTimeout(_mergeSearchTimer);
+  _mergeSearchTimer = setTimeout(async () => {
+    const q = document.getElementById('merge-search').value.trim();
+    const ul = document.getElementById('merge-results');
+    if (!q) { ul.innerHTML = ''; return; }
+    const res = await fetch('/api/profiles/search?q=' + encodeURIComponent(q));
+    const rows = res.ok ? await res.json() : [];
+    ul.innerHTML = rows.filter(r => r.id !== PROFILE_GOOGLE_ID).map(r => {
+      const label = escapeHtml(r.name || r.id)
+        + (r.discord ? ' · @' + escapeHtml(r.discord) : '')
+        + (r.email ? ' · ' + escapeHtml(r.email) : '');
+      return `<li><button class="btn btn-sm" style="width:100%;text-align:left;margin-bottom:0.25rem"
+                data-id="${escapeHtml(r.id)}" onclick="mergeInto(this)">${label}</button></li>`;
+    }).join('') || '<li class="field-help">No matches.</li>';
+  }, 200);
+}
+
+async function mergeInto(btn) {
+  const targetId = btn.dataset.id;
+  const name = btn.textContent.trim();
+  if (!confirm(`Merge this profile into "${name}"? All of this player's events move to that `
+             + `profile and this profile is deleted. This can't be undone.`)) return;
+  const res = await fetch('/api/profiles/' + encodeURIComponent(PROFILE_GOOGLE_ID) + '/merge', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ target_id: targetId }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) window.location = '/players/' + encodeURIComponent(targetId);
+  else document.getElementById('admin-tools-msg').textContent = d.error || 'Merge failed.';
+}
+
+async function adminDeleteProfile() {
+  if (!confirm('Delete this profile? Their event results are kept but unlinked from any '
+             + 'account. This cannot be undone.')) return;
+  const res = await fetch('/api/profiles/' + encodeURIComponent(PROFILE_GOOGLE_ID), { method: 'DELETE' });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) window.location = '/admin/users';
+  else document.getElementById('admin-tools-msg').textContent = d.error || 'Delete failed.';
+}
+
 function openEditProfile() {
-  // Admins editing someone else may only change the Discord handle.
-  const limited = isAdminViewer && !isSelf;
-  document.getElementById('edit-pronouns-label').style.display      = limited ? 'none' : '';
-  document.getElementById('edit-pronunciation-label').style.display = limited ? 'none' : '';
-  document.getElementById('edit-about-label').style.display    = limited ? 'none' : '';
-  document.getElementById('edit-avatar-section').style.display = limited ? 'none' : '';
-  document.querySelector('#edit-profile-form strong').textContent =
-    limited ? 'Edit Discord handle' : 'Edit profile';
   document.getElementById('edit-profile-form').classList.remove('hidden');
   document.getElementById('profile-owner-actions').classList.add('hidden');
 }
@@ -322,35 +389,25 @@ function closeEditProfile() {
 }
 
 async function saveProfile() {
-  const discord = document.getElementById('edit-discord').value.trim();
   const pronouns      = document.getElementById('edit-pronouns').value.trim();
   const pronunciation = document.getElementById('edit-pronunciation').value.trim();
   const about   = document.getElementById('edit-about').value.trim();
   const msg     = document.getElementById('profile-save-msg');
 
-  // Self-edit goes through /api/profile; an admin editing someone else can only
-  // change their Discord handle via the admin endpoint.
-  const res = isSelf
-    ? await fetch('/api/profile', {
-        method: 'PUT', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ discord, pronouns, pronunciation, about }),
-      })
-    : await fetch(`/api/users/${encodeURIComponent(PROFILE_GOOGLE_ID)}/discord`, {
-        method: 'PUT', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ discord }),
-      });
+  // Discord isn't sent — it's set by linking a Discord account, not free text.
+  const res = await fetch('/api/profile', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ pronouns, pronunciation, about }),
+  });
 
   if (res.ok) {
-    document.getElementById('profile-discord-display').textContent = discord ? 'Discord: ' + discord : '';
-    if (isSelf) {
-      document.getElementById('profile-pronouns-display').textContent = pronouns ? ` (${pronouns})` : '';
-      const pronEl = document.getElementById('profile-pronunciation-display');
-      pronEl.textContent = pronunciation ? 'Pronounced: ' + pronunciation : '';
-      pronEl.style.display = pronunciation ? '' : 'none';
-      const aboutEl = document.getElementById('profile-about-display');
-      aboutEl.textContent = about;
-      aboutEl.style.display = about ? '' : 'none';
-    }
+    document.getElementById('profile-pronouns-display').textContent = pronouns ? ` (${pronouns})` : '';
+    const pronEl = document.getElementById('profile-pronunciation-display');
+    pronEl.textContent = pronunciation ? 'Pronounced: ' + pronunciation : '';
+    pronEl.style.display = pronunciation ? '' : 'none';
+    const aboutEl = document.getElementById('profile-about-display');
+    aboutEl.textContent = about;
+    aboutEl.style.display = about ? '' : 'none';
     msg.style.color = 'var(--accent)';
     msg.textContent = '✓ Saved!';
     setTimeout(closeEditProfile, 1000);

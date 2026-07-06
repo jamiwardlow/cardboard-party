@@ -35,6 +35,8 @@ COMMANDS = [{
     'options': [
         {'type': 1, 'name': 'register',
          'description': 'Register yourself for an event'},
+        {'type': 1, 'name': 'drop',
+         'description': 'Drop yourself from an event you registered for'},
         {'type': 1, 'name': 'report',
          'description': 'Report the result of your match'},
         {'type': 1, 'name': 'standings',

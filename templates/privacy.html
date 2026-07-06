@@ -7,7 +7,7 @@
 </div>
 
 <div class="legal">
-  <p class="legal-meta">Last updated: June 16, 2026</p>
+  <p class="legal-meta">Last updated: June 22, 2026</p>
 
   <p>
     This policy explains what information Cardboard Party (“we”, “us”) collects,
@@ -22,15 +22,23 @@
       your name, email address, Google account ID, and profile picture.
     </li>
     <li>
+      <strong>From Discord sign-in.</strong> When you sign in with Discord, we receive
+      your Discord user ID, username and display name, your avatar, and your email
+      address if it is verified on Discord. If the Discord account matches one you
+      already have, we link the two rather than creating a duplicate.
+    </li>
+    <li>
       <strong>Profile details you add.</strong> An editable display name, Discord
       handle, pronouns, name pronunciation, a short “about” bio, and a custom
       avatar if you upload one.
     </li>
     <li>
-      <strong>Discord information.</strong> If you use the bot, we store your Discord
-      user ID (and username) and link it to your account so we can pair you,
-      record your results, and message you. We also keep a record of event
-      invitations sent and received (to prevent spam) and your invite opt-out choice.
+      <strong>Discord bot.</strong> If you use the bot, we link your Discord account
+      to your Cardboard Party account so we can pair you, record your results, and
+      message you. We also keep a record of event invitations sent and received (to
+      prevent spam) and your invite opt-out choice. An organizer may also assign you
+      a Discord role for their event (so they can announce to all participants) when
+      your account is linked to Discord.
     </li>
     <li>
       <strong>Event data.</strong> Your event registrations, match results,
@@ -42,6 +50,13 @@
       <strong>Technical data.</strong> A single essential session cookie keeps you
       signed in, and our hosting provider records standard server logs (such as IP
       address and request details).
+    </li>
+    <li>
+      <strong>Location features.</strong> Event pages may load Google Maps to show a
+      venue, and organizers can attach a venue location to an event. If you use the
+      “events near me” search, your browser asks your permission to share your device
+      location, which is used in your browser only to sort/filter events by distance —
+      we don’t store it.
     </li>
   </ul>
 
@@ -73,8 +88,8 @@
   <h2>Service providers</h2>
   <p>
     We host the Service on Google Cloud Platform (App Engine, Firestore, Cloud
-    Storage, and Secret Manager), with data stored in the United States. If you use
-    the bot, information is also shared with Discord to deliver messages. These
+    Storage, and Secret Manager), with data stored in the United States. If you sign
+    in with Discord or use the bot, information is also shared with Discord. These
     providers process data under their own terms:
   </p>
   <ul>
@@ -109,7 +124,7 @@
 
   <h2>Security</h2>
   <p>
-    Sign-in is handled by Google, so we never see or store your password. Session
+    Sign-in is handled by Google or Discord, so we never see or store your password. Session
     cookies are HttpOnly and, in production, sent only over HTTPS. No method of
     transmission or storage is completely secure, so we can’t guarantee absolute
     security.

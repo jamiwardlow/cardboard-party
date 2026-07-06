@@ -20,8 +20,11 @@ inbound_services:
   - warmup
 
 handlers:
+  # Assets are requested with ?v=<deploy version>, so the URL changes every deploy
+  # — safe to cache aggressively for repeat visits.
   - url: /static
     static_dir: static
+    expiration: "30d"
 
   - url: /.*
     script: auto
@@ -37,3 +40,6 @@ env_variables:
   # Staging's bot command is /cpstaging so it doesn't collide with prod's /cparty
   # in a shared Discord server (both run the same code).
   DISCORD_COMMAND_NAME: cpstaging
+  # Google Maps (Places autocomplete + maps). Public, HTTP-referrer-restricted key —
+  # the same key serves prod (app.yaml); restrict it to both hosts in the Console.
+  MAPS_API_KEY: "AIzaSyDMxQqafNXtkSTDYyan2K4Fa4W0aj5j174"

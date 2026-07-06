@@ -66,8 +66,9 @@ _THEME_BG = (20, 17, 31)   # var(--bg) #14111f, for flattening transparency
 
 def upload_brand_image(event_id: str, raw: bytes) -> tuple[str, str]:
     """Validate/resize/upload an event brand image. Unlike avatars this keeps the
-    original aspect ratio (it's a banner/logo, not a framed thumbnail), fitting
-    within 1200×1200. Transparency is flattened onto the dark theme background.
+    original aspect ratio (a logo, poster, or banner — square, portrait, or
+    landscape — not a framed thumbnail), fitting within 1200×1200. Transparency is
+    flattened onto the dark theme background.
     Returns (public_url, object_name); raises ValueError for non-images.
     """
     try:

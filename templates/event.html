@@ -23,48 +23,27 @@
 {% endblock %}
 
 {% block content %}
-{% if event.brand_image_url or event.brand_text %}
-<div class="event-brand">
-  {% if event.brand_image_url %}<img class="event-brand-img" src="{{ event.brand_image_url }}" alt="">{% endif %}
-  {% if event.brand_text %}<p class="event-brand-text">{{ event.brand_text }}</p>{% endif %}
-</div>
-{% endif %}
-<div class="page-header">
-  <div>
-    <div class="title-row">
-      <h1>{{ event.name }}</h1>
-      {% if event.test_mode %}<span class="test-badge">TEST</span>{% endif %}
-      <button class="btn btn-sm" id="btn-share" onclick="shareEvent(this)">Share</button>
-      <details class="cal-menu">
-        <summary class="btn btn-sm">Add to calendar</summary>
-        <div class="cal-menu-pop">
-          <a href="#" onclick="addToGoogleCal();return false;">Google Calendar</a>
-          <a href="#" onclick="downloadIcs();return false;">Apple / Outlook (.ics)</a>
-        </div>
-      </details>
-      <button class="btn btn-sm hidden" id="btn-duplicate" onclick="duplicateEvent()">Duplicate event</button>
-    </div>
-    <p class="subtitle">{{ event.event_type or 'One-day' }} · {{ event.date }}{% if event.start_time %} · {{ event.start_time | time12 }}{% endif %} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}</p>
-    {% if event.game %}<p class="subtitle" style="margin-top:0.15rem">{{ event.game }}</p>{% endif %}
-    {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
-    {% if event.requires_decklists %}<p class="event-note">📋 Decklists required</p>{% endif %}
-    {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
-    {% if event.entry_cost or event.payment_url %}
-    <p class="event-cost">
-      {% if event.entry_cost %}Entry: <strong>{{ event.entry_cost }}</strong>{% endif %}
-      {% if event.payment_url %}<a class="pay-link" href="{{ event.payment_url }}" target="_blank" rel="noopener noreferrer">Pay online ↗</a>{% endif %}
-    </p>
-    {% endif %}
-    <span id="reg-status" style="margin-top:0.5rem"></span>
+{# When the event is live (any round paired) the layout flips so the live-running
+   sections (Rounds/Players/Standings) sit right under the header and the
+   descriptive details drop to the bottom — see .event-live in the CSS. #}
+<div class="event-layout{% if event.rounds %} event-live{% endif %}" id="event-layout">
+<div class="event-head">
+  <div class="title-row">
+    <h1>{{ event.name }}</h1>
+    {% if event.test_mode %}<span class="test-badge">TEST</span>{% endif %}
+    <button class="btn btn-sm" id="btn-share" onclick="shareEvent(this)">Share</button>
+    <details class="cal-menu">
+      <summary class="btn btn-sm">Add to calendar</summary>
+      <div class="cal-menu-pop">
+        <a href="#" onclick="addToGoogleCal();return false;">Google Calendar</a>
+        <a href="#" onclick="downloadIcs();return false;">Apple / Outlook (.ics)</a>
+      </div>
+    </details>
+    <button class="btn btn-sm hidden" id="btn-duplicate" onclick="duplicateEvent()">Duplicate event</button>
   </div>
-  <div id="owner-actions" class="hidden action-row">
-    <button class="btn btn-sm" onclick="openEditEventModal()">Edit event</button>
-    <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
-    <button class="btn btn-primary" id="btn-pair" onclick="pairNextRound()">Pair round 1</button>
-    <span id="cut-controls" class="hidden"></span>
-    <button class="btn btn-sm hidden" id="btn-release-pairings" onclick="releaseDelivery('pairings')">Release pairings</button>
-    <button class="btn btn-sm hidden" id="btn-release-standings" onclick="releaseDelivery('standings')">Release standings</button>
-    <button class="btn btn-sm btn-danger" id="btn-delete-event" onclick="deleteEvent()">Delete event</button>
+  <div class="event-facts">
+    <p class="event-when"><span class="event-datetime">{{ event.date }}{% if event.start_time %} · {{ event.start_time | time12 }}{% endif %}</span>{% if event.location %}<span class="event-loc">📍 <a class="loc-link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&amp;query={{ event.location|urlencode }}{% if event.place_id %}&amp;query_place_id={{ event.place_id|urlencode }}{% endif %}">{{ event.location }}</a></span>{% endif %}</p>
+    <p class="subtitle" style="margin-top:0.25rem">{{ event.event_type or 'One-day' }} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}{% if event.game %} · {{ event.game }}{% endif %}</p>
   </div>
 </div>
 
@@ -86,7 +65,14 @@
          register form. (Guest "join by name" was removed once Discord login existed.) -->
     <a id="register-signin-btn" class="btn btn-primary btn-sm" href="/auth/login" style="display:none">Register for this event</a>
     <button id="register-self-btn" class="btn btn-primary btn-sm" style="display:none" onclick="showRegisterForm()">Register for this event</button>
+    <button id="join-waitlist-btn" class="btn btn-primary btn-sm" style="display:none" onclick="joinWaitlist()">Join Waitlist</button>
   </div>
+</div>
+
+<!-- Waitlist banner (signed-in non-players who are on the waitlist) -->
+<div id="waitlist-banner" class="banner hidden">
+  <span id="waitlist-banner-msg"></span>
+  <button class="btn btn-sm btn-danger" onclick="leaveWaitlist()">Leave Waitlist</button>
 </div>
 
 <!-- Registered player banner -->
@@ -107,37 +93,97 @@
   <span id="champion-msg"></span>
 </div>
 
-<!-- Round timer (shown while a round is in progress when a timer is configured) -->
-<div id="round-timer" class="hidden">
-  <span class="timer-label">Round time</span>
-  <span id="timer-text" class="timer-text">—</span>
-  <button class="btn btn-sm" id="timer-btn" style="display:none" onclick="startTimer()">Start timer</button>
+<!-- Fixed-seating conflict banner (organiser only): two players fixed to different
+     tables are paired; the lower table is auto-assigned and a manual move may be needed. -->
+<div id="seat-conflict-banner" class="banner hidden" style="background:rgba(251,113,133,0.14);border:1px solid rgba(251,113,133,0.45)">
+  <span id="seat-conflict-msg"></span>
 </div>
 
-{% if event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days %}
-<section class="event-comms">
-  {% if event.schedule %}<details open><summary>Schedule</summary><div class="comms-body">{{ event.schedule }}</div></details>{% endif %}
-  {% if event.rules %}<details open><summary>Rules</summary><div class="comms-body">{{ event.rules }}</div></details>{% endif %}
-  {% if event.prizes or event.prize_deadline_days %}<details open><summary>Prizes</summary><div class="comms-body">{{ event.prizes }}{% if event.prize_deadline_days %}{% if event.prizes %}
+{% set has_print = event.allow_proxies or event.allow_gold_border or event.allow_ce or event.allow_ie %}
+{% set has_drop = event.drop_policy_text or event.refund_policy_text or event.refund_window_end or event.unenroll_end or event.self_service_drop_enabled == False %}
+{% set has_comms = event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days or has_print or has_drop %}
+{% set has_extra = event.tags or event.requires_decklists or event.description or event.entry_cost or event.payment_url %}
+{% set has_brand = event.brand_image_url or event.brand_text %}
+<div class="event-info">
+  <span id="reg-status" style="margin-top:0.5rem"></span>
+  <div id="owner-actions" class="hidden action-row" style="margin-top:0.9rem">
+    <button class="btn btn-sm" onclick="openEditEventModal()">Edit event</button>
+    {% if event.requires_decklists %}<a class="btn btn-sm" href="/events/{{ event.id }}/decklists">Decklists</a>{% endif %}
+    <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
+    <button class="btn btn-sm hidden" id="btn-release-standings" onclick="releaseDelivery('standings')">Release standings</button>
+    <button class="btn btn-sm btn-danger" id="btn-delete-event" onclick="deleteEvent()">Delete event</button>
+  </div>
+</div>
+
+{# From the Description down, the sections pack into a responsive masonry: two
+   columns when wide, one when narrow. layoutEventFlow() (JS) orders them by event
+   stage (see SECTION_ORDERS) and drops each present block into the shorter column
+   to close gaps. Every block carries a data-section name so the JS can find it. #}
+<div class="event-flow" id="event-flow">
+  {% if has_brand %}
+  <aside class="event-brand flow-block" data-section="brand">
+    {% if event.brand_image_url %}<a class="event-brand-link" href="{{ event.brand_image_url }}" target="_blank" rel="noopener" title="View full size"><img class="event-brand-img" src="{{ event.brand_image_url }}" alt="" onload="layoutEventFlow()"></a>{% endif %}
+    {% if event.brand_text %}<p class="event-brand-text">{{ event.brand_text }}</p>{% endif %}
+  </aside>
+  {% endif %}
+  {% if has_extra %}
+  <div class="event-extra flow-block" data-section="description">
+    {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
+    {% if event.requires_decklists %}<p class="event-note">📋 Decklists required</p>{% endif %}
+    {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
+    {% if event.entry_cost or event.payment_url %}
+    <p class="event-cost">
+      {% if event.entry_cost %}Entry: <strong>{{ event.entry_cost }}</strong>{% endif %}
+      {% if event.payment_url %}<a class="pay-link" href="{{ event.payment_url }}" target="_blank" rel="noopener noreferrer">Pay online ↗</a>{% endif %}
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if has_comms %}
+<section class="event-comms flow-block" data-section="details">
+  {# Advanced events have more detail sections, so collapse them by default. #}
+  {% set comms_open = '' if event.advanced else 'open' %}
+  {% if event.schedule %}<details {{ comms_open }}><summary>Schedule</summary><div class="comms-body">{{ event.schedule }}</div></details>{% endif %}
+  {% if event.rules %}<details {{ comms_open }}><summary>Rules</summary><div class="comms-body">{{ event.rules }}</div></details>{% endif %}
+  {% if has_print %}<details {{ comms_open }}><summary>Print legality &amp; proxy policy</summary><div class="comms-body">
+{%- set printings = [] %}
+{%- if event.allow_proxies %}
+  {%- if event.proxy_policy == 'limited' and event.proxy_limit %}{% set _ = printings.append('Proxies (up to ' ~ event.proxy_limit ~ ')') %}
+  {%- elif event.proxy_policy == 'unlimited' %}{% set _ = printings.append('Proxies (no limit)') %}
+  {%- else %}{% set _ = printings.append('Proxies') %}{% endif %}
+{%- endif %}
+{%- if event.allow_gold_border %}{% set _ = printings.append('Gold-border') %}{% endif %}
+{%- if event.allow_ce %}{% set _ = printings.append('Collector’s Edition') %}{% endif %}
+{%- if event.allow_ie %}{% set _ = printings.append('International Edition') %}{% endif -%}
+Allowed printings: {{ printings|join(' · ') }}{% if event.allow_proxies and event.proxy_note %}
+
+Proxy policy: {{ event.proxy_note }}{% endif %}</div></details>{% endif %}
+  {% if has_drop %}<details {{ comms_open }}><summary>Drop &amp; refund policy</summary><div class="comms-body">
+{%- if event.self_service_drop_enabled == False %}Players can’t drop themselves here — contact the organizer to drop.
+{%- elif event.unenroll_end %}Players may drop themselves until {{ event.unenroll_end }}. After that, contact the organizer.
+{%- else %}Players may drop themselves any time before the event.{% endif %}
+{%- if event.drop_policy_text %}
+
+{{ event.drop_policy_text }}{% endif %}
+{%- if event.refund_policy_text or event.refund_window_end %}
+
+Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (refunds offered through {{ event.refund_window_end }}){% endif %}{% endif -%}
+</div></details>{% endif %}
+  {% if event.prizes or event.prize_deadline_days %}<details {{ comms_open }}><summary>Prizes</summary><div class="comms-body">{{ event.prizes }}{% if event.prize_deadline_days %}{% if event.prizes %}
 
 {% endif %}Prizes distributed within {{ event.prize_deadline_days }} day{{ 's' if event.prize_deadline_days != 1 }} of the event.{% endif %}</div></details>{% endif %}
-  {% if event.contact %}<details open><summary>Contact</summary><div class="comms-body">{{ event.contact }}</div></details>{% endif %}
+  {% if event.contact %}<details {{ comms_open }}><summary>Contact</summary><div class="comms-body">{{ event.contact }}</div></details>{% endif %}
 </section>
-{% endif %}
-
-<div class="two-col">
-  <section>
-    <h2>Rounds</h2>
-    <div id="rounds-container"></div>
-  </section>
-
-  <section>
+  {% endif %}{# has_comms #}
+  <section class="flow-block" data-section="players">
     <h2 id="players-toggle" class="section-toggle" onclick="toggleSection('players')"
         role="button" tabindex="0" aria-expanded="true">
       Players <span id="player-count" class="badge"></span>
       <span class="round-caret" aria-hidden="true">▾</span>
     </h2>
     <div id="players-body" class="section-body">
+      <p id="organizer-info" class="text-muted" style="font-size:0.85rem;margin:0 0 0.75rem"></p>
+      <div id="discord-role-controls" style="display:none;margin-bottom:0.7rem"></div>
       <div id="player-actions" class="hidden">
         <div class="inline-form">
           <div class="autocomplete" style="flex:1 1 200px;min-width:0">
@@ -150,16 +196,43 @@
           <button class="btn btn-sm" id="btn-add-self" onclick="addSelf()">+ Add myself</button>
         </div>
       </div>
+      <input id="player-search" type="text" class="waitlist-search hidden"
+             placeholder="Search players — name or Discord" oninput="renderPlayers()">
       <ul id="player-list" class="player-list"></ul>
     </div>
+  </section>
 
+  <div id="waitlist-section" class="hidden flow-block" data-section="waitlist">
+    <h2 id="waitlist-toggle" class="section-toggle" onclick="toggleSection('waitlist')"
+        role="button" tabindex="0" aria-expanded="true">
+      Waitlist <span id="waitlist-count" class="badge">0</span>
+      <span class="round-caret" aria-hidden="true">▾</span>
+    </h2>
+    <div id="waitlist-body" class="section-body">
+      <input id="waitlist-search" type="text" class="waitlist-search"
+             placeholder="Search by name, email, or Discord" oninput="renderWaitlist()">
+      <ul id="waitlist-list" class="player-list"></ul>
+    </div>
+  </div>
+
+  <section class="flow-block" data-section="rounds">
+    <div class="section-head">
+      <h2>Rounds</h2>
+      <span class="round-actions-head">
+        <button class="btn hidden" id="btn-pair" onclick="pairNextRound()">Pair round 1</button>
+        <span id="cut-controls" class="hidden"></span>
+      </span>
+    </div>
+    <div id="rounds-container"></div>
+  </section>
+
+  <section class="flow-block" data-section="standings">
     <h2 id="standings-toggle" class="section-toggle" onclick="toggleSection('standings')"
         role="button" tabindex="0" aria-expanded="true">
       Standings
       <span class="round-caret" aria-hidden="true">▾</span>
     </h2>
     <div id="standings-body" class="section-body">
-      <p id="organizer-info" class="text-muted" style="font-size:0.85rem;margin:0 0 0.75rem"></p>
       <table id="standings-table" class="standings">
         <thead>
           <tr>
@@ -173,7 +246,21 @@
       </table>
     </div>
   </section>
-</div>
+
+  <div id="activity-section" class="hidden flow-block" data-section="activity">
+    <h2 id="activity-toggle" class="section-toggle collapsed" onclick="toggleActivity()"
+        role="button" tabindex="0" aria-expanded="false">
+      Activity log
+      <span class="round-caret" aria-hidden="true">▾</span>
+    </h2>
+    <div id="activity-body" class="section-body collapsed">
+      <input id="activity-search" type="text" class="waitlist-search"
+             placeholder="Search activity — name or action" oninput="renderActivityLog()">
+      <ul id="activity-list" class="activity-log"></ul>
+    </div>
+  </div>
+</div>{# .event-flow #}
+</div>{# .event-layout #}
 
 <!-- Edit pairings modal -->
 <div id="edit-modal" class="modal-backdrop hidden">
@@ -184,6 +271,30 @@
     <div class="modal-actions">
       <button class="btn" onclick="closeEditModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditedPairings()">Save pairings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Player details modal (organiser actions for one player) -->
+<div id="player-details-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="pd-title">Player</h2>
+    <p id="pd-discord" class="pd-discord"></p>
+    <div id="pd-actions" class="player-details-actions"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closePlayerDetails()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Waitlist details modal (organiser actions for one waitlisted player) -->
+<div id="waitlist-details-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="wld-title">Waitlisted player</h2>
+    <p id="wld-meta" class="pd-discord"></p>
+    <div id="wld-actions" class="player-details-actions"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeWaitlistDetails()">Close</button>
     </div>
   </div>
 </div>
@@ -201,8 +312,37 @@
       Games won by <strong id="rm-p1-short"></strong> — Games won by <strong id="rm-p2-short"></strong>
     </p>
     <div class="result-grid" id="result-grid"></div>
+    <p id="result-confirm-msg" class="result-confirm-msg hidden"></p>
     <div class="modal-actions">
+      <button class="btn hidden" id="result-back-btn" onclick="backToResultGrid()">Back</button>
+      <button class="btn btn-primary hidden" id="result-submit-btn" onclick="submitResult()">Submit result</button>
       <button class="btn" onclick="closeResultModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Generic confirmation modal (replaces native confirm(), which the browser can
+     permanently suppress after repeated dialogs). Driven by confirmDialog(). -->
+<div id="confirm-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <p id="confirm-modal-msg" class="confirm-modal-msg"></p>
+    <div class="modal-actions">
+      <button class="btn" id="confirm-modal-cancel" onclick="resolveConfirm(false)">Cancel</button>
+      <button class="btn btn-primary" id="confirm-modal-ok" onclick="resolveConfirm(true)">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Generic text-input modal (replaces native prompt(), also suppressible).
+     Driven by promptDialog(). -->
+<div id="prompt-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <p id="prompt-modal-msg" class="confirm-modal-msg"></p>
+    <input id="prompt-modal-input" type="text" class="prompt-modal-input"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();resolvePromptOk();}else if(event.key==='Escape'){resolvePrompt(null);}">
+    <div class="modal-actions">
+      <button class="btn" onclick="resolvePrompt(null)">Cancel</button>
+      <button class="btn btn-primary" id="prompt-modal-ok" onclick="resolvePromptOk()">OK</button>
     </div>
   </div>
 </div>
@@ -211,8 +351,41 @@
 <div id="edit-event-modal" class="modal-backdrop hidden">
   <div class="modal">
     <h2>Edit event</h2>
+    <div id="ee-upgrade-row" class="hidden" style="margin-bottom:0.5rem">
+      <button type="button" class="btn btn-sm" onclick="upgradeToAdvanced()">Switch to Advanced</button>
+      <span class="field-help" style="margin-left:0.6rem">Require decklists, delay pairings, and more.</span>
+    </div>
     <label>Name
       <input id="ee-name" type="text">
+    </label>
+    <label>Brand text
+      <input id="ee-brand-text" type="text" maxlength="300" placeholder="Optional — series, organiser, sponsor, or community">
+    </label>
+    <div class="field-group">
+      <span class="field-label">Brand image</span>
+      <img id="ee-brand-preview" class="brand-preview" style="display:none" alt="">
+      <input id="ee-brand-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+             onchange="uploadBrandImage(event)" style="font-size:0.85rem">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-sm btn-danger" id="ee-brand-remove" style="display:none"
+                onclick="removeBrandImage()">Remove image</button>
+      </div>
+      <span id="ee-brand-msg" class="field-help"></span>
+    </div>
+    <label>Date
+      <input id="ee-date" type="date">
+    </label>
+    <label>Start time
+      <input id="ee-time" type="time">
+    </label>
+    <label>Location
+      <input id="ee-location" type="text" maxlength="200" placeholder="Optional — venue or city">
+    </label>
+    <label>Entry cost
+      <input id="ee-cost" type="text" placeholder="e.g. $10 or Free">
+    </label>
+    <label>Payment link
+      <input id="ee-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
     </label>
     <label>Type
       <select id="ee-type">
@@ -223,6 +396,15 @@
     <label>Format
       <input id="ee-format" type="text">
     </label>
+    <div class="field-group ee-adv">
+      <span class="field-label">Tags</span>
+      <div class="chip-options" id="ee-tags">
+        <label class="chip"><input type="checkbox" value="Weekly Play"> Weekly Play</label>
+        <label class="chip"><input type="checkbox" value="Prerelease"> Prerelease</label>
+        <label class="chip"><input type="checkbox" value="Regional Championship Qualifier"> Regional Championship Qualifier</label>
+        <label class="chip"><input type="checkbox" value="Spotlight Series"> Spotlight Series</label>
+      </div>
+    </div>
     <label class="ee-adv">Structure
       <select id="ee-structure" onchange="onStructureChange('ee')">
         <option value="">— Select —</option>
@@ -239,15 +421,9 @@
       </select>
       <span class="field-help">Seeds the playoff bracket; you confirm the cut when Swiss ends.</span>
     </label>
-    <div class="field-group ee-adv">
-      <span class="field-label">Tags</span>
-      <div class="chip-options" id="ee-tags">
-        <label class="chip"><input type="checkbox" value="Weekly Play"> Weekly Play</label>
-        <label class="chip"><input type="checkbox" value="Prerelease"> Prerelease</label>
-        <label class="chip"><input type="checkbox" value="Regional Championship Qualifier"> Regional Championship Qualifier</label>
-        <label class="chip"><input type="checkbox" value="Spotlight Series"> Spotlight Series</label>
-      </div>
-    </div>
+    <label>Number of rounds
+      <input id="ee-rounds" type="number" min="1" max="20" placeholder="Auto">
+    </label>
     <label>Description
       <textarea id="ee-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc."></textarea>
     </label>
@@ -266,36 +442,45 @@
     <label class="ee-adv">Contact
       <textarea id="ee-contact" rows="2" placeholder="Optional — how to reach the organiser with questions"></textarea>
     </label>
-    <label>Brand text
-      <input id="ee-brand-text" type="text" maxlength="300" placeholder="Optional — series, organiser, sponsor, or community">
+    <label class="checkbox-row ee-adv">
+      <input type="checkbox" id="ee-decklists">
+      <span>Require decklists</span>
     </label>
-    <div class="field-group">
-      <span class="field-label">Brand image</span>
-      <img id="ee-brand-preview" class="brand-preview" style="display:none" alt="">
-      <input id="ee-brand-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
-             onchange="uploadBrandImage(event)" style="font-size:0.85rem">
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-        <button type="button" class="btn btn-sm btn-danger" id="ee-brand-remove" style="display:none"
-                onclick="removeBrandImage()">Remove image</button>
+    <label class="ee-adv">Decklist deadline
+      <input id="ee-decklist-deadline" type="date">
+      <span class="field-help">After this date, players can't submit or edit decklists.</span>
+    </label>
+    <label class="ee-adv" style="margin-top:0.9rem">Decklist validation
+      <select id="ee-validation-format">
+        <option value="none">No automatic validation</option>
+        <option value="premodern">Premodern</option>
+      </select>
+      <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
+    </label>
+    <div class="field-group print-legality ee-adv">
+      <span class="field-label">Allowed card printings</span>
+      <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-proxies" onchange="onProxyToggle('ee')"> <span>Proxies allowed</span></label>
+      <div id="ee-proxy-opts" class="hidden" style="margin:0.15rem 0 0.4rem 1.6rem">
+        <label>Proxy limit
+          <select id="ee-proxy-policy" onchange="onProxyToggle('ee')">
+            <option value="unlimited">No limit</option>
+            <option value="limited">Up to a set number</option>
+            <option value="custom">Custom policy</option>
+          </select>
+        </label>
+        <label id="ee-proxy-limit-wrap" class="hidden">Max proxies per deck
+          <input id="ee-proxy-limit" type="number" min="0" max="999" placeholder="e.g. 10">
+        </label>
+        <label>Proxy policy details
+          <input id="ee-proxy-note" type="text" maxlength="500" placeholder="Optional — e.g. must be clearly marked">
+        </label>
       </div>
-      <span id="ee-brand-msg" class="field-help"></span>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-gold"> <span>Gold-border cards allowed</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-ce"> <span>Collector’s Edition (CE) allowed</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-ie"> <span>International Edition (IE) allowed</span></label>
     </div>
-    <label>Entry cost
-      <input id="ee-cost" type="text" placeholder="e.g. $10 or Free">
-    </label>
-    <label>Payment link
-      <input id="ee-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)">
-    </label>
-    <label>Date
-      <input id="ee-date" type="date">
-    </label>
-    <label>Start time
-      <input id="ee-time" type="time">
-    </label>
-    <label>Number of rounds
-      <input id="ee-rounds" type="number" min="1" max="20" placeholder="Auto">
-    </label>
-    <label>Registration cap
+    <label class="cap-field">Registration cap
       <input id="ee-cap" type="number" min="2" max="256" placeholder="No cap">
     </label>
     <label class="ee-adv">Registration type
@@ -305,23 +490,67 @@
       </select>
       <span class="field-help">Invite only disables self sign-up — you add players yourself.</span>
     </label>
+    <label class="ee-adv">Entry code
+      <input id="ee-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
+    </label>
     <label class="ee-adv">Registration opens
       <input id="ee-reg-start" type="date">
     </label>
     <label class="ee-adv">Registration closes
       <input id="ee-reg-end" type="date">
     </label>
-    <label class="ee-adv">Unenrollment deadline
-      <input id="ee-unenroll-end" type="date">
-      <span class="field-help">After this date, players can't withdraw themselves.</span>
+    <div class="ee-adv field-group group-divider">
+      <span class="field-label">Drop &amp; refund policy</span>
+      <label class="checkbox-row no-divider"><input type="checkbox" id="ee-self-drop"> <span>Allow players to drop themselves</span></label>
+      <label>Drop deadline
+        <input id="ee-unenroll-end" type="date">
+        <span class="field-help">After this date, players can't drop themselves.</span>
+      </label>
+      <label>Drop policy
+        <textarea id="ee-drop-policy" rows="2" placeholder="Optional — when and how players may drop"></textarea>
+      </label>
+      <label>Refund policy
+        <textarea id="ee-refund-policy" rows="2" placeholder="Optional — whether refunds are available (no payments are processed here)"></textarea>
+      </label>
+      <label>Refund window closes
+        <input id="ee-refund-window" type="date">
+        <span class="field-help">Optional — the last day refunds are offered.</span>
+      </label>
+    </div>
+    <label class="checkbox-row ee-adv">
+      <input type="checkbox" id="ee-require-checkin">
+      <span>Require check-in
+        <span class="field-help">Only players you check in get paired.</span>
+      </span>
     </label>
-    <label class="ee-adv">Entry code
-      <input id="ee-entry-code" type="text" maxlength="64" placeholder="Optional — players must enter it to register">
+    <label class="checkbox-row ee-adv">
+      <input type="checkbox" id="ee-tables" onchange="onEditTablesChange()">
+      <span>Assign tables
+        <span class="field-help">Give each pairing a table number for in-person seating.</span>
+      </span>
     </label>
-    <label>Round timer (minutes)
-      <input id="ee-round-timer" type="number" min="0" max="180" placeholder="No timer">
-      <span class="field-help">Shows a countdown to players each round.</span>
-    </label>
+    <div id="ee-table-opts" class="ee-adv hidden">
+      <label>First table number
+        <input id="ee-table-start" type="number" min="1" max="999" placeholder="1"
+               oninput="refreshEditTableWarning()">
+      </label>
+      <label>Last table number
+        <input id="ee-table-end" type="number" min="1" max="999" placeholder="e.g. 50"
+               oninput="refreshEditTableWarning()">
+        <span class="field-help">The range of physical tables available.</span>
+      </label>
+      <label>Reserved / unavailable tables
+        <input id="ee-table-excluded" type="text" placeholder="e.g. 13, 21-24"
+               oninput="refreshEditTableWarning()">
+        <span class="field-help">Held out of automatic assignment.</span>
+      </label>
+      <label>Labeled tables
+        <input id="ee-table-labels" type="text" placeholder="e.g. 1:Feature Match, 2:Coverage"
+               oninput="refreshEditTableWarning()">
+        <span class="field-help">Labeled tables are placed manually, so they're held out of auto-assignment too.</span>
+      </label>
+      <span id="ee-table-warn" class="field-help" style="color:var(--danger)"></span>
+    </div>
     <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-delay-pairings">
       <span>Delay pairings
@@ -334,10 +563,14 @@
         <span class="field-help">Standings stay hidden from players until you release them.</span>
       </span>
     </label>
-    <label class="checkbox-row ee-adv">
-      <input type="checkbox" id="ee-require-checkin">
-      <span>Require check-in
-        <span class="field-help">Only players you check in get paired.</span>
+    <label class="timer-field">Round timer (minutes)
+      <input id="ee-round-timer" type="number" min="0" max="180" placeholder="No timer">
+      <span class="field-help">Shows a countdown to players each round.</span>
+    </label>
+    <label class="checkbox-row no-divider ee-adv">
+      <input type="checkbox" id="ee-auto-start-timer">
+      <span>Start the timer when pairings are released
+        <span class="field-help">Auto-starts the round timer when pairings go live — right away if posted immediately, or when you release delayed pairings. Off by default; start it manually with the button.</span>
       </span>
     </label>
     <label class="checkbox-row ee-adv">
@@ -347,28 +580,15 @@
       </span>
     </label>
     <label class="checkbox-row ee-adv">
-      <input type="checkbox" id="ee-decklists">
-      <span>Require decklists
-        <span class="field-help">Players are told a decklist is required for this event.</span>
-      </span>
-    </label>
-    <label class="ee-adv">Decklist deadline
-      <input id="ee-decklist-deadline" type="date">
-      <span class="field-help">After this date, players can't submit or edit decklists.</span>
-    </label>
-    <label class="ee-adv">Decklist validation
-      <select id="ee-validation-format">
-        <option value="none">No automatic validation</option>
-        <option value="premodern">Premodern</option>
-      </select>
-      <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
-    </label>
-    <label class="checkbox-row ee-adv">
       <input type="checkbox" id="ee-test-mode">
       <span>This event is in Test Mode
         <span class="field-help">Hidden from public event discovery — only you see it.</span>
       </span>
     </label>
+    <p class="form-discord-link">
+      <a href="/discord-bot" target="_blank" rel="noopener">Manage this event on Discord</a>
+      <span class="field-help">Players can register, report results, and follow standings via DM or a linked channel.</span>
+    </p>
     <div class="modal-actions">
       <button class="btn" onclick="closeEditEventModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEventDetails()">Save changes</button>
@@ -381,18 +601,23 @@
   <div class="modal">
     <h2 id="decklist-modal-title">Decklist</h2>
     <p id="decklist-modal-note" class="field-help" style="margin-bottom:0.6rem"></p>
+    <details id="decklist-print-help" class="decklist-print-help" style="display:none"></details>
+    <label id="decklist-name-field" style="margin-bottom:0.6rem">Deck name (optional)
+      <input id="decklist-name" type="text" maxlength="120" placeholder="e.g. Mono-Red Burn">
+    </label>
     <div id="moxfield-import" class="mox-row" style="display:none">
       <input id="moxfield-url" type="url" placeholder="…or paste a Moxfield deck URL to import">
       <button class="btn btn-sm" onclick="importMoxfield(this)">Import</button>
     </div>
     <textarea id="decklist-text" rows="16" spellcheck="false"
               placeholder="Paste your decklist here, e.g.&#10;4 Lightning Bolt&#10;...&#10;&#10;Sideboard&#10;2 Pyroblast"
-              style="width:100%;font-family:var(--font-mono);font-size:0.9rem;padding:0.6rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)"></textarea>
+              style="width:100%;min-height:16rem;resize:vertical;font-family:var(--font-mono);font-size:0.9rem;padding:0.6rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);color:var(--text)"></textarea>
     <div id="decklist-view" class="decklist-view" style="display:none"></div>
     <div id="decklist-result" class="decklist-result"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeDecklistModal()">Close</button>
-      <button class="btn btn-primary" id="decklist-save-btn" onclick="saveMyDecklist()">Save decklist</button>
+      <button class="btn" id="decklist-save-btn" onclick="saveMyDecklist(false)">Save and continue editing</button>
+      <button class="btn btn-primary" id="decklist-save-close-btn" onclick="saveMyDecklist(true)">Save</button>
     </div>
   </div>
 </div>
@@ -402,9 +627,9 @@
 <script>
 const EVENT_ID = '{{ event.id }}';
 // Moxfield blocks automated API access from our servers, so the import UI is
-// hidden (manual paste still works). Flip to true if we get Moxfield API access;
-// the backend endpoint + import logic are already in place.
-const MOXFIELD_IMPORT = false;
+// Moxfield API access granted (MoxKey User-Agent in Secret Manager), so the
+// import box is enabled. Manual paste still works too.
+const MOXFIELD_IMPORT = true;
 let state        = null;
 let me           = null;
 let myPlayer     = null;
@@ -427,14 +652,30 @@ async function init() {
   myPlayer = me.signed_in
     ? (state.players.find(p => p.google_id === me.user.id) || null)
     : (guestPlayerId ? (state.players.find(p => p.id === guestPlayerId) || null) : null);
+  applyStageCollapse();   // completed events open collapsed except Standings
   render();
 }
 
+// On a completed event, collapse the other collapsible sections on load so
+// Standings is what's front-and-centre. Runs once (the user can re-expand).
+function applyStageCollapse() {
+  if (eventStage() !== 'completed') return;
+  ['players', 'waitlist', 'activity'].forEach(name => {
+    const t = document.getElementById(name + '-toggle');
+    const b = document.getElementById(name + '-body');
+    if (!t || !b) return;
+    t.classList.add('collapsed');
+    b.classList.add('collapsed');
+    t.setAttribute('aria-expanded', 'false');
+  });
+}
+
 async function deleteEvent() {
-  if (!confirm(`Permanently delete "${state.name}"? This cannot be undone.`)) return;
+  if (!await confirmDialog(`Permanently delete "${state.name}"? This cannot be undone.`,
+                           { okLabel: 'Delete event', danger: true })) return;
   const res = await fetch(`/api/events/${EVENT_ID}`, { method: 'DELETE' });
   if (res.ok) { window.location.href = '/'; }
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to delete event.'); }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to delete event.'); }
 }
 
 // Open the create form pre-filled with this event's settings (the home page
@@ -482,7 +723,7 @@ async function shareEvent(btn) {
     btn.disabled = true;
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
   } catch (err) {
-    prompt('Copy this link:', url);
+    await promptDialog('Copy this link:', url, { okLabel: 'Done' });
   }
 }
 
@@ -557,22 +798,106 @@ function render() {
   // Run each section independently so one failing section can't blank the rest
   // of the page (e.g. registration/decklist controls staying hidden).
   for (const fn of [renderStatus, renderOrganizer, renderOwnerActions, renderBanners,
-                    renderIdBanner, renderRoundTimer, renderRounds, renderPlayers,
-                    renderStandings]) {
+                    renderIdBanner, renderSeatConflicts, renderRounds,
+                    renderPlayers, renderWaitlist, renderStandings, layoutEventFlow]) {
     try { fn(); } catch (err) { console.error(`render: ${fn.name} failed`, err); }
   }
 }
 
-// Show who's running the event so players know who to contact for help.
+// ── Section masonry layout ─────────────────────────────────────────────────────
+// The section blocks pack into a responsive masonry. Their order depends on the
+// event's stage; when the viewport is wide, the present sections are dealt into
+// two columns (each block into the currently-shorter one, closing gaps), and when
+// narrow they stack in the same order.
+const SECTION_ORDERS = {
+  notstarted: ['brand', 'description', 'details', 'players', 'waitlist', 'rounds', 'standings', 'activity'],
+  inprogress: ['rounds', 'standings', 'players', 'waitlist', 'description', 'details', 'activity', 'brand'],
+  completed:  ['brand', 'standings', 'rounds', 'players', 'activity', 'description', 'details', 'waitlist'],
+};
+
+// The current player's final placing as an ordinal ('1st', '2nd', …), from their
+// rank in the standings, or null if they're not ranked / standings aren't out.
+function eventPlacement() {
+  if (!myPlayer) return null;
+  const idx = (state.standings || []).findIndex(s => s.id === myPlayer.id);
+  return idx >= 0 ? ordinal(idx + 1) : null;
+}
+function ordinal(n) {
+  const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function eventStage() {
+  const rounds = state.rounds || [];
+  if (!rounds.length) return 'notstarted';
+  const last = rounds[rounds.length - 1];
+  if (isBracketRound(last)) return (last.length === 1 && last[0].winner_id) ? 'completed' : 'inprogress';
+  if (state.status === 'finished' || swissComplete()) return 'completed';
+  return 'inprogress';
+}
+
+function layoutEventFlow() {
+  const flow = document.getElementById('event-flow');
+  if (!flow || !state) return;
+  const blocks = {};
+  flow.querySelectorAll('.flow-block').forEach(el => { blocks[el.dataset.section] = el; });
+  const colA = flow.querySelector('.flow-col.a') || Object.assign(document.createElement('div'), { className: 'flow-col a' });
+  const colB = flow.querySelector('.flow-col.b') || Object.assign(document.createElement('div'), { className: 'flow-col b' });
+  const order = SECTION_ORDERS[eventStage()] || SECTION_ORDERS.notstarted;
+  // A block is "present" if it's in the DOM and not hidden (waitlist/activity use
+  // the .hidden class; brand/description/details are simply absent when empty).
+  const present = order.map(n => blocks[n]).filter(el => el && !el.classList.contains('hidden'));
+  const parked  = Object.values(blocks).filter(el => el.classList.contains('hidden'));
+  const twoCol  = window.matchMedia('(min-width: 761px)').matches;
+  colA.replaceChildren();
+  colB.replaceChildren();
+  flow.replaceChildren(colA, colB);   // columns become the only direct children
+  flow.classList.toggle('two', twoCol);
+  colB.style.display = twoCol ? '' : 'none';
+  present.forEach(el => {
+    // Greedy masonry: drop into the shorter column (ties → left), so the first
+    // section seeds the left, the next the right, and tall blocks pull the next
+    // one to the opposite side to keep the columns balanced.
+    const target = (twoCol && colB.offsetHeight < colA.offsetHeight) ? colB : colA;
+    target.appendChild(el);
+  });
+  parked.forEach(el => colA.appendChild(el));   // keep hidden blocks for later reveal
+}
+
+let _flowResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_flowResizeTimer);
+  _flowResizeTimer = setTimeout(layoutEventFlow, 150);
+});
+
+// Show who's running the event so players know who to contact for help. Only
+// shown to non-organizers — the organizer already knows who they are.
 function renderOrganizer() {
   const el = document.getElementById('organizer-info');
   if (!el) return;
+  if (canManage()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
   const name = state.owner_name || 'Unknown';
   el.innerHTML = `Organizer: <strong>${escapeHtml(name)}</strong>`
     + (state.owner_discord ? ` · Discord <strong>${escapeHtml(state.owner_discord)}</strong>` : '');
 }
 
 // ── Edit event metadata ─────────────────────────────────────────────────────────
+
+let eeAdvanced = false;   // the advanced flag to save (Simple events can upgrade)
+
+// One-way upgrade: reveal the Advanced fields so the organiser can configure them.
+function upgradeToAdvanced() {
+  eeAdvanced = true;
+  const editModal = document.getElementById('edit-event-modal');
+  editModal.classList.add('mode-advanced');
+  editModal.classList.remove('mode-simple');
+  document.querySelectorAll('#edit-event-modal .ee-adv').forEach(el => el.classList.remove('hidden'));
+  document.getElementById('ee-upgrade-row').classList.add('hidden');
+  onStructureChange('ee');   // re-apply the dependent sub-blocks the bulk reveal exposed
+  toggleTableOpts('ee');
+  onProxyToggle('ee');
+}
 
 function openEditEventModal() {
   document.getElementById('ee-name').value        = state.name || '';
@@ -594,18 +919,42 @@ function openEditEventModal() {
   document.getElementById('ee-decklists').checked = !!state.requires_decklists;
   document.getElementById('ee-decklist-deadline').value = state.decklist_deadline || '';
   document.getElementById('ee-validation-format').value = state.validation_format || 'none';
+  document.getElementById('ee-allow-proxies').checked = !!state.allow_proxies;
+  document.getElementById('ee-allow-gold').checked = !!state.allow_gold_border;
+  document.getElementById('ee-allow-ce').checked = !!state.allow_ce;
+  document.getElementById('ee-allow-ie').checked = !!state.allow_ie;
+  document.getElementById('ee-proxy-policy').value = state.proxy_policy || 'unlimited';
+  document.getElementById('ee-proxy-limit').value = state.proxy_limit || '';
+  document.getElementById('ee-proxy-note').value = state.proxy_note || '';
+  onProxyToggle('ee');
+  document.getElementById('ee-tables').checked = !!state.tables_enabled;
+  document.getElementById('ee-table-start').value = state.table_start || '';
+  document.getElementById('ee-table-end').value = state.table_end || '';
+  document.getElementById('ee-table-excluded').value = formatTableList(state.tables_excluded);
+  document.getElementById('ee-table-labels').value = formatTableLabels(state.table_labels);
   document.getElementById('ee-cost').value        = state.entry_cost || '';
   document.getElementById('ee-payment').value     = state.payment_url || '';
   document.getElementById('ee-date').value        = state.date || '';
   document.getElementById('ee-time').value         = state.start_time || '';
+  document.getElementById('ee-location').value     = state.location || '';
+  // Seed the captured place from the saved coords so leaving Location unchanged keeps
+  // them; picking a new place (or editing the text) updates/drops them on save.
+  if (state.lat != null && state.lng != null)
+    placeData['ee-location'] = { location: state.location || '', lat: state.lat, lng: state.lng, place_id: state.place_id || '' };
+  else delete placeData['ee-location'];
   document.getElementById('ee-rounds').value      = state.num_rounds || '';
   document.getElementById('ee-cap').value         = state.registration_cap || '';
   document.getElementById('ee-reg-type').value    = state.registration_type || 'open';
   document.getElementById('ee-reg-start').value   = state.registration_start || '';
   document.getElementById('ee-reg-end').value     = state.registration_end || '';
   document.getElementById('ee-unenroll-end').value = state.unenroll_end || '';
+  document.getElementById('ee-self-drop').checked = state.self_service_drop_enabled !== false;
+  document.getElementById('ee-drop-policy').value = state.drop_policy_text || '';
+  document.getElementById('ee-refund-policy').value = state.refund_policy_text || '';
+  document.getElementById('ee-refund-window').value = state.refund_window_end || '';
   document.getElementById('ee-entry-code').value  = state.entry_code || '';
   document.getElementById('ee-round-timer').value = state.round_timer_minutes || '';
+  document.getElementById('ee-auto-start-timer').checked = !!state.auto_start_timer;
   document.getElementById('ee-delay-pairings').checked  = !!state.delay_pairings;
   document.getElementById('ee-delay-standings').checked = !!state.delay_standings;
   document.getElementById('ee-require-checkin').checked  = !!state.require_check_in;
@@ -617,9 +966,19 @@ function openEditEventModal() {
   const tags = state.tags || [];
   document.querySelectorAll('#ee-tags input').forEach(c => { c.checked = tags.includes(c.value); });
   // Simple events show only the Simple fields here, matching their creation form;
-  // Advanced events show everything.
+  // Advanced events show everything. A Simple event can be upgraded to Advanced
+  // (one-way) via the button, which reveals the rest.
+  eeAdvanced = !!state.advanced;
+  const editModal = document.getElementById('edit-event-modal');
+  editModal.classList.toggle('mode-advanced', eeAdvanced);
+  editModal.classList.toggle('mode-simple', !eeAdvanced);
   document.querySelectorAll('#edit-event-modal .ee-adv')
-    .forEach(el => el.classList.toggle('hidden', !state.advanced));
+    .forEach(el => el.classList.toggle('hidden', !eeAdvanced));
+  document.getElementById('ee-upgrade-row').classList.toggle('hidden', eeAdvanced);
+  // Table options are a dependent sub-block: re-hide them unless tables are on
+  // (the .ee-adv bulk toggle above would otherwise reveal them for advanced events).
+  toggleTableOpts('ee');
+  refreshEditTableWarning();
   document.getElementById('edit-event-modal').classList.remove('hidden');
 }
 
@@ -672,22 +1031,47 @@ function checkedTags(containerId) {
   return [...document.querySelectorAll(`#${containerId} input:checked`)].map(c => c.value);
 }
 
+// Table settings reveal with the "Assign tables" checkbox; the capacity warning
+// is checked against the current active-player count.
+function onEditTablesChange() {
+  toggleTableOpts('ee');
+  refreshEditTableWarning();
+}
+function refreshEditTableWarning() {
+  const active = (state.players || []).filter(p => !p.dropped).length;
+  refreshTableWarning('ee', active);
+}
+
 async function saveEventDetails() {
   if (!document.getElementById('ee-name').value.trim()) {
-    alert('Event name is required.'); document.getElementById('ee-name').focus(); return;
+    alertDialog('Event name is required.'); document.getElementById('ee-name').focus(); return;
   }
   const rStart = document.getElementById('ee-reg-start').value;
   const rEnd   = document.getElementById('ee-reg-end').value;
   if (rStart && rEnd && rEnd < rStart) {
-    alert('Registration close date is before the open date.'); return;
+    alertDialog('Registration close date is before the open date.'); return;
   }
   // Changing the validation format re-checks every submitted decklist — confirm.
   const newFmt = document.getElementById('ee-validation-format').value;
   if (newFmt !== (state.validation_format || 'none') && state.players.some(p => p.has_decklist)
-      && !confirm('Changing the decklist validation format will re-check all submitted decklists. Continue?')) {
+      && !await confirmDialog('Changing the decklist validation format will re-check all submitted decklists. Continue?',
+                              { okLabel: 'Continue' })) {
     return;
   }
+  // Changing print-legality policy after players have registered may affect their
+  // decklists — confirm (AC: change after registration opens requires confirmation).
+  const policyPairs = [['ee-allow-proxies', 'allow_proxies'], ['ee-allow-gold', 'allow_gold_border'],
+                       ['ee-allow-ce', 'allow_ce'], ['ee-allow-ie', 'allow_ie']];
+  const policyChanged = policyPairs.some(([id, key]) =>
+    document.getElementById(id).checked !== !!state[key]);
+  if (policyChanged && (state.players || []).length
+      && !await confirmDialog('Changing the allowed card printings after players have registered may affect their decklists. Continue?',
+                              { okLabel: 'Continue' })) {
+    return;
+  }
+  const place = placeFields('ee-location');
   const body = {
+    advanced:         eeAdvanced,
     name:             document.getElementById('ee-name').value,
     event_type:       document.getElementById('ee-type').value,
     format:           document.getElementById('ee-format').value,
@@ -696,6 +1080,10 @@ async function saveEventDetails() {
     payment_url:      document.getElementById('ee-payment').value,
     date:             document.getElementById('ee-date').value,
     start_time:       document.getElementById('ee-time').value,
+    location:         place.location,
+    lat:              place.lat,
+    lng:              place.lng,
+    place_id:         place.place_id,
     num_rounds:       parseInt(document.getElementById('ee-rounds').value) || 0,
     registration_cap: parseInt(document.getElementById('ee-cap').value) || 0,
     test_mode:        document.getElementById('ee-test-mode').checked,
@@ -706,6 +1094,18 @@ async function saveEventDetails() {
     requires_decklists: document.getElementById('ee-decklists').checked,
     decklist_deadline: document.getElementById('ee-decklist-deadline').value,
     validation_format: document.getElementById('ee-validation-format').value,
+    allow_proxies:     document.getElementById('ee-allow-proxies').checked,
+    allow_gold_border: document.getElementById('ee-allow-gold').checked,
+    allow_ce:          document.getElementById('ee-allow-ce').checked,
+    allow_ie:          document.getElementById('ee-allow-ie').checked,
+    proxy_policy:      document.getElementById('ee-proxy-policy').value,
+    proxy_limit:       parseInt(document.getElementById('ee-proxy-limit').value) || 0,
+    proxy_note:        document.getElementById('ee-proxy-note').value,
+    tables_enabled:   document.getElementById('ee-tables').checked,
+    table_start:      parseInt(document.getElementById('ee-table-start').value) || 1,
+    table_end:        parseInt(document.getElementById('ee-table-end').value) || 0,
+    tables_excluded:  parseTableList(document.getElementById('ee-table-excluded').value),
+    table_labels:     parseTableLabels(document.getElementById('ee-table-labels').value),
     prize_deadline_days: parseInt(document.getElementById('ee-prize-deadline').value) || 0,
     rules:            document.getElementById('ee-rules').value,
     schedule:         document.getElementById('ee-schedule').value,
@@ -715,9 +1115,14 @@ async function saveEventDetails() {
     registration_start: document.getElementById('ee-reg-start').value,
     registration_end:   document.getElementById('ee-reg-end').value,
     unenroll_end:       document.getElementById('ee-unenroll-end').value,
+    self_service_drop_enabled: document.getElementById('ee-self-drop').checked,
+    drop_policy_text:   document.getElementById('ee-drop-policy').value,
+    refund_policy_text: document.getElementById('ee-refund-policy').value,
+    refund_window_end:  document.getElementById('ee-refund-window').value,
     entry_code:                document.getElementById('ee-entry-code').value,
     intentional_draws_frowned: document.getElementById('ee-draws-frowned').checked,
     round_timer_minutes:       parseInt(document.getElementById('ee-round-timer').value) || 0,
+    auto_start_timer:          document.getElementById('ee-auto-start-timer').checked,
     delay_pairings:            document.getElementById('ee-delay-pairings').checked,
     delay_standings:           document.getElementById('ee-delay-standings').checked,
     require_check_in:          document.getElementById('ee-require-checkin').checked,
@@ -730,41 +1135,26 @@ async function saveEventDetails() {
   // The header (name/format/description) is server-rendered, so reload to
   // re-render it rather than patching the DOM in two places.
   if (res.ok) location.reload();
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to save event.'); }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to save event.'); }
 }
 
 // Status pill shown to everyone — mirrors the color coding on the Events page.
 function renderStatus() {
+  // The status pill (Registration open / Round X of Y / Completed / champion) was
+  // removed from the event page — the sections themselves convey the state. The
+  // celebratory champion banner still shows when a playoff final is decided.
   const el = document.getElementById('reg-status');
-  if (!el) return;
-  const last = state.rounds[state.rounds.length - 1] || null;
+  if (el) { el.style.display = 'none'; el.textContent = ''; }
   const champ = document.getElementById('champion-banner');
-  champ.classList.add('hidden');
-
-  let cls, label;
-  if (isBracketRound(last)) {
-    if (last.length === 1 && last[0].winner_id) {
-      cls = 'reg-done'; label = `Top ${state.cut_size} champion`;
-      champ.querySelector('#champion-msg').textContent =
-        `🏆 Champion: ${seededName(last[0].winner_id)}`;
-      champ.classList.remove('hidden');
-    } else {
-      cls = 'reg-active'; label = bracketRoundName(last.length);
-    }
-  } else if (state.status === 'finished') {
-    cls = 'reg-closed'; label = 'Finished';
-  } else if (state.rounds.length) {
-    const total = state.num_rounds || Math.ceil(Math.log2(Math.max(state.players.length, 2)));
-    if (swissComplete()) { cls = 'reg-done'; label = 'Completed'; }
-    else { cls = 'reg-active'; label = `Round ${state.rounds.length} of ${total}`; }
-  } else if (state.registration === 'open') {
-    if (state.registration_type === 'invite_only') { cls = 'reg-closed'; label = 'Invite only'; }
-    else { cls = 'reg-open'; label = 'Registration open'; }
+  if (!champ) return;
+  const last = state.rounds[state.rounds.length - 1] || null;
+  if (isBracketRound(last) && last.length === 1 && last[0].winner_id) {
+    champ.querySelector('#champion-msg').textContent =
+      `🏆 Champion: ${seededName(last[0].winner_id)}`;
+    champ.classList.remove('hidden');
   } else {
-    cls = 'reg-closed'; label = 'Registration closed';
+    champ.classList.add('hidden');
   }
-  el.className = cls;
-  el.textContent = label;
 }
 
 // ── Owner controls ─────────────────────────────────────────────────────────────
@@ -777,8 +1167,10 @@ function renderOwnerActions() {
   document.getElementById('player-actions').classList.remove('hidden');
 
   // Neutral action button — the current state is conveyed by the status pill,
-  // so this just states what clicking will do.
+  // so this just states what clicking will do. Hidden once the event is complete
+  // (reopening registration on a finished event makes no sense).
   const regBtn = document.getElementById('btn-toggle-reg');
+  regBtn.classList.toggle('hidden', eventStage() === 'completed');
   regBtn.textContent = state.registration === 'open'
     ? 'Close registration'
     : 'Open registration';
@@ -811,12 +1203,11 @@ function renderOwnerActions() {
     const sizes  = [4, 8, 16].filter(n => n <= active);
     if (sizes.length) {
       pairBtn.classList.add('hidden');
-      // Highlight the size planned at creation (Swiss + Top N), if any, so the
-      // organiser just confirms it.
-      const planned = state.planned_cut_size || 0;
+      // The cut buttons replace the pair-next button here, so they carry the same
+      // primary emphasis — the swiss is done and a cut is the next action.
       cutEl.innerHTML =
         '<span style="font-size:0.85rem;color:var(--muted);margin:0 0.25rem">Cut to playoff:</span>' +
-        sizes.map(n => `<button class="btn btn-sm ${n === planned ? 'btn-primary' : ''}" onclick="cutToTop(${n})">Top ${n}</button>`).join(' ');
+        sizes.map(n => `<button class="btn btn-sm btn-primary" onclick="cutToTop(${n})">Top ${n}</button>`).join(' ');
       cutEl.classList.remove('hidden');
     } else {
       pairBtn.textContent = 'Event complete';
@@ -831,12 +1222,151 @@ function renderOwnerActions() {
     addSelfBtn.style.display = alreadyIn ? 'none' : '';
   }
 
-  // Release buttons: shown when delivery is delayed and not yet released, and
-  // there's something to reveal (a round / standings exist).
-  document.getElementById('btn-release-pairings').classList.toggle(
-    'hidden', !(state.delay_pairings && state.pairings_released === false && state.rounds.length));
+  // The pair-next button is the primary call to action only when no round is
+  // actively in progress — i.e. nothing is paired yet, the latest round's results
+  // are all in, or its timer has run out. While a round is live it stays secondary,
+  // deferring to that round's own action box.
+  const inProgress = last && !roundFinished(last) && !latestRoundTimerEnded();
+  pairBtn.classList.toggle('btn-primary', !inProgress);
+
+  // Standings release stays in the standings section; pairings release moved into
+  // the latest round's action box (see renderRounds).
   document.getElementById('btn-release-standings').classList.toggle(
     'hidden', !(state.delay_standings && state.standings_released === false && state.rounds.length));
+  renderDiscordRole();
+}
+
+// Organiser control to give all members a Discord role (only when the event is
+// linked to a Discord channel).
+function renderDiscordRole() {
+  const el = document.getElementById('discord-role-controls');
+  el.style.display = '';
+  if (!state.discord_channel_id) {
+    // Not connected — offer the web channel picker (server → channel → Link).
+    el.innerHTML = `
+      <div class="discord-line">
+        <button class="btn btn-sm" onclick="showChannelPicker()">Connect a Discord channel</button></div>
+      <div id="discord-picker" class="hidden" style="margin-top:0.5rem">
+        <select id="dc-guild" class="discord-select" onchange="loadDiscordChannels()"><option value="">Select a server…</option></select>
+        <select id="dc-channel" class="discord-select" style="margin-left:0.4rem"><option value="">Select a channel…</option></select>
+        <button class="btn btn-sm btn-primary" style="margin-left:0.4rem" onclick="linkDiscordChannel()">Link</button>
+        <span id="dc-msg" class="field-help" style="display:block;margin-top:0.35rem"></span>
+      </div>`;
+    return;
+  }
+  const chan = state.discord_channel_name ? '#' + state.discord_channel_name : 'a channel';
+  const roleBtns = state.discord_role_id
+    ? `<span class="role-tag">@${escapeHtml(state.discord_role_name || 'event role')}</span>
+       <button class="btn btn-sm" onclick="assignDiscordRole(true)">Re-sync role</button>
+       <button class="btn btn-sm btn-danger" onclick="removeDiscordRole()">Remove role</button>`
+    : `<button class="btn btn-sm" onclick="assignDiscordRole(false)">Create Discord role</button>`;
+  const roleCheckbox = state.discord_role_id
+    ? `<label style="font-size:0.85rem;font-weight:400"><input type="checkbox" id="announce-mention">
+         @mention ${escapeHtml(state.discord_role_name || 'event role')}</label>`
+    : '';
+  el.innerHTML = `
+    <div class="discord-line"><strong>Discord:</strong> posting to ${escapeHtml(chan)}
+      <button class="btn btn-sm" onclick="showAnnounceForm()">Announce</button>
+      <button class="btn btn-sm btn-danger" onclick="unlinkDiscord()">Disconnect</button></div>
+    <div id="discord-announce" class="hidden" style="margin-top:0.5rem;max-width:420px;display:flex;flex-direction:column;gap:0.4rem">
+      <textarea id="announce-msg" rows="2" placeholder="Optional message posted above the event card"
+                style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.9rem;font-family:inherit"></textarea>
+      ${roleCheckbox}
+      <div><button class="btn btn-sm btn-primary" onclick="sendAnnounce()">Post announcement</button></div>
+    </div>
+    <div class="discord-line" style="margin-top:0.5rem">${roleBtns}</div>
+    <span id="dc-msg" class="field-help" style="display:block;margin-top:0.35rem"></span>`;
+}
+
+async function showChannelPicker() {
+  const res = await fetch(`/api/events/${EVENT_ID}/discord/guilds`);
+  const data = res.ok ? await res.json() : { linked: false, guilds: [] };
+  // We can only tell which servers you administer if your Discord is linked —
+  // send you to link it first.
+  if (!data.linked) {
+    await alertDialog('Link your Discord account first so we can show the servers you administer.');
+    window.location = '/auth/login/discord?link=1&next=' + encodeURIComponent(location.pathname);
+    return;
+  }
+  const guilds = data.guilds || [];
+  // No servers → the bot isn't installed in any server you administer: send you
+  // to the install/help page instead of showing an empty picker.
+  if (!guilds.length) {
+    window.open('/discord-bot', '_blank', 'noopener');
+    return;
+  }
+  const sel = document.getElementById('dc-guild');
+  sel.innerHTML = '<option value="">Select a server…</option>' +
+    guilds.map(g => `<option value="${escapeHtml(g.id)}">${escapeHtml(g.name)}</option>`).join('');
+  document.getElementById('discord-picker').classList.remove('hidden');
+}
+
+async function loadDiscordChannels() {
+  const gid = document.getElementById('dc-guild').value;
+  const sel = document.getElementById('dc-channel');
+  if (!gid) { sel.innerHTML = '<option value="">Select a channel…</option>'; return; }
+  sel.innerHTML = '<option value="">Loading…</option>';
+  const res = await fetch(`/api/events/${EVENT_ID}/discord/channels?guild_id=${encodeURIComponent(gid)}`);
+  const chans = res.ok ? await res.json() : [];
+  sel.innerHTML = '<option value="">Select a channel…</option>' +
+    chans.map(c => `<option value="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}">#${escapeHtml(c.name)}</option>`).join('');
+}
+
+async function linkDiscordChannel() {
+  const gid = document.getElementById('dc-guild').value;
+  const chSel = document.getElementById('dc-channel');
+  const channel_id = chSel.value;
+  if (!channel_id) { document.getElementById('dc-msg').textContent = 'Choose a channel.'; return; }
+  const channel_name = chSel.options[chSel.selectedIndex].dataset.name || '';
+  const res = await fetch(`/api/events/${EVENT_ID}/discord/link`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ channel_id, guild_id: gid, channel_name }),
+  });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); document.getElementById('dc-msg').textContent = e.error || 'Link failed.'; }
+}
+
+function showAnnounceForm() {
+  document.getElementById('discord-announce').classList.toggle('hidden');
+}
+
+async function sendAnnounce() {
+  const message = document.getElementById('announce-msg').value.trim();
+  const mentionEl = document.getElementById('announce-mention');
+  const res = await fetch(`/api/events/${EVENT_ID}/discord/announce`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ message, mention_role: !!(mentionEl && mentionEl.checked) }),
+  });
+  const d = await res.json().catch(() => ({}));
+  document.getElementById('dc-msg').textContent = res.ok ? '✓ Posted to Discord.' : (d.error || 'Could not post.');
+}
+
+async function unlinkDiscord() {
+  if (!await confirmDialog('Disconnect Discord? The event role (if any) is removed and pairings '
+      + 'stop auto-posting to the channel.', { okLabel: 'Disconnect', danger: true })) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/discord/unlink`, { method: 'POST' });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not disconnect.'); }
+}
+
+async function assignDiscordRole(isResync) {
+  const res = await fetch(`/api/events/${EVENT_ID}/discord-role`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}',
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { await alertDialog(d.error || 'Could not set up the Discord role.'); return; }
+  await alertDialog(`${isResync ? 'Re-syncing' : 'Created'} @${d.role_name}. Members with a linked `
+        + `Discord are being added — a summary will post to your linked channel. Mention `
+        + `@${d.role_name} there to announce to everyone.`);
+  await init();
+}
+
+async function removeDiscordRole() {
+  if (!await confirmDialog('Remove the event role from your Discord server?',
+                           { okLabel: 'Remove role', danger: true })) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/discord-role`, { method: 'DELETE' });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not remove the role.'); }
 }
 
 async function releaseDelivery(what) {
@@ -845,7 +1375,7 @@ async function releaseDelivery(what) {
     body: JSON.stringify({ what }),
   });
   if (res.ok) await init();
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Release failed.'); }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Release failed.'); }
 }
 
 async function toggleRegistration() {
@@ -860,7 +1390,7 @@ async function toggleRegistration() {
 async function pairNextRound() {
   const res = await fetch(`/api/events/${EVENT_ID}/pair`, { method: 'POST' });
   if (res.ok) await init();
-  else { const e = await res.json(); alert(e.error || 'Pairing failed.'); }
+  else { const e = await res.json(); alertDialog(e.error || 'Pairing failed.'); }
 }
 
 // ── Registration banners ───────────────────────────────────────────────────────
@@ -868,45 +1398,97 @@ async function pairNextRound() {
 function renderBanners() {
   const regBanner    = document.getElementById('register-banner');
   const playerBanner = document.getElementById('player-banner');
+  const waitlistBanner = document.getElementById('waitlist-banner');
   regBanner.classList.add('hidden');
   playerBanner.classList.add('hidden');
+  waitlistBanner.classList.add('hidden');
 
   // Already a participant (Google account or guest) — show the participant
   // banner even to managers, so an organiser who registered can still withdraw.
   if (myPlayer && !myPlayer.dropped) {
     playerBanner.classList.remove('hidden');
     const isGuest = !myPlayer.google_id && guestToken;
-    document.getElementById('player-banner-msg').textContent = isGuest
+    // Self-service drops may be turned off, or the drop deadline may have passed —
+    // in either case hide Withdraw and tell the player to reach the organiser.
+    const dropBlocked = state.self_service_drop_enabled === false
+      ? "Self-service drops are off for this event — contact the organizer to drop."
+      : (state.unenroll_end && new Date().toISOString().slice(0, 10) > state.unenroll_end)
+        ? `The drop deadline (${state.unenroll_end}) has passed — contact the organizer to drop.`
+        : '';
+    const msgEl = document.getElementById('player-banner-msg');
+    // Once the event is over, congratulate them with their final placing (plus a
+    // link to their decklist) instead of the "you're registered" / withdraw copy.
+    if (eventStage() === 'completed') {
+      const place = eventPlacement();
+      msgEl.innerHTML = place ? `You finished <strong>${place}</strong> in this event. GGs!`
+                              : 'This event is complete. GGs!';
+      document.getElementById('withdraw-btn').style.display = 'none';
+      document.getElementById('guest-link-btn').style.display = isGuest ? '' : 'none';
+      const dbtn = document.getElementById('btn-decklist');
+      if (state.requires_decklists && myPlayer.has_decklist) {
+        dbtn.textContent = 'View decklist';
+        dbtn.style.display = '';
+      } else {
+        dbtn.style.display = 'none';
+      }
+      return;
+    }
+    let bannerMsg = isGuest
       ? "You're in! Save your private link to report results from another device."
       : "You're registered for this event.";
+    if (dropBlocked) bannerMsg += ' ' + dropBlocked;
+    msgEl.textContent = bannerMsg;
     // Guests have no Google session, so they can't use the Withdraw endpoint;
     // offer the private link instead (organiser can drop them if needed).
-    document.getElementById('withdraw-btn').style.display   = isGuest ? 'none' : '';
+    document.getElementById('withdraw-btn').style.display   = (isGuest || dropBlocked) ? 'none' : '';
     document.getElementById('guest-link-btn').style.display = isGuest ? '' : 'none';
     renderDecklistButton();
     return;
   }
 
+  // Already on the waitlist — show position + a way to leave.
+  if (state.my_waitlist) {
+    waitlistBanner.classList.remove('hidden');
+    const w = state.my_waitlist;
+    document.getElementById('waitlist-banner-msg').textContent =
+      `You're on the waitlist — position ${w.position} of ${w.total}. `
+      + 'The organizer will promote players as spots open up.';
+    return;
+  }
+
   if (canManage()) return;  // managers who aren't playing don't register
 
-  // Not yet a participant — offer to join (Google sign-in flow or guest-by-name).
+  // A finished event has nothing to offer a non-participant — skip the
+  // "Registration is closed" banner entirely.
+  if (eventStage() === 'completed') return;
+
+  // Not yet a participant — offer to join (or join the waitlist when full).
   regBanner.classList.remove('hidden');
   const blocked = selfRegBlockedReason();
+  const signinBtn = document.getElementById('register-signin-btn');
+  const selfBtn   = document.getElementById('register-self-btn');
+  const waitBtn   = document.getElementById('join-waitlist-btn');
+  signinBtn.style.display = selfBtn.style.display = waitBtn.style.display = 'none';
   if (!blocked) {
     const cap     = state.registration_cap || 0;
     const active  = state.players.filter(p => !p.dropped).length;
     const capText = cap ? ` (${active}/${cap} spots taken)` : '';
-    let msg = `Registration is open${capText}.`;
+    const full    = state.is_full;
+    let msg = full ? `This event is full${capText}.` : `Registration is open${capText}.`;
     if (state.registration_end) msg += ` Closes ${state.registration_end}.`;
-    // Not signed in: the Register button leads to the login chooser (sign in or
-    // create an account), then they come back and register.
-    msg += (me.signed_in ? '' : ' Sign in or create an account to register.');
+    if (full) {
+      msg += me.signed_in ? ' Join the waitlist to claim a spot if one opens.'
+                          : ' Sign in to join the waitlist.';
+    } else if (!me.signed_in) {
+      msg += ' Sign in or create an account to register.';
+    }
     document.getElementById('register-banner-msg').textContent = msg;
-    const signinBtn = document.getElementById('register-signin-btn');
     signinBtn.href = '/auth/login?next=' +
       encodeURIComponent(window.location.pathname + window.location.search);
-    signinBtn.style.display = me.signed_in ? 'none' : '';
-    document.getElementById('register-self-btn').style.display = me.signed_in ? '' : 'none';
+    signinBtn.textContent = full ? 'Sign in to join the waitlist' : 'Register for this event';
+    if (!me.signed_in)   signinBtn.style.display = '';
+    else if (full)       waitBtn.style.display = '';
+    else                 selfBtn.style.display = '';
     document.getElementById('register-buttons').classList.remove('hidden');
     document.getElementById('register-form').classList.add('hidden');
     regBanner.classList.remove('banner-closed');
@@ -958,8 +1540,9 @@ function renderDecklistValidation(v, flash) {
 
 async function openMyDecklist() {
   const res = await fetch(`/api/events/${EVENT_ID}/decklist`, { headers: _guestHeaders() });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not load your decklist.'); return; }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not load your decklist.'); return; }
   const d = await res.json();
+  document.getElementById('decklist-name').value = d.name || '';
   setDecklistMode(!!d.locked, d.text || '');   // locked = read-only display
   document.getElementById('decklist-modal-title').textContent =
     d.locked ? 'Your decklist' : (d.text ? 'Edit your decklist' : 'Submit your decklist');
@@ -969,17 +1552,57 @@ async function openMyDecklist() {
   if (d.locked) noteParts.push(`The deadline (${d.deadline}) has passed — your list is read-only.`);
   else if (state.decklist_deadline) noteParts.push(`Due by ${state.decklist_deadline}.`);
   document.getElementById('decklist-modal-note').textContent = noteParts.join(' ');
+  renderPrintHelp(d.locked);
   document.getElementById('decklist-save-btn').style.display = d.locked ? 'none' : '';
+  document.getElementById('decklist-save-close-btn').style.display = d.locked ? 'none' : '';
   document.getElementById('moxfield-import').style.display = (MOXFIELD_IMPORT && !d.locked) ? 'flex' : 'none';
   document.getElementById('moxfield-url').value = '';
   renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
+  if (!d.locked) autoGrowDecklist(document.getElementById('decklist-text'));
+}
+
+// Grow the decklist textarea to fit its content (up to ~60% of the viewport, then
+// it scrolls), so the field expands instead of staying a fixed height.
+function autoGrowDecklist(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.6)) + 'px';
+}
+
+// Show which print-legality tags this event allows + how to mark a card line.
+function renderPrintHelp(locked) {
+  const el = document.getElementById('decklist-print-help');
+  el.style.display = 'none'; el.innerHTML = '';
+  if (locked) return;
+  const tags = [];
+  if (state.allow_proxies) {
+    let label = 'Proxies';
+    if (state.proxy_policy === 'limited' && state.proxy_limit) label += ` (up to ${state.proxy_limit})`;
+    else if (state.proxy_policy === 'unlimited') label += ' (no limit)';
+    tags.push([label, 'Proxy']);
+  }
+  if (state.allow_gold_border) tags.push(['Gold-border', 'Gold Border']);
+  if (state.allow_ce) tags.push(['Collector’s Edition', 'CE']);
+  if (state.allow_ie) tags.push(['International Edition', 'IE']);
+  if (!tags.length) return;
+  const items = tags.map(t => `<li>${escapeHtml(t[0])}</li>`).join('');
+  let body = `<ul class="print-allowed">${items}</ul>`
+    + `<p class="print-mark">Mark a card by adding its tag at the end of the line — e.g. `
+    + `<code>${escapeHtml('4 Lightning Bolt [' + tags[0][1] + ']')}</code>. `
+    + `Untagged cards count as normal printings.</p>`;
+  if (state.allow_proxies && state.proxy_note)
+    body += `<p class="print-proxy"><strong>Proxy policy:</strong> ${escapeHtml(state.proxy_note)}</p>`;
+  el.innerHTML = `<summary>Allowed printings</summary><div class="print-body">${body}</div>`;
+  el.open = true;
+  el.style.display = '';
 }
 
 // Switch the modal between editable (textarea) and read-only (static text block).
 function setDecklistMode(readonly, text) {
   const ta = document.getElementById('decklist-text');
   const view = document.getElementById('decklist-view');
+  const nameField = document.getElementById('decklist-name-field');
+  if (nameField) nameField.style.display = readonly ? 'none' : '';
   if (readonly) {
     ta.style.display = 'none';
     const has = (text || '').trim();
@@ -1006,32 +1629,41 @@ async function importMoxfield(btn) {
       body: JSON.stringify({ url }),
     });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) { alert(d.error || 'Could not import from Moxfield.'); return; }
+    if (!res.ok) { alertDialog(d.error || 'Could not import from Moxfield.'); return; }
     document.getElementById('decklist-text').value = d.text || '';
+    if (d.name) document.getElementById('decklist-name').value = d.name;
     document.getElementById('decklist-result').innerHTML =
       '<p class="dl-note">Imported from Moxfield — review and Save to submit.</p>';
   } finally { btn.disabled = false; btn.textContent = orig; }
 }
 
-async function saveMyDecklist() {
-  const btn = document.getElementById('decklist-save-btn');
-  const orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Saving…';
+// `close` true → save and close the modal ("Save"); false → save and stay open
+// to keep editing ("Save and continue editing").
+async function saveMyDecklist(close) {
+  const saveBtn  = document.getElementById('decklist-save-btn');
+  const closeBtn = document.getElementById('decklist-save-close-btn');
+  const active = close ? closeBtn : saveBtn;
+  const orig = active.textContent;
+  saveBtn.disabled = closeBtn.disabled = true;
+  active.textContent = 'Saving…';
   try {
     const text = document.getElementById('decklist-text').value;
+    const name = document.getElementById('decklist-name').value;
     const res = await fetch(`/api/events/${EVENT_ID}/decklist`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ..._guestHeaders() },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, name }),
     });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save your decklist.'); return; }
+    if (!res.ok) { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not save your decklist.'); return; }
     const d = await res.json();
     if (myPlayer) myPlayer.has_decklist = d.has_decklist;
     const p = state.players.find(x => x.id === (myPlayer && myPlayer.id));
     if (p) { p.has_decklist = d.has_decklist; p.decklist_status = d.validation ? d.validation.status : null; }
-    renderDecklistValidation(d.validation, 'Saved.');   // keep modal open to show feedback
     renderPlayers();
-  } finally { btn.disabled = false; btn.textContent = orig; }
+    renderDecklistButton();   // first save flips "Submit decklist" → "Edit decklist"
+    if (close) closeDecklistModal();
+    else renderDecklistValidation(d.validation, 'Saved.');   // keep modal open to show feedback
+  } finally { saveBtn.disabled = closeBtn.disabled = false; active.textContent = orig; }
 }
 
 function closeDecklistModal() {
@@ -1041,7 +1673,7 @@ function closeDecklistModal() {
 // Organiser: view a specific player's submitted decklist (read-only).
 async function openPlayerDecklist(playerId) {
   const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/decklist`);
-  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not load that decklist.'); return; }
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not load that decklist.'); return; }
   const d = await res.json();
   document.getElementById('decklist-modal-title').textContent = `${d.name}'s decklist`;
   document.getElementById('decklist-modal-note').textContent =
@@ -1069,31 +1701,23 @@ function selfRegBlockedReason() {
 // Round-timer widget. A timer no longer auto-starts on pairing: the organiser
 // starts it with the Start-timer button, after which it counts down live.
 let roundTimerInterval = null;
+// Drives the countdown box rendered inside the latest round card. The Start /
+// Restart control now lives in that round's action box; this only fills in and
+// ticks the countdown, and reveals it once the round timer has been started.
 function renderRoundTimer() {
-  const el  = document.getElementById('round-timer');
-  const txt = document.getElementById('timer-text');
-  const btn = document.getElementById('timer-btn');
   if (roundTimerInterval) { clearInterval(roundTimerInterval); roundTimerInterval = null; }
+  const el = document.getElementById('round-timer');
+  if (!el) return;   // no countdown box in the DOM (no timer, or round finished)
+  const txt = document.getElementById('timer-text');
   const mins = state.round_timer_minutes || 0;
   const last = state.rounds[state.rounds.length - 1] || null;
-  // Only when a timer is configured and the current round isn't fully scored.
-  if (!mins || !last || roundFinished(last)) { el.classList.add('hidden'); return; }
-
-  if (!state.round_started_at) {
-    // Not started yet — organiser sees a Start button; players see nothing.
-    if (!canManage()) { el.classList.add('hidden'); return; }
-    el.classList.remove('hidden', 'timer-up');
-    txt.textContent = 'Not started';
-    txt.classList.add('timer-idle');
-    btn.textContent = 'Start timer';
-    btn.style.display = '';
+  // Hidden until the organiser starts the timer for the current (unscored) round.
+  if (!mins || !last || roundFinished(last) || !state.round_started_at) {
+    el.classList.add('hidden');
     return;
   }
 
-  // Running — live countdown, plus a Restart button for the organiser.
-  txt.classList.remove('timer-idle');
-  btn.textContent = 'Restart';
-  btn.style.display = canManage() ? '' : 'none';
+  el.classList.remove('hidden', 'timer-up');
   const endMs = new Date(state.round_started_at).getTime() + mins * 60000;
   const tick = () => {
     const remaining = endMs - Date.now();
@@ -1104,30 +1728,79 @@ function renderRoundTimer() {
     } else {
       txt.textContent = "Time!";
       el.classList.add('timer-up');
+      // Time's up — the pair-next-round button becomes the primary call to action.
+      const pb = document.getElementById('btn-pair');
+      if (pb) pb.classList.add('btn-primary');
     }
   };
   tick();
   roundTimerInterval = setInterval(tick, 1000);
-  el.classList.remove('hidden');
+}
+
+// True once the latest round's configured timer has elapsed (drives pair-next
+// emphasis even before any result is in).
+function latestRoundTimerEnded() {
+  const mins = state.round_timer_minutes || 0;
+  const last = state.rounds[state.rounds.length - 1] || null;
+  if (!mins || !last || !state.round_started_at) return false;
+  return Date.now() >= new Date(state.round_started_at).getTime() + mins * 60000;
 }
 
 // Start (or restart) the round timer — both stamp the start time to now.
 async function startTimer() {
   const res = await fetch(`/api/events/${EVENT_ID}/timer`, { method: 'POST' });
-  if (res.ok) { const d = await res.json(); state.round_started_at = d.round_started_at; renderRoundTimer(); }
-  else { alert('Could not start the timer.'); }
+  if (res.ok) { const d = await res.json(); state.round_started_at = d.round_started_at; render(); }
+  else { alertDialog('Could not start the timer.'); }
 }
 
 // Tell a registered player when an intentional draw this round locks their cut.
 function renderIdBanner() {
   const el = document.getElementById('id-banner');
   el.classList.add('hidden');
+  // The advisory only makes sense while a cut is still being raced for: hide it
+  // once the top cut has started, and when there aren't more active players than
+  // cut slots (everyone's already in, so there's nothing to draw into).
+  const cut = state.planned_cut_size || 0;
+  const activeCount = state.players.filter(p => !p.dropped).length;
+  if (state.cut_size > 0 || !cut || activeCount <= cut) return;
   if (myPlayer && !myPlayer.dropped && (state.id_safe_ids || []).includes(myPlayer.id)) {
     document.getElementById('id-banner-msg').textContent =
       `You can intentionally draw this round and make the Top ${state.planned_cut_size}. You legend!`;
     el.classList.remove('hidden');
   }
 }
+
+// Organiser-only alert: when two players fixed to different tables are paired,
+// assign_tables seats the match at the lower table — flag it so the organiser can
+// physically adjust or manually move the match (the banner clears if they move it
+// to a neutral table). Persists while the clash stands, for the latest round.
+function renderSeatConflicts() {
+  const el = document.getElementById('seat-conflict-banner');
+  el.classList.add('hidden');
+  if (!canManage() || !state.tables_enabled || !state.rounds.length) return;
+  const round = state.rounds[state.rounds.length - 1];
+  const fixedOf = {};
+  state.players.forEach(p => { if (p.fixed_table) fixedOf[p.id] = p.fixed_table; });
+  const conflicts = [];
+  for (const m of round) {
+    if (m.is_bye) continue;
+    const f1 = fixedOf[m.player1_id], f2 = fixedOf[m.player2_id];
+    // A clash only when both are fixed to *different* tables and the match is still
+    // seated at one of them (a manual move to a neutral table resolves it).
+    if (f1 && f2 && f1 !== f2 && (m.table === f1 || m.table === f2)) {
+      conflicts.push({ table: m.table, a: m.player1_id, b: m.player2_id });
+    }
+  }
+  if (!conflicts.length) return;
+  document.getElementById('seat-conflict-msg').innerHTML = conflicts.map(c =>
+    `<strong>Fixed Seating Conflict:</strong> Table ${c.table} assigned. ` +
+    `Physical adjustment may be required for ${escapeHtml(playerName(c.a))} or ${escapeHtml(playerName(c.b))}.`
+  ).join('<br>');
+  el.classList.remove('hidden');
+}
+
+// Turn the edit form's Location field into a Places autocomplete once Maps is ready.
+whenMapsReady(() => attachPlaceAutocomplete('ee-location'));
 
 function showRegisterForm() {
   document.getElementById('register-buttons').classList.add('hidden');
@@ -1165,7 +1838,7 @@ async function submitRegister() {
     const i = state.players.findIndex(p => p.id === myPlayer.id);
     if (i >= 0) state.players[i] = myPlayer; else state.players.push(myPlayer);
     render();
-  } else { const e = await res.json(); alert(e.error || 'Registration failed.'); }
+  } else { const e = await res.json(); alertDialog(e.error || 'Registration failed.'); }
 }
 
 function copyGuestLink(btn) {
@@ -1175,11 +1848,23 @@ function copyGuestLink(btn) {
     btn.textContent = 'Link copied!'; btn.disabled = true;
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
   };
-  navigator.clipboard.writeText(link).then(done, () => prompt('Your private link:', link));
+  navigator.clipboard.writeText(link).then(done, () => promptDialog('Your private link:', link, { okLabel: 'Done' }));
+}
+
+function dropConfirmMessage() {
+  const lines = ['Withdraw from this event?'];
+  if (state.unenroll_end) lines.push(`\nDrop deadline: ${state.unenroll_end}`);
+  if (state.drop_policy_text)   lines.push(`\n${state.drop_policy_text}`);
+  if (state.refund_policy_text || state.refund_window_end) {
+    let r = `\nRefund policy: ${state.refund_policy_text || ''}`.trimEnd();
+    if (state.refund_window_end) r += ` (refunds offered through ${state.refund_window_end})`;
+    lines.push(r);
+  }
+  return lines.join('\n');
 }
 
 async function unregister() {
-  if (!confirm('Withdraw from this event?')) return;
+  if (!await confirmDialog(dropConfirmMessage(), { okLabel: 'Withdraw', danger: true })) return;
   const res = await fetch(`/api/events/${EVENT_ID}/unregister`, { method: 'POST' });
   if (res.ok) {
     if (state.rounds.length) { myPlayer.dropped = true; }
@@ -1187,13 +1872,181 @@ async function unregister() {
     render();
   } else {
     const e = await res.json().catch(() => ({}));
-    alert(e.error || 'Could not withdraw.');
+    alertDialog(e.error || 'Could not withdraw.');
   }
+}
+
+// Re-fetch the event and re-render (after a waitlist action changes server state).
+async function reloadState() {
+  state = await (await fetch(`/api/events/${EVENT_ID}`)).json();
+  myPlayer = me.signed_in
+    ? (state.players.find(p => p.google_id === me.user.id) || null)
+    : (guestPlayerId ? (state.players.find(p => p.id === guestPlayerId) || null) : null);
+  render();
+}
+
+// ── Waitlist ─────────────────────────────────────────────────────────────────
+
+async function joinWaitlist() {
+  const body = {};
+  const code = document.getElementById('entry-code-input');
+  if (code && code.value.trim()) body.entry_code = code.value.trim();
+  const res = await fetch(`/api/events/${EVENT_ID}/waitlist`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) await reloadState();
+  else alertDialog(d.error || 'Could not join the waitlist.');
+}
+
+async function leaveWaitlist() {
+  if (!await confirmDialog('Leave the waitlist for this event?',
+                           { okLabel: 'Leave Waitlist', danger: true })) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/waitlist/leave`, { method: 'POST' });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) await reloadState();
+  else alertDialog(d.error || 'Could not leave the waitlist.');
+}
+
+async function promoteWaitlist(wid, name) {
+  if (!await confirmDialog(`Promote ${name} into the event?`, { okLabel: 'Promote' })) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/waitlist/${wid}/promote`, { method: 'POST' });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) { await reloadState(); }
+  else alertDialog(d.error || 'Could not promote that player.');
+}
+
+async function removeWaitlist(wid, name) {
+  if (!await confirmDialog(`Remove ${name} from the waitlist?`,
+                           { okLabel: 'Remove', danger: true })) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/waitlist/${wid}/remove`, { method: 'POST' });
+  const d = await res.json().catch(() => ({}));
+  if (res.ok) await reloadState();
+  else alertDialog(d.error || 'Could not remove that player.');
+}
+
+// Organiser-only waitlist roster: active queue (oldest first) with promote/remove.
+function renderWaitlist() {
+  const section = document.getElementById('waitlist-section');
+  const activity = document.getElementById('activity-section');
+  if (!section) return;
+  if (!canManage()) { section.classList.add('hidden'); if (activity) activity.classList.add('hidden'); return; }
+  if (activity) activity.classList.remove('hidden');
+  const active = (state.waitlist || []).filter(w => w.status === 'waitlisted')
+                    .sort((a, b) => (a.joined_at || '').localeCompare(b.joined_at || ''));
+  // Nothing waiting → no section at all (organisers only see it when it matters).
+  if (!active.length) { section.classList.add('hidden'); return; }
+  section.classList.remove('hidden');
+  document.getElementById('waitlist-count').textContent = active.length;
+  const q = (document.getElementById('waitlist-search').value || '').trim().toLowerCase();
+  const shown = q ? active.filter(w =>
+      (w.name || '').toLowerCase().includes(q) ||
+      (w.email || '').toLowerCase().includes(q) ||
+      (w.discord || '').toLowerCase().includes(q)) : active;
+  const body = document.getElementById('waitlist-list');
+  body.innerHTML = shown.map(w => {
+    // Compact row (avoids overlap on mobile): position + name, with the info and
+    // Promote/Remove actions tucked behind a Details button — like the roster.
+    const nameEl = w.google_id
+      ? `<a class="player-name" href="/players/${encodeURIComponent(w.google_id)}">${escapeHtml(w.name)}</a>`
+      : `<span class="player-name">${escapeHtml(w.name)}</span>`;
+    return `<li class="waitlist-row">
+      <span class="wl-pos">${active.indexOf(w) + 1}</span>
+      <span class="wl-info">${nameEl}</span>
+      <span class="wl-actions">
+        <button class="btn btn-sm player-details-btn" onclick="openWaitlistDetails('${w.id}')">Details</button>
+      </span>
+    </li>`;
+  }).join('') || '<p class="empty">No waitlisted players match your search.</p>';
+}
+
+// Waitlist "Details" — info + Promote/Remove for one waitlisted player (mirrors
+// the roster's player-details modal so mobile rows stay compact).
+let wlDetailsId = null;
+function openWaitlistDetails(wid) {
+  const w = (state.waitlist || []).find(x => x.id === wid && x.status === 'waitlisted');
+  if (!w) return;
+  wlDetailsId = wid;
+  document.getElementById('wld-title').textContent = w.name;
+  const meta = [w.email, w.discord ? '@' + w.discord : '', fmtJoined(w.joined_at)].filter(Boolean).join(' · ');
+  const metaEl = document.getElementById('wld-meta');
+  metaEl.textContent = meta;
+  metaEl.style.display = meta ? '' : 'none';
+  const promote = state.is_full
+    ? `<button class="btn" disabled title="Event is at capacity — drop a player first">Promote into event</button>`
+    : `<button class="btn btn-primary" onclick="wldRun('promote')">Promote into event</button>`;
+  document.getElementById('wld-actions').innerHTML = promote
+    + `<button class="btn btn-danger" onclick="wldRun('remove')">Remove from waitlist</button>`;
+  document.getElementById('waitlist-details-modal').classList.remove('hidden');
+}
+function closeWaitlistDetails() {
+  document.getElementById('waitlist-details-modal').classList.add('hidden');
+}
+function wldRun(action) {
+  const w = (state.waitlist || []).find(x => x.id === wlDetailsId);
+  closeWaitlistDetails();
+  if (!w) return;
+  if (action === 'promote') promoteWaitlist(w.id, w.name);
+  else if (action === 'remove') removeWaitlist(w.id, w.name);
+}
+
+// 'YYYY-MM-DDTHH:MM...' → short, local date+time for the joined-at column.
+function fmtJoined(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? '' : `joined ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
+
+// Toggle the activity section, loading its entries the first time it's opened.
+function toggleActivity() {
+  toggleSection('activity');
+  const open = !document.getElementById('activity-body').classList.contains('collapsed');
+  if (open && !activityLoaded) loadActivityLog();
+}
+
+// Organiser-only activity log (lazy-loaded the first time the section opens, then
+// filtered client-side by the search box).
+let activityLoaded = false;
+let activityEntries = [];
+async function loadActivityLog() {
+  if (!canManage()) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/log`);
+  if (!res.ok) return;
+  activityEntries = await res.json();
+  activityLoaded = true;
+  renderActivityLog();
+}
+
+function renderActivityLog() {
+  const list = document.getElementById('activity-list');
+  if (!list) return;
+  const q = (document.getElementById('activity-search').value || '').trim().toLowerCase();
+  const shown = q
+    ? activityEntries.filter(en => `${en.actor_name || ''} ${en.detail || ''} ${en.action || ''}`
+        .toLowerCase().includes(q))
+    : activityEntries;
+  if (!activityEntries.length) {
+    list.innerHTML = '<li class="empty">No activity recorded yet.</li>';
+    return;
+  }
+  list.innerHTML = shown.length
+    ? shown.map(en => `<li><span class="act-when">${escapeHtml(fmtJoined(en.at).replace(/^joined /, ''))}</span>
+        <span class="act-text">${escapeHtml(en.actor_name || 'Someone')}: ${escapeHtml(en.detail || en.action)}</span></li>`).join('')
+    : '<li class="empty">No activity matches your search.</li>';
 }
 
 // ── Rounds & matches ───────────────────────────────────────────────────────────
 
 function renderRounds() {
+  // Flip the page layout to "live" once a round exists, so details drop to the
+  // bottom (mirrors the server-set class; keeps in sync without a full reload).
+  const layout = document.getElementById('event-layout');
+  if (layout) layout.classList.toggle('event-live', state.rounds.length > 0);
+  // Hide the whole Rounds section from players until the first round is paired
+  // (organisers keep it — that's where the "Pair round 1" button lives).
+  const roundsBlock = document.querySelector('.flow-block[data-section="rounds"]');
+  if (roundsBlock) roundsBlock.classList.toggle('hidden', !canManage() && !state.rounds.length);
   const el = document.getElementById('rounds-container');
   // When pairings are delayed and not yet released, players see a placeholder
   // in place of the latest (hidden) round.
@@ -1211,26 +2064,65 @@ function renderRounds() {
     // be hand-edited or re-paired like Swiss rounds.
     const canEdit = !bracket && canManage() && round.every(m => m.is_bye || (!m.winner_id && !isDrawResult(m.result)));
     const isLatest = i === state.rounds.length - 1;
-    const repairBtn = !bracket && canManage() && isLatest
-      ? `<button class="btn btn-sm" onclick="event.stopPropagation();repairRound(${i + 1})">Re-pair</button>` : '';
     const finished  = roundFinished(round);
     const collapsed = isRoundCollapsed(i, round);
     const label = bracket ? bracketRoundName(round.length) : `Round ${i + 1}`;
+    // Keep original indices (matches are reported by index), but in the current
+    // in-progress round float the signed-in player's own match to the top.
+    const ordered = round.map((m, mi) => ({ m, mi }));
+    if (isLatest && !finished)
+      ordered.sort((a, b) => (isMyMatch(b.m) ? 1 : 0) - (isMyMatch(a.m) ? 1 : 0));
+    const matchesHtml = ordered.map(({ m, mi }) => renderMatch(m, i, mi)).join('');
     return `<div class="round-card ${collapsed ? 'collapsed' : ''}">
       <div class="round-header" onclick="toggleRound(${i})" role="button" tabindex="0"
            aria-expanded="${!collapsed}">
         <strong>${label}${finished ? ' <span class="round-done">✓ done</span>' : ''}</strong>
-        <span class="round-actions">
-          ${canEdit ? `<button class="btn btn-sm" onclick="event.stopPropagation();openEditModal(${i})">Edit pairings</button>` : ''}
-          ${repairBtn}
-          <span class="round-caret" aria-hidden="true">▾</span>
-        </span>
+        <span class="round-caret" aria-hidden="true">▾</span>
       </div>
-      ${collapsed ? '' : `<table class="pairings"><tbody>
-        ${round.map((m, mi) => renderMatch(m, i, mi)).join('')}
+      ${collapsed ? '' : `${roundActionsBox(round, i, {bracket, canEdit, isLatest, finished})}
+      ${roundTimerBox(round, i, {isLatest, finished})}
+      <table class="pairings"><tbody>
+        ${matchesHtml}
       </tbody></table>`}
     </div>`;
   }).join('') + hiddenCard;
+  // The countdown lives inside the latest round card now, so it's (re)created on
+  // every renderRounds — re-init its ticking afterwards.
+  renderRoundTimer();
+}
+
+// The per-round action box below the "Round X" heading. Manager-only. The
+// tools (Edit pairings, Re-pair, Print) stay secondary; the sequential workflow
+// step is the only primary call to action — Release pairings while it's pending,
+// then Start timer once pairings are released (or right away when not delayed).
+function roundActionsBox(round, i, {bracket, canEdit, isLatest, finished}) {
+  if (!canManage()) return '';
+  const pendingRelease = isLatest && state.delay_pairings && state.pairings_released === false;
+  const btns = [];
+  if (canEdit)
+    btns.push(`<button class="btn btn-sm" onclick="openEditModal(${i})">Edit pairings</button>`);
+  if (!bracket && isLatest)
+    btns.push(`<button class="btn btn-sm" onclick="repairRound(${i + 1})">Re-pair</button>`);
+  if (isLatest && state.delay_pairings)
+    btns.push(pendingRelease
+      ? `<button class="btn btn-sm btn-primary" onclick="releaseDelivery('pairings')">Release pairings</button>`
+      : `<button class="btn btn-sm" disabled>Pairings released</button>`);
+  if (isLatest && state.round_timer_minutes && !finished)
+    btns.push(state.round_started_at
+      ? `<button class="btn btn-sm" onclick="startTimer()">Restart timer</button>`
+      : `<button class="btn btn-sm ${pendingRelease ? '' : 'btn-primary'}" onclick="startTimer()">Start timer</button>`);
+  btns.push(`<a class="btn btn-sm" href="/events/${EVENT_ID}/rounds/${i + 1}/pairings/print" target="_blank" rel="noopener">Print</a>`);
+  return `<div class="round-actions-box">${btns.join('')}</div>`;
+}
+
+// The countdown box for the latest round — shown to everyone once the timer is
+// running (renderRoundTimer fills in and ticks the text). Hidden until started.
+function roundTimerBox(round, i, {isLatest, finished}) {
+  if (!isLatest || !state.round_timer_minutes || finished) return '';
+  return `<div id="round-timer" class="round-timer-box hidden">
+    <span class="timer-label">Round time</span>
+    <span id="timer-text" class="timer-text">—</span>
+  </div>`;
 }
 
 // Results that mean a match is done with no winner (ordinary + intentional draw).
@@ -1261,11 +2153,21 @@ function toggleSection(name) {
   const collapsed = body.classList.toggle('collapsed');
   header.classList.toggle('collapsed', collapsed);
   header.setAttribute('aria-expanded', String(!collapsed));
+  // No re-pack here: a section keeps its column when collapsed/expanded, so the
+  // page stays put. Columns are (re)distributed only on load and viewport resize.
+}
+
+// A non-bye match the signed-in player is in (for floating it to the top and
+// highlighting its Enter-result button).
+function isMyMatch(m) {
+  return !!(myPlayer && !myPlayer.dropped && !m.is_bye &&
+            (myPlayer.id === m.player1_id || myPlayer.id === m.player2_id));
 }
 
 function renderMatch(m, roundIdx, matchIdx) {
   const p1 = seededName(m.player1_id);
   const p2 = m.is_bye ? '— Bye —' : seededName(m.player2_id);
+  const mine = isMyMatch(m);
   const canReport = !m.is_bye && (
     canManage() ||
     (myPlayer && !myPlayer.dropped &&
@@ -1292,15 +2194,32 @@ function renderMatch(m, roundIdx, matchIdx) {
       : '';
     resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${hi}–${lo}</span>${editBtn}`;
   } else if (canReport) {
-    resultCell = `<button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
+    // Highlight the button on the player's own match so it's the obvious next step.
+    resultCell = `<button class="btn btn-sm ${mine ? 'btn-primary' : ''}" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
   } else {
     resultCell = '<span class="result-pending">Pending</span>';
   }
 
-  return `<tr>
-    <td>${escapeHtml(p1)}</td>
+  // Table assignment (when enabled): a badge for the organiser and players alike.
+  // Byes are never seated; an unassigned match shows "Table TBD".
+  let tableTd = '';
+  if (state.tables_enabled) {
+    let cell = '';
+    if (!m.is_bye) {
+      const lbl = m.table ? (state.table_labels || {})[String(m.table)] : '';
+      const text = m.table ? `Table ${m.table}${lbl ? ' · ' + escapeHtml(lbl) : ''}` : 'Table TBD';
+      cell = canManage()
+        ? `<button class="btn btn-sm table-edit-btn${m.table ? '' : ' table-tbd'}" title="Set this match's table" onclick="editMatchTable(${roundIdx},${matchIdx})">${text}</button>`
+        : (m.table ? `<span class="table-badge">${text}</span>` : '<span class="table-tbd">Table TBD</span>');
+    }
+    tableTd = `<td class="table-cell">${cell}</td>`;
+  }
+
+  return `<tr class="${mine ? 'my-match' : ''}">
+    ${tableTd}
+    <td class="p1">${escapeHtml(p1)}</td>
     <td class="vs">vs</td>
-    <td>${escapeHtml(p2)}</td>
+    <td class="p2">${escapeHtml(p2)}</td>
     <td class="result">${resultCell}</td>
   </tr>`;
 }
@@ -1338,13 +2257,14 @@ function swissComplete() {
 }
 
 async function cutToTop(n) {
-  if (!confirm(`Cut to the Top ${n} and start a single-elimination playoff? This seeds players by the current standings.`)) return;
+  if (!await confirmDialog(`Cut to the Top ${n} and start a single-elimination playoff? This seeds players by the current standings.`,
+                           { okLabel: `Cut to Top ${n}` })) return;
   const res = await fetch(`/api/events/${EVENT_ID}/cut`, {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ cut_size: n }),
   });
   if (res.ok) await init();
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Cut failed.'); }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Cut failed.'); }
 }
 
 // ── Players ────────────────────────────────────────────────────────────────────
@@ -1354,57 +2274,107 @@ function renderPlayers() {
   document.getElementById('player-count').textContent = state.require_check_in
     ? `${active.filter(p => p.checked_in).length}/${active.length} checked in`
     : active.length;
-  document.getElementById('player-list').innerHTML = state.players.map(p => {
-    let dropBtn = '';
-    if (canManage()) {
-      if (!state.rounds.length) {
-        // Before pairing, remove the player outright (no match history yet).
-        dropBtn = `<button class="btn btn-sm btn-danger drop-btn" onclick="removePlayer('${p.id}')">Remove</button>`;
-      } else {
-        dropBtn = p.dropped
-          ? `<button class="btn btn-sm drop-btn" onclick="undropPlayer('${p.id}')">Un-drop</button>`
-          : `<button class="btn btn-sm btn-danger drop-btn" onclick="dropPlayer('${p.id}')">Drop</button>`;
-      }
-    }
-    // Check-in status + manager toggle (only when the event requires check-in).
-    let checkTag = '', checkBtn = '';
+  // Search box appears only for large rosters (> 20 players); it filters the list
+  // by name or Discord handle without affecting the count above.
+  const search = document.getElementById('player-search');
+  const many = state.players.length > 20;
+  search.classList.toggle('hidden', !many);
+  const q = many ? (search.value || '').trim().toLowerCase() : '';
+  const shown = q
+    ? state.players.filter(p => p.name.toLowerCase().includes(q)
+                                || (p.discord || '').toLowerCase().includes(q))
+    : state.players;
+  document.getElementById('player-list').innerHTML = (shown.map(p => {
+    // Check-in stays inline as a single toggle: "Check in" → "✓ Checked in"
+    // (click again to undo). Non-managers see a read-only status tag.
+    let checkEl = '';
     if (state.require_check_in && !p.dropped) {
-      checkTag = `<span class="checkin-tag ${p.checked_in ? 'in' : 'out'}">${p.checked_in ? 'checked in' : 'not checked in'}</span>`;
       if (canManage()) {
-        checkBtn = p.checked_in
-          ? `<button class="btn btn-sm checkin-btn" onclick="setCheckIn('${p.id}', false)">Undo</button>`
+        checkEl = p.checked_in
+          ? `<button class="btn btn-sm checkin-btn checked" title="Click to undo check-in" onclick="setCheckIn('${p.id}', false)">✓ Checked in</button>`
           : `<button class="btn btn-sm btn-primary checkin-btn" onclick="setCheckIn('${p.id}', true)">Check in</button>`;
+      } else {
+        checkEl = `<span class="checkin-tag ${p.checked_in ? 'in' : 'out'}">${p.checked_in ? 'checked in' : 'not checked in'}</span>`;
       }
     }
+    // Show the Discord handle inline on the row (organisers included) — a blank
+    // where a handle would be flags who won't get the bot's notifications.
     const discord = p.discord
       ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
-    // Decklist status — organisers see a button to view each player's list.
-    let decklistTag = '';
-    if (state.requires_decklists && !p.dropped && canManage()) {
-      const flagged = p.decklist_status === 'errors' || p.decklist_status === 'warnings';
-      const label = !p.has_decklist ? '📋 No list'
-                  : (flagged ? '⚠️ View list' : '📋 View list');
-      decklistTag = `<button class="btn btn-sm decklist-btn${p.has_decklist ? '' : ' decklist-missing'}" onclick="openPlayerDecklist('${p.id}')">${label}</button>`;
-    }
     const profileLink = p.google_id
       ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(p.name)}</a>`
       : `<span class="player-name">${escapeHtml(p.name)}</span>`;
-    // Managers can edit any name; a player can edit their own (the name shown on
-    // this event — useful when real names are wanted).
     const isMine = (myPlayer && myPlayer.id === p.id);
-    const editBtn = (canManage() || isMine)
+    // Organisers get one "Player details" button (rename, decklist, fixed seat,
+    // drop) to keep the row compact — especially on mobile. A non-manager editing
+    // their own entry keeps just the inline rename pencil.
+    const detailsBtn = canManage()
+      ? `<button class="btn btn-sm player-details-btn" onclick="openPlayerDetails('${p.id}')">Details</button>`
+      : '';
+    const selfEditBtn = (!canManage() && isMine)
       ? `<button class="btn btn-sm edit-name-btn" title="Edit display name" onclick="renamePlayer('${p.id}')">✎</button>`
       : '';
     return `<li class="${p.dropped ? 'dropped' : ''}">
-      ${profileLink}${editBtn}${discord}${decklistTag}${checkTag}${checkBtn}${dropBtn}
+      ${profileLink}${selfEditBtn}${discord}${checkEl}${detailsBtn}
     </li>`;
-  }).join('');
+  }).join('')) || '<li class="empty">No players match your search.</li>';
+}
+
+// "Player details" modal — collapses the per-player organiser actions (rename,
+// decklist, fixed seat, drop/remove) so the roster row stays compact. Each action
+// closes the menu and runs the existing flow.
+let pdPlayerId = null;
+function openPlayerDetails(playerId) {
+  const p = state.players.find(x => x.id === playerId);
+  if (!p) return;
+  pdPlayerId = playerId;
+  document.getElementById('pd-title').textContent = p.name;
+  // textContent keeps the free-text handle safe without escaping.
+  const meta = document.getElementById('pd-discord');
+  meta.textContent = p.discord ? `Discord: ${p.discord}` : '';
+  meta.style.display = p.discord ? '' : 'none';
+  const acts = [`<button class="btn" onclick="pdRun('rename')">✎ Edit display name</button>`];
+  if (state.requires_decklists && !p.dropped) {
+    if (!p.has_decklist) {
+      // Nothing to open yet — a static badge, not a button.
+      acts.push(`<div class="pd-static">📋 No decklist yet</div>`);
+    } else {
+      const flagged = p.decklist_status === 'errors' || p.decklist_status === 'warnings';
+      acts.push(`<button class="btn" onclick="pdRun('decklist')">${flagged ? '⚠️ View decklist' : '📋 View decklist'}</button>`);
+    }
+  }
+  if (state.tables_enabled && !p.dropped) {
+    const label = p.fixed_table ? `🪑 Fixed seat: Table ${p.fixed_table}` : '🪑 Set fixed seat';
+    acts.push(`<button class="btn" onclick="pdRun('fixed')">${label}</button>`);
+  }
+  if (!state.rounds.length) {
+    acts.push(`<button class="btn btn-danger" onclick="pdRun('remove')">Remove from event</button>`);
+  } else if (p.dropped) {
+    acts.push(`<button class="btn" onclick="pdRun('undrop')">Un-drop</button>`);
+  } else {
+    acts.push(`<button class="btn btn-danger" onclick="pdRun('drop')">Drop</button>`);
+  }
+  document.getElementById('pd-actions').innerHTML = acts.join('');
+  document.getElementById('player-details-modal').classList.remove('hidden');
+}
+
+function closePlayerDetails() {
+  document.getElementById('player-details-modal').classList.add('hidden');
+}
+
+function pdRun(action) {
+  const id = pdPlayerId;
+  closePlayerDetails();
+  const fns = { rename: renamePlayer, decklist: openPlayerDecklist, fixed: setFixedTable,
+                remove: removePlayer, undrop: undropPlayer, drop: dropPlayer };
+  if (fns[action]) fns[action](id);
 }
 
 async function renamePlayer(playerId) {
   const p = state.players.find(x => x.id === playerId);
   const current = p ? p.name : '';
-  const name = prompt('Name to show for this player on this event:', current);
+  const name = await promptDialog('Name to show for this player on this event:', current,
+                                  { okLabel: 'Save name' });
   if (name === null) return;                         // cancelled
   const trimmed = name.trim();
   if (!trimmed || trimmed === current) return;
@@ -1414,7 +2384,60 @@ async function renamePlayer(playerId) {
     method: 'POST', headers, body: JSON.stringify({ name: trimmed }),
   });
   if (res.ok) await init();
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to update name.'); }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to update name.'); }
+}
+
+async function setFixedTable(playerId) {
+  const p = state.players.find(x => x.id === playerId);
+  const current = p && p.fixed_table ? String(p.fixed_table) : '';
+  const ans = await promptDialog('Fixed table number for this player (blank to clear):', current,
+                                 { okLabel: 'Save', placeholder: 'Table number' });
+  if (ans === null) return;                          // cancelled
+  const trimmed = ans.trim();
+  if (trimmed === current) return;
+  const table = trimmed === '' ? null : parseInt(trimmed, 10);
+  if (table !== null && (!Number.isInteger(table) || table < 1)) {
+    alertDialog('Enter a table number, or leave blank to clear.'); return;
+  }
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(playerId)}/fixed-table`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ table }),
+  });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to set fixed table.'); }
+}
+
+// Organiser edits a single match's table. Prompts, then sends; a duplicate table
+// (409) prompts a confirm to override.
+async function editMatchTable(roundIdx, matchIdx) {
+  const m = state.rounds[roundIdx][matchIdx];
+  const current = m && m.table ? String(m.table) : '';
+  const ans = await promptDialog('Table number for this match (blank to clear):', current,
+                                 { okLabel: 'Save', placeholder: 'Table number' });
+  if (ans === null) return;                          // cancelled
+  const trimmed = ans.trim();
+  if (trimmed === current) return;
+  const table = trimmed === '' ? null : parseInt(trimmed, 10);
+  if (table !== null && (!Number.isInteger(table) || table < 1)) {
+    alertDialog('Enter a table number, or leave blank to clear.'); return;
+  }
+  await sendMatchTable(roundIdx, matchIdx, table, false);
+}
+
+async function sendMatchTable(roundIdx, matchIdx, table, override) {
+  const res = await fetch(`/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/matches/${matchIdx}/table`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ table, override }),
+  });
+  if (res.ok) { await init(); return; }
+  const err = await res.json().catch(() => ({}));
+  if (res.status === 409 && err.error === 'duplicate') {
+    if (await confirmDialog(`Table ${err.table} is already assigned to ${err.conflict}. Assign it anyway?`,
+                            { okLabel: 'Assign anyway' }))
+      await sendMatchTable(roundIdx, matchIdx, table, true);
+    return;
+  }
+  alertDialog(err.error || 'Failed to set table.');
 }
 
 async function setCheckIn(playerId, value) {
@@ -1426,7 +2449,7 @@ async function setCheckIn(playerId, value) {
     const p = state.players.find(x => x.id === playerId);
     if (p) p.checked_in = value;
     render();
-  } else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to update check-in.'); }
+  } else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to update check-in.'); }
 }
 
 // ── Add-player typeahead (link an existing user, or add a new ghost) ──────────
@@ -1481,8 +2504,13 @@ async function addPlayer() {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(body),
   });
-  if (res.ok) { input.value = ''; addPlayerGoogleId = null; hidePlayerSuggestions(); await init(); }
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to add player.'); }
+  if (res.ok) {
+    input.value = ''; addPlayerGoogleId = null; hidePlayerSuggestions();
+    const d = await res.json().catch(() => ({}));
+    if (d.waitlisted) alertDialog(`Event is full — ${d.name} was added to the waitlist.`);
+    await init();
+  }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to add player.'); }
 }
 
 async function addSelf() {
@@ -1490,19 +2518,23 @@ async function addSelf() {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ name: me.user.name, self: true }),
   });
-  if (res.ok) { await init(); }
-  else { const e = await res.json(); alert(e.error || 'Failed to add yourself.'); }
+  if (res.ok) {
+    const d = await res.json().catch(() => ({}));
+    if (d.waitlisted) alertDialog("Event is full — you've been added to the waitlist.");
+    await init();
+  }
+  else { const e = await res.json(); alertDialog(e.error || 'Failed to add yourself.'); }
 }
 
 async function removePlayer(playerId) {
-  if (!confirm('Remove this player from the event?')) return;
+  if (!await confirmDialog('Remove this player from the event?', { okLabel: 'Remove', danger: true })) return;
   const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}`, { method: 'DELETE' });
   if (res.ok) await init();
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to remove player.'); }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to remove player.'); }
 }
 
 async function dropPlayer(playerId) {
-  if (!confirm('Drop this player?')) return;
+  if (!await confirmDialog('Drop this player?', { okLabel: 'Drop player', danger: true })) return;
   const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/drop`, { method: 'POST' });
   if (res.ok) await init();
 }
@@ -1513,15 +2545,22 @@ async function undropPlayer(playerId) {
 }
 
 async function repairRound(roundNum) {
-  if (!confirm(`Re-pair round ${roundNum} from the current active players? Any results entered in this round will be cleared.`)) return;
+  if (!await confirmDialog(`Re-pair round ${roundNum} from the current active players? Any results entered in this round will be cleared.`,
+                           { okLabel: 'Re-pair', danger: true })) return;
   const res = await fetch(`/api/events/${EVENT_ID}/rounds/${roundNum}/repair`, { method: 'POST' });
   if (res.ok) await init();
-  else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to re-pair round.'); }
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to re-pair round.'); }
 }
 
 // ── Standings ──────────────────────────────────────────────────────────────────
 
 function renderStandings() {
+  // Standings appear as soon as the first round is paired (hidden only before the
+  // event starts); the masonry packs the gap closed while it's hidden.
+  const standingsBlock = document.querySelector('.flow-block[data-section="standings"]');
+  if (standingsBlock) {
+    standingsBlock.classList.toggle('hidden', !(state.rounds || []).length);
+  }
   const tbody = document.querySelector('#standings-table tbody');
   if (state.standings_hidden) {
     tbody.innerHTML = `<tr><td colspan="6" class="empty" style="padding:0.85rem 0">Standings haven't been posted yet — check back soon.</td></tr>`;
@@ -1537,6 +2576,68 @@ function renderStandings() {
       <td class="hide-mobile">${pct(s.gw)}</td>
       <td class="hide-mobile">${pct(s.ogw)}</td>
     </tr>`).join('');
+}
+
+// ── Confirmation modal ─────────────────────────────────────────────────────────
+
+// Drop-in replacement for window.confirm() that returns a Promise<boolean>.
+// Native confirm() can be permanently suppressed by the browser after repeated
+// dialogs (the "don't allow more dialogs" checkbox), which would silently cancel
+// these actions; this in-page modal always works. Message keeps line breaks.
+let pendingConfirm = null;
+function confirmDialog(message, { okLabel = 'Confirm', danger = false } = {}) {
+  // If a prior confirm is somehow still open, resolve it false first.
+  if (pendingConfirm) resolveConfirm(false);
+  return new Promise(resolve => {
+    pendingConfirm = resolve;
+    document.getElementById('confirm-modal-msg').textContent = message;
+    const ok = document.getElementById('confirm-modal-ok');
+    ok.textContent = okLabel;
+    ok.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+    document.getElementById('confirm-modal').classList.remove('hidden');
+  });
+}
+function resolveConfirm(value) {
+  document.getElementById('confirm-modal').classList.add('hidden');
+  const resolve = pendingConfirm;
+  pendingConfirm = null;
+  if (resolve) resolve(value);
+}
+
+// Drop-in replacement for window.alert(): an in-page notice that can't be
+// suppressed like native dialogs. Reuses the confirm modal with just an OK button.
+function alertDialog(message, { okLabel = 'OK' } = {}) {
+  document.getElementById('confirm-modal-cancel').style.display = 'none';
+  return confirmDialog(message, { okLabel }).finally(() => {
+    document.getElementById('confirm-modal-cancel').style.display = '';
+  });
+}
+
+// Drop-in replacement for window.prompt(): Promise<string|null> (null = cancel).
+// Like confirm(), native prompt() can be suppressed by the browser, so this uses
+// an in-page input. The field is pre-selected for quick edit or copy.
+let pendingPrompt = null;
+function promptDialog(message, defaultValue = '', { okLabel = 'OK', placeholder = '' } = {}) {
+  if (pendingPrompt) resolvePrompt(null);
+  return new Promise(resolve => {
+    pendingPrompt = resolve;
+    document.getElementById('prompt-modal-msg').textContent = message;
+    const input = document.getElementById('prompt-modal-input');
+    input.value = defaultValue == null ? '' : defaultValue;
+    input.placeholder = placeholder;
+    document.getElementById('prompt-modal-ok').textContent = okLabel;
+    document.getElementById('prompt-modal').classList.remove('hidden');
+    setTimeout(() => { input.focus(); input.select(); }, 0);
+  });
+}
+function resolvePrompt(value) {
+  document.getElementById('prompt-modal').classList.add('hidden');
+  const resolve = pendingPrompt;
+  pendingPrompt = null;
+  if (resolve) resolve(value);
+}
+function resolvePromptOk() {
+  resolvePrompt(document.getElementById('prompt-modal-input').value);
 }
 
 // ── Result modal ───────────────────────────────────────────────────────────────
@@ -1588,8 +2689,22 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
       </button>
     `).join('') + drawBtns;
 
+  showResultStep('select');   // start on the score buttons (modal may be reused)
   document.getElementById('result-modal').classList.remove('hidden');
 }
+
+// Toggle the result modal between picking a score and confirming it. The confirm
+// step lives in the modal (not a native confirm(), which the browser can suppress
+// after repeated dialogs — that left players with only a Cancel button).
+function showResultStep(step) {
+  const selecting = step === 'select';
+  document.getElementById('result-grid').classList.toggle('hidden', !selecting);
+  document.getElementById('result-confirm-msg').classList.toggle('hidden', selecting);
+  document.getElementById('result-submit-btn').classList.toggle('hidden', selecting);
+  document.getElementById('result-back-btn').classList.toggle('hidden', selecting);
+}
+
+function backToResultGrid() { showResultStep('select'); }
 
 function closeResultModal() {
   document.getElementById('result-modal').classList.add('hidden');
@@ -1610,12 +2725,21 @@ function selectResult(score) {
     result = score;
   }
 
-  // Confirm before saving — results feed standings and pairings.
+  // Stash the resolved result and move to the in-modal confirm step — results
+  // feed standings and pairings, so we confirm before saving.
+  pendingResult.winner_id = winner_id;
+  pendingResult.result = result;
   const summary = result === 'draw' ? 'a draw (1–1)'
     : result === '0-0-3' ? 'an intentional draw (0–0–3)'
     : `${playerName(winner_id)} wins ${Math.max(...score.split('-').map(Number))}–${Math.min(...score.split('-').map(Number))}`;
-  if (!confirm(`${isEdit ? 'Update this result to' : 'Submit this result:'} ${summary}?`)) return;
+  document.getElementById('result-confirm-msg').textContent =
+    `${isEdit ? 'Update this result to' : 'Submit this result:'} ${summary}?`;
+  showResultStep('confirm');
+}
 
+function submitResult() {
+  if (!pendingResult || !pendingResult.result) return;
+  const { roundIdx, matchIdx, isEdit, winner_id, result } = pendingResult;
   const url    = isEdit
     ? `/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/results/${matchIdx}`
     : `/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/results`;
@@ -1631,7 +2755,7 @@ function selectResult(score) {
     body: JSON.stringify(body),
   }).then(r => {
     if (r.ok) { closeResultModal(); init(); }
-    else alert('Failed to save result.');
+    else alertDialog('Failed to save result.');
   });
 }
 
@@ -1683,9 +2807,7 @@ function renderEditRows() {
         <button type="button" class="btn btn-sm row-remove" title="Remove this pairing"
                 onclick="removeEditRow(${i})">✕</button>
       </div>`).join('');
-  const missing = [...editOriginalPlayers()].filter(id => !editAssignedPlayers().has(id));
-  document.getElementById('edit-pairings-note').textContent =
-    missing.length ? `Still to assign: ${missing.map(playerName).join(', ')}` : '';
+  editNote(buildEditedPairings().note);   // live: self-pairing, dupes, still-to-assign, …
 }
 
 // Drop fully-blank rows and — if anyone's been freed up (e.g. by a bye) — add a
@@ -1714,21 +2836,37 @@ function closeEditModal() {
   editRows = [];
 }
 
-async function saveEditedPairings() {
+// Show an edit-pairings validation message inline, matching the live
+// "Still to assign: …" note (instead of a browser alert).
+function editNote(msg) {
+  document.getElementById('edit-pairings-note').textContent = msg;
+}
+
+// Validate the current rows and build the pairings payload. Returns { payload,
+// note }: note is '' when the rows are valid and complete, else the message to
+// show — the same checks run live (renderEditRows) and on save.
+function buildEditedPairings() {
   const payload = [];
+  const seen = new Set();
   for (const r of editRows) {
     let { p1, p2 } = r;
     if (p1 === '' && p2 === '') continue;        // ignore leftover blank rows
     const isBye = p1 === '__bye__' || p2 === '__bye__';
-    if (isBye && p1 === '__bye__' && p2 === '__bye__') {
-      alert('A bye must include a player.'); return;
-    }
-    if (!isBye && (p1 === '' || p2 === '')) {
-      alert(`${playerName(p1 || p2)} needs an opponent or a bye.`); return;
-    }
+    if (isBye && p1 === '__bye__' && p2 === '__bye__')
+      return { note: 'A bye must include a player.' };
+    if (!isBye && (p1 === '' || p2 === ''))
+      return { note: `${playerName(p1 || p2)} needs an opponent or a bye.` };
     // Normalise so the bye recipient is always player1 (swiss.py convention:
     // the recipient is the winner of a 2-0-0).
     if (p1 === '__bye__') { [p1, p2] = [p2, p1]; }
+    if (!isBye && p1 === p2)
+      return { note: `${playerName(p1)} cannot be paired against themself.` };
+    for (const pid of [p1, p2]) {
+      if (pid === '__bye__') continue;
+      if (seen.has(pid))
+        return { note: `${playerName(pid)} is assigned to more than one match.` };
+      seen.add(pid);
+    }
     payload.push({
       player1_id: p1,
       player2_id: p2,
@@ -1737,37 +2875,23 @@ async function saveEditedPairings() {
       is_bye:    isBye,
     });
   }
-
-  // A player may only be assigned to one match (and not play themselves).
-  const seen = new Set();
-  for (const m of payload) {
-    if (!m.is_bye && m.player1_id === m.player2_id) {
-      alert('A player cannot be paired against themselves.'); return;
-    }
-    for (const pid of [m.player1_id, m.player2_id]) {
-      if (pid === '__bye__') continue;
-      if (seen.has(pid)) {
-        alert(`${playerName(pid)} is assigned to more than one match.`); return;
-      }
-      seen.add(pid);
-    }
-  }
-
-  // Every player in this round must still be assigned (to a match or a bye) —
-  // multiple byes are allowed, but byeing a player can't leave their old
-  // opponent (or anyone) with no assignment.
+  // Everyone in this round must still be assigned (to a match or a bye).
   const missing = [...editOriginalPlayers()].filter(pid => !seen.has(pid));
-  if (missing.length) {
-    alert(`${missing.map(playerName).join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in any match.`);
-    return;
-  }
+  if (missing.length)
+    return { note: `Still to assign: ${missing.map(playerName).join(', ')}` };
+  return { note: '', payload };
+}
+
+async function saveEditedPairings() {
+  const { note, payload } = buildEditedPairings();
+  if (note) { editNote(note); return; }
 
   const res = await fetch(`/api/events/${EVENT_ID}/rounds/${editingRound + 1}/pairings`, {
     method: 'PUT', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(payload),
   });
   if (res.ok) { closeEditModal(); await init(); }
-  else { const e = await res.json(); alert(e.error || 'Save failed.'); }
+  else { const e = await res.json(); editNote(e.error || 'Save failed.'); }
 }
 
 init();

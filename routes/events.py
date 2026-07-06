@@ -11,12 +11,14 @@ from flask import Blueprint, request, jsonify, render_template, abort, session
 from db import (create_event, get_event, save_event, list_events, delete_event,
                 set_player_dropped, set_player_field,
                 get_admins, is_admin, add_admin, remove_admin,
-                get_user_profile, save_user_profile, list_users,
+                get_user_profile, save_user_profile, delete_user_profile, list_users,
                 record_invite, recent_invite_count, target_invited_since,
-                set_invite_optout, is_invite_opted_out)
+                set_invite_optout, is_invite_opted_out,
+                add_event_log, list_event_log, promote_waitlist_entry)
 from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
-                   make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players)
-from routes.auth import get_current_user, login_required
+                   make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players,
+                   assign_tables)
+from routes.auth import get_current_user, login_required, discord_login_enabled
 from gcp_secrets import get_secret
 import discord_api
 from decklist import validate_decklist, import_moxfield, VALIDATION_FORMATS
@@ -24,6 +26,7 @@ from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import os
 import re
+import threading
 import time
 import uuid
 from urllib.parse import urlparse
@@ -59,7 +62,54 @@ def _clean_comms(data: dict) -> dict:
             out[f] = str(data.get(f) or '')[:_COMMS_MAX]
     return out
 
+# ── Table assignments ────────────────────────────────────────────────────────
+# Tables live on the event: a numeric range [table_start..table_end] minus any
+# reserved/unavailable numbers (tables_excluded), with optional labels
+# (table_labels, e.g. "Feature Match"). The client sends already-parsed
+# structures; these normalise and bound-check them.
+_MAX_TABLE = 999
+
+def _clean_table_list(raw) -> list:
+    """Sorted, de-duplicated, bounded list of table numbers (reserved/unavailable)."""
+    out = set()
+    for v in (raw or []):
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= n <= _MAX_TABLE:
+            out.add(n)
+    return sorted(out)
+
+def _clean_table_labels(raw) -> dict:
+    """{str(table_number): label} map, numeric keys validated, labels trimmed/capped."""
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                n = int(k)
+            except (TypeError, ValueError):
+                continue
+            label = str(v or '').strip()[:40]
+            if 1 <= n <= _MAX_TABLE and label:
+                out[str(n)] = label
+    return out
+
+def _bounded_table(v, lo):
+    """An int table number within [lo, _MAX_TABLE], else the floor `lo`."""
+    return v if isinstance(v, int) and lo <= v <= _MAX_TABLE else lo
+
+def _coord(v, lo: float, hi: float):
+    """A float latitude/longitude within [lo, hi], else None (no/invalid coordinate).
+    Captured from a Google Places selection; used for the 'events near me' filter."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if lo <= f <= hi else None
+
 REGISTRATION_TYPES = ('open', 'invite_only')
+PROXY_POLICIES = ('unlimited', 'limited', 'custom')   # event proxy policy modes
 
 def _self_registration_blocked(event: dict) -> str | None:
     """Why a player can't self-register right now, or None if they can. Covers the
@@ -77,6 +127,29 @@ def _self_registration_blocked(event: dict) -> str | None:
     if end and today > end:
         return f'Registration closed on {end}'
     return None
+
+def _active_count(event: dict) -> int:
+    """Number of active (non-dropped) participants — what counts against the cap."""
+    return len([p for p in event.get('players', []) if not p.get('dropped')])
+
+def _is_full(event: dict) -> bool:
+    """True when a cap is set and active participants have reached it."""
+    cap = event.get('registration_cap', 0)
+    return bool(cap) and _active_count(event) >= cap
+
+def _active_waitlist(event: dict) -> list[dict]:
+    """Still-waiting waitlist records, oldest first (first come, first served)."""
+    wl = [w for w in (event.get('waitlist') or []) if w.get('status') == 'waitlisted']
+    wl.sort(key=lambda w: w.get('joined_at', ''))
+    return wl
+
+def _log_action(event_id: str, action: str, detail: str = '', target: str = '', actor_name: str = None):
+    """Write an event-log entry. Stamps the current signed-in user as the actor,
+    unless `actor_name` is given (for guest/self-report flows with no web session)."""
+    u = get_current_user() or {}
+    add_event_log(event_id, {
+        'at': _now_iso(), 'action': action, 'detail': detail, 'target': target,
+        'actor_id': u.get('id', ''), 'actor_name': actor_name or u.get('name', '') or 'Someone'})
 
 def _entry_code_error(event: dict, data: dict) -> str | None:
     """If the event requires an entry code, check the supplied one. None if OK."""
@@ -103,22 +176,33 @@ def _registration_card_status(event: dict):
         return 'full', f'Full — {cap} players'
     return 'open', ''
 
-def announce_event_to_channel(event_id: str, channel_id: str, base_url: str):
+def announce_event_to_channel(event_id: str, channel_id: str, base_url: str, message: str = '',
+                              mention_role_id: str = None):
     """Post an event card (Register button + details link) to a channel and
-    remember the message so its status can be kept current. Returns
-    (event_name, posted) — posted is False if the event is gone or the post
-    failed (e.g. missing channel permission)."""
+    remember the message so its status can be kept current. `message` is an
+    optional organiser note posted above the card; `mention_role_id` pings that
+    role above the card. Returns (event_name, posted) — posted is False if the
+    event is gone or the post failed (e.g. missing channel permission)."""
     e = get_event(event_id)
     if not e:
         return None, False
     base = (base_url or '').rstrip('/')
     state, note = _registration_card_status(e)
     embeds, components = discord_api.event_card(e, f'{base}/events/{event_id}', state, note)
-    msg = discord_api.post_message(channel_id, components=components, embeds=embeds)
+    content = message or ''
+    allowed = None
+    if mention_role_id:
+        content = (f'<@&{mention_role_id}> ' + content).rstrip()
+        allowed = {'roles': [str(mention_role_id)]}
+    msg = discord_api.post_message(channel_id, content=(content or None),
+                                   components=components, embeds=embeds, allowed_mentions=allowed)
     if not msg:
         return e.get('name', 'the event'), False
+    # Keep the note alongside the card so status refreshes (which re-send content)
+    # don't wipe it.
     save_event(event_id, {'discord_announce': {
-        'channel_id': channel_id, 'message_id': msg.get('id'), 'base_url': base}})
+        'channel_id': channel_id, 'message_id': msg.get('id'), 'base_url': base,
+        'message': content}})
     return e.get('name', 'the event'), True
 
 def refresh_event_announcement(event: dict) -> None:
@@ -133,22 +217,28 @@ def refresh_event_announcement(event: dict) -> None:
     embeds, components = discord_api.event_card(
         event, f"{base}/events/{event['id']}", state, note)
     discord_api.edit_message(ann['channel_id'], ann['message_id'],
+                             content=(ann.get('message') or None),
                              components=components, embeds=embeds)
 
 
-def discord_registerable_events(limit: int = 25):
+def discord_registerable_events(limit: int = 25, owner_discord_id: str = None,
+                                include_full: bool = False):
     """Events a Discord user can currently self-register for — open, not test,
-    not invite-only/closed/expired/full, and with no entry code (codes aren't
-    handled in the Discord flow yet). Soonest first; capped for the select menu."""
+    not invite-only/closed/expired, and with no entry code (codes aren't handled
+    in the Discord flow yet). Full events are excluded by default; pass
+    `include_full=True` for the announce/invite pickers, where a full event is
+    still valid (its card offers the waitlist). Soonest first; capped for the
+    select menu. `owner_discord_id` restricts to that Discord user's own events."""
+    owner_gid = _google_id_for_discord(owner_discord_id) if owner_discord_id else None
     out = []
     for e in list_events():
+        if owner_discord_id and e.get('owner_id') != owner_gid:
+            continue
         if e.get('test_mode') or e.get('entry_code'):
             continue
         if _self_registration_blocked(e):
             continue
-        cap = e.get('registration_cap', 0)
-        active = [p for p in e['players'] if not p.get('dropped')]
-        if cap and len(active) >= cap:
+        if not include_full and _is_full(e):
             continue
         out.append(e)
     out.sort(key=lambda e: e.get('date', ''))
@@ -212,17 +302,32 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
         if not existing.get('dropped'):
             return None, "You're already registered for this event."
         existing['dropped'] = False
+        # Capture the verified @handle if we never recorded one (e.g. an entry made
+        # before we started storing it, or a ghost re-activating).
+        if discord_username and not existing.get('discord'):
+            existing['discord'] = discord_username
         save_event(event_id, {'players': e['players']})
         if google_id and not (profile or {}).get('discord_id'):
             save_user_profile(google_id, {'discord_id': discord_id})
         refresh_event_announcement(e)
+        _log_discord(event_id, existing.get('name', ''), 'register', 'registered via Discord')
         return {'player': existing, 'event_name': e.get('name', 'the event')}, None
+    # Record the verified Discord @handle (username) so the organiser and other
+    # players can see who registered — falling back to it when a matched account
+    # has no handle saved, and using it directly for ghost (unlinked) players.
     if profile:
         name = (profile.get('name') or discord_name or 'Player').strip()[:80] or 'Player'
-        discord_handle = profile.get('discord', '')
+        discord_handle = profile.get('discord', '') or discord_username
     else:
+        # No account yet — create a Discord-keyed profile (the same identity a
+        # "Sign in with Discord" would produce) so this button-registrant has a real
+        # cross-event profile and profile page even before they ever sign in. A later
+        # Discord login resolves to this same account, linking their history.
         name = (discord_name or 'Player').strip()[:80] or 'Player'
-        discord_handle = ''
+        discord_handle = discord_username
+        google_id = f'discord:{discord_id}'
+        save_user_profile(google_id, {'discord_id': str(discord_id),
+                                      'name': name, 'discord': discord_handle})
     player = {
         'id':         _slugify(name) + '_' + str(len(e['players'])),
         'name':       name,
@@ -234,36 +339,182 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
-    # Remember the Discord ID on the matched account so future links are exact.
-    if google_id and not profile.get('discord_id'):
+    # Remember the Discord ID on a matched (handle-linked) account so future links
+    # are exact. The no-account case already saved its profile with the ID above.
+    if profile and not profile.get('discord_id'):
         save_user_profile(google_id, {'discord_id': discord_id})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
+    _log_discord(event_id, name, 'register', 'registered via Discord')
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
 
 
-def withdraw_player_via_discord(event_id: str, discord_id: str):
+def withdraw_player_via_discord(event_id: str, discord_id: str, username='', display=''):
     """Withdraw a Discord-registered player from an event (the toggle counterpart
     to register_player_via_discord). Mirrors the web withdraw: drop if rounds have
     started, else remove the entry. Returns (event_name, None) or (None, error)."""
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    gid = _google_id_for_discord(discord_id)
+    gid, handles = _discord_identity(discord_id, username, display)
     player = next((p for p in e['players']
                    if not p.get('dropped') and
-                      (p.get('discord_id') == discord_id or (gid and p.get('google_id') == gid))),
+                      (p.get('discord_id') == discord_id
+                       or (gid and p.get('google_id') == gid)
+                       or (handles and _normalize_handle(p.get('discord')) in handles))),
                   None)
     if not player:
         return None, "You're not registered for this event."
+    if not e.get('self_service_drop_enabled', True):
+        return None, 'Self-service drops are disabled for this event — contact the organiser.'
     unenroll_end = e.get('unenroll_end')
     if unenroll_end and datetime.date.today().isoformat() > unenroll_end:
-        return None, 'The unenrollment deadline has passed — contact the organiser.'
+        return None, 'The drop deadline has passed — contact the organiser.'
     if e['rounds']:
         set_player_dropped(event_id, player['id'], True)
     else:
         e['players'] = [p for p in e['players'] if p['id'] != player['id']]
         save_event(event_id, {'players': e['players']})
     refresh_event_announcement(get_event(event_id))   # a slot may have freed up
+    _log_discord(event_id, player.get('name', ''), 'drop', 'dropped via Discord')
+    return e.get('name', 'the event'), None
+
+
+def discord_droppable_events(discord_id: str, username: str = '', display: str = '', limit: int = 25):
+    """Events a Discord user is currently registered for (active, not dropped) — so
+    they can drop themselves from the bot, including ghost players who registered
+    via a button without an account. Soonest first; capped for the select menu.
+    Gating (self-service allowed, deadline) is enforced on the drop itself, so the
+    menu shows everything they're in and the action explains any refusal."""
+    gid, handles = _discord_identity(discord_id, username, display)
+    out = []
+    for e in list_events():
+        registered = any(
+            not p.get('dropped') and
+            (p.get('discord_id') == discord_id
+             or (gid and p.get('google_id') == gid)
+             or (handles and _normalize_handle(p.get('discord')) in handles))
+            for p in e['players'])
+        if registered:
+            out.append(e)
+    out.sort(key=lambda e: e.get('date', ''))
+    return out[:limit]
+
+
+def backfill_discord_profiles():
+    """One-off migration: give button-registered ghost players (a discord_id but no
+    account) a real `discord:<id>` profile and link their event entries to it —
+    matching an existing account first (by stored discord_id or handle) so we don't
+    duplicate. Firestore-only, idempotent. Returns a summary dict."""
+    users = list_users()
+    by_did    = {str(u['discord_id']): u['google_id'] for u in users if u.get('discord_id')}
+    by_handle = {_normalize_handle(u['discord']): u['google_id'] for u in users if u.get('discord')}
+    linked = profiles_created = 0
+    for e in list_events():
+        changed = False
+        for p in e.get('players', []):
+            did = p.get('discord_id')
+            if not did or p.get('google_id'):
+                continue                      # not a Discord ghost / already linked
+            did = str(did)
+            gid = by_did.get(did) or by_handle.get(_normalize_handle(p.get('discord', '')))
+            if not gid:
+                gid = f'discord:{did}'
+                save_user_profile(gid, {'discord_id': did,
+                                        'name': (p.get('name') or 'Player')[:80],
+                                        'discord': p.get('discord', '')})
+                by_did[did] = gid
+                if p.get('discord'):
+                    by_handle[_normalize_handle(p['discord'])] = gid
+                profiles_created += 1
+            p['google_id'] = gid
+            changed = True
+            linked += 1
+        if changed:
+            save_event(e['id'], {'players': e['players']})
+    return {'linked_players': linked, 'profiles_created': profiles_created}
+
+def fix_discord_handles():
+    """Correct legacy `discord:<id>` profiles whose handle is a stale free-text value
+    (from the old editable field, often a display name) — reset it to the @handle
+    captured on their player entries at registration. Firestore-only, idempotent."""
+    handle_by_gid = {}
+    for e in list_events():
+        for p in e.get('players', []):
+            gid = p.get('google_id')
+            if gid and str(gid).startswith('discord:') and p.get('discord'):
+                handle_by_gid.setdefault(gid, p['discord'])
+    fixed = 0
+    for gid, handle in handle_by_gid.items():
+        prof = get_user_profile(gid)
+        if prof.get('discord_id') and prof.get('discord') != handle:
+            save_user_profile(gid, {'discord': handle})
+            fixed += 1
+    return {'fixed': fixed}
+
+def _log_discord(event_id: str, actor_name: str, action: str, detail: str = ''):
+    """Event-log entry for a Discord-driven action (no web session to attribute)."""
+    add_event_log(event_id, {'at': _now_iso(), 'action': action, 'detail': detail,
+                             'actor_id': '', 'actor_name': actor_name or 'A Discord user'})
+
+def waitlist_player_via_discord(event_id: str, discord_id: str, discord_name: str,
+                                discord_username: str = ''):
+    """Add a Discord user to a full event's waitlist (the Join Waitlist button on a
+    card/invite DM). Links to an existing account when the Discord matches one.
+    Returns ({'event_name','position'}, None) or (None, error_message)."""
+    e = get_event(event_id)
+    if not e:
+        return None, 'That event no longer exists.'
+    blocked = _self_registration_blocked(e)
+    if blocked:
+        return None, blocked
+    if e.get('entry_code'):
+        return None, 'This event needs an entry code — please register on the web.'
+    if not _is_full(e):
+        return None, 'This event has open spots — tap Register instead.'
+    profile = _find_profile_for_discord(discord_id, discord_username, discord_name)
+    gid = profile.get('google_id') if profile else None
+    if any((p.get('discord_id') == discord_id or (gid and p.get('google_id') == gid))
+           and not p.get('dropped') for p in e['players']):
+        return None, "You're already registered for this event."
+    waitlist = e.get('waitlist') or []
+    if any(w.get('status') == 'waitlisted' and
+           (w.get('discord_id') == discord_id or (gid and w.get('google_id') == gid))
+           for w in waitlist):
+        return None, "You're already on the waitlist."
+    name = ((profile.get('name') if profile else discord_name) or 'Player').strip()[:80] or 'Player'
+    record = {
+        'id':         uuid.uuid4().hex,
+        'google_id':  gid,
+        'name':       name,
+        'email':      profile.get('email', '') if profile else '',
+        'discord':    (profile.get('discord', '') if profile else '') or discord_username,
+        'discord_id': discord_id,
+        'status':     'waitlisted',
+        'joined_at':  _now_iso(),
+    }
+    waitlist.append(record)
+    save_event(event_id, {'waitlist': waitlist})
+    _log_discord(event_id, name, 'waitlist_join', f"{name} joined the waitlist via Discord")
+    position = sum(1 for w in waitlist if w.get('status') == 'waitlisted')
+    return {'event_name': e.get('name', 'the event'), 'position': position}, None
+
+def waitlist_leave_via_discord(event_id: str, discord_id: str, username: str = '', display: str = ''):
+    """Remove a Discord user from a waitlist (the Leave Waitlist toggle on a DM).
+    Returns (event_name, None) or (None, error_message)."""
+    e = get_event(event_id)
+    if not e:
+        return None, 'That event no longer exists.'
+    gid, handles = _discord_identity(discord_id, username, display)
+    waitlist = e.get('waitlist') or []
+    rec = next((w for w in waitlist if w.get('status') == 'waitlisted' and
+                (w.get('discord_id') == discord_id or (gid and w.get('google_id') == gid))), None)
+    if not rec:
+        return None, "You're not on the waitlist for this event."
+    rec['status'] = 'removed_by_self'
+    rec['removed_at'] = _now_iso()
+    save_event(event_id, {'waitlist': waitlist})
+    _log_discord(event_id, rec.get('name', ''), 'waitlist_leave',
+                 f"{rec.get('name', 'A player')} left the waitlist via Discord")
     return e.get('name', 'the event'), None
 
 
@@ -275,11 +526,11 @@ INVITE_RATE_WINDOW = 60 * 60       # ...within this many seconds (1 hour)
 INVITE_DEDUPE_WINDOW = 7 * 24 * 60 * 60   # don't re-invite a target to the same event within 7 days
 
 def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
-                              inviter_name: str, base_url: str = ''):
+                              inviter_name: str, base_url: str = '', message: str = ''):
     """DM `target_id` an invitation to register for an event, on behalf of
-    `inviter_id`. Enforces the anti-spam guards (opt-out, already-registered,
-    dedupe, sender rate limit) before sending. Returns (confirmation, None) on
-    success or (None, error_message)."""
+    `inviter_id`, with an optional personal `message`. Enforces the anti-spam
+    guards (opt-out, already-registered, dedupe, sender rate limit) before
+    sending. Returns (confirmation, None) on success or (None, error_message)."""
     if str(target_id) == str(inviter_id):
         return None, f"You can register yourself with `/{COMMAND_NAME} register` — no invite needed."
     e = get_event(event_id)
@@ -290,10 +541,7 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
         return None, blocked
     if e.get('entry_code'):
         return None, 'This event needs an entry code, so it cannot be invited to from Discord.'
-    cap = e.get('registration_cap', 0)
-    active = [p for p in e['players'] if not p.get('dropped')]
-    if cap and len(active) >= cap:
-        return None, f'This event is full ({cap} players max).'
+    # A full event isn't blocked — the invitation card offers Join Waitlist instead.
 
     # Recipient opted out of invites entirely.
     if is_invite_opted_out(target_id):
@@ -317,7 +565,7 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
     base = (base_url or '').rstrip('/')
     state, note = _registration_card_status(e)
     delivered = discord_api.dm_event_invite(
-        target_id, e, f'{base}/events/{event_id}', inviter_name, state, note)
+        target_id, e, f'{base}/events/{event_id}', inviter_name, state, note, message)
     if not delivered:
         return None, ("I couldn't DM them — they may not share a server with the bot "
                       "or have DMs from server members turned off.")
@@ -332,11 +580,25 @@ def _google_id_for_discord(discord_id: str):
     prof = _find_profile_for_discord(discord_id, '')   # '' = match by discord_id only
     return prof.get('google_id') if prof else None
 
-def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str, gid=None):
+def _discord_identity(discord_id: str, username: str = '', display: str = ''):
+    """Resolve a Discord user to what we match players on: their linked google_id
+    (by a stored numeric discord_id, or by the profile's saved handle matching the
+    interaction's verified username/display) and the set of normalised handle
+    candidates. Passing the username/display lets players who only have a Discord
+    *handle* on file — registered on the web or added by the organiser, never
+    linked by numeric ID — still be matched (e.g. for /report)."""
+    prof = _find_profile_for_discord(discord_id, username, display)
+    gid = prof.get('google_id') if prof else None
+    handles = {h for h in (_normalize_handle(username), _normalize_handle(display)) if h}
+    return gid, handles
+
+def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str,
+                       gid=None, handles=None):
     """Context for a Discord user's match in event `e`, or None if it's not their
     open (unreported, non-bye) match. Shared by the report picker and reporting.
-    `gid` is the Google account linked to this Discord user (if known), so a
-    web/organiser-added player who's linked their Discord is also matched."""
+    `gid` is the Google account linked to this Discord user (if known) and
+    `handles` the verified handle candidates, so a web/organiser-added player who's
+    linked their Discord OR just has a matching handle on file is also matched."""
     rounds = e.get('rounds', [])
     if not (0 <= round_idx < len(rounds)):
         return None
@@ -346,7 +608,9 @@ def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str,
     m = rnd[match_idx]
     player = next((p for p in e['players']
                    if not p.get('dropped') and
-                      (p.get('discord_id') == discord_id or (gid and p.get('google_id') == gid))),
+                      (p.get('discord_id') == discord_id
+                       or (gid and p.get('google_id') == gid)
+                       or (handles and _normalize_handle(p.get('discord')) in handles))),
                   None)
     if not player or m.get('is_bye'):
         return None
@@ -365,26 +629,29 @@ def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str,
         'allow_id': bool(e.get('advanced')) and not e.get('intentional_draws_frowned'),
     }
 
-def discord_open_matches(discord_id: str, limit: int = 25):
+def discord_open_matches(discord_id: str, username: str = '', display: str = '', limit: int = 25):
     """A Discord user's current open matches (latest round of each event they're
     in), for the /cbp report picker."""
     out = []
-    gid = _google_id_for_discord(discord_id)
+    gid, handles = _discord_identity(discord_id, username, display)
     for e in list_events():
         ridx = len(e.get('rounds', [])) - 1
         if ridx < 0:
             continue
         for midx in range(len(e['rounds'][ridx])):
-            ctx = _discord_match_ctx(e, ridx, midx, discord_id, gid)
+            ctx = _discord_match_ctx(e, ridx, midx, discord_id, gid, handles)
             if ctx:
                 out.append(ctx)
                 break
     return out[:limit]
 
-def discord_match_context(event_id: str, round_idx: int, match_idx: int, discord_id: str):
+def discord_match_context(event_id: str, round_idx: int, match_idx: int, discord_id: str,
+                          username: str = '', display: str = ''):
     e = get_event(event_id)
-    return _discord_match_ctx(e, round_idx, match_idx, discord_id,
-                              _google_id_for_discord(discord_id)) if e else None
+    if not e:
+        return None
+    gid, handles = _discord_identity(discord_id, username, display)
+    return _discord_match_ctx(e, round_idx, match_idx, discord_id, gid, handles)
 
 # Map a reporter-perspective result code to a stored result + summary.
 _DISCORD_RESULT_CODES = {
@@ -393,15 +660,16 @@ _DISCORD_RESULT_CODES = {
     'draw': ('draw', None, None), 'id': ('id', None, None),
 }
 
-def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, base_url=''):
+def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, base_url='',
+                              username='', display=''):
     """Record a result a Discord player reports for their own match. `code` is
     from the reporter's perspective (see _DISCORD_RESULT_CODES). Returns
     (confirmation, None) or (None, error)."""
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    ctx = _discord_match_ctx(e, round_idx, match_idx, discord_id,
-                             _google_id_for_discord(discord_id))
+    gid, handles = _discord_identity(discord_id, username, display)
+    ctx = _discord_match_ctx(e, round_idx, match_idx, discord_id, gid, handles)
     if not ctx:
         return None, "That doesn't look like an open match of yours anymore."
     spec = _DISCORD_RESULT_CODES.get(code)
@@ -427,19 +695,25 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
     m['winner_id'] = winner_id
     m['result'] = result
     save_event(event_id, {'rounds': e['rounds']})
-    # Mark both players' pairing DMs as reported (mirrors reporting from the DM),
-    # so a result entered in the channel/slash still updates their DM message.
-    discord_api.mark_dm_pairings_reported(e, [ctx['player_id'], ctx['opp_id']])
-    # Let the opponent know it's recorded so they don't report it again.
-    discord_api.dm_result_recorded(e, round_idx, match_idx,
-                                   exclude_player_id=ctx['player_id'], base_url=base_url)
+    # Turn the opponent's pairing DM into the result card (same as the web path).
+    # The reporter is excluded — their own message is updated by the interaction
+    # response (see routes/discord.py), so we don't fight that edit.
+    discord_api.notify_result(e, round_idx, match_idx, base_url,
+                              exclude_player_id=ctx['player_id'])
+    names = {p['id']: p['name'] for p in e['players']}
+    reporter = names.get(ctx['player_id'], display or 'A player')
+    _log_discord(event_id, reporter, 'result',
+                 f"reported round {round_idx + 1} vs {ctx['opponent']} ({result}) via Discord")
     return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}). GGs!", None
 
 
-def discord_linkable_events(limit: int = 25):
+def discord_linkable_events(limit: int = 25, owner_discord_id: str = None):
     """Non-test events an organiser might link to a Discord channel (for the
-    /cbp link picker). Most recent first."""
-    out = [e for e in list_events() if not e.get('test_mode')]
+    /cbp link picker), restricted to events that Discord user owns. Most recent first."""
+    owner_gid = _google_id_for_discord(owner_discord_id) if owner_discord_id else None
+    out = [e for e in list_events()
+           if not e.get('test_mode')
+           and (not owner_discord_id or e.get('owner_id') == owner_gid)]
     out.sort(key=lambda e: e.get('date', ''), reverse=True)
     return out[:limit]
 
@@ -535,6 +809,14 @@ def _decklist_locked(event: dict) -> bool:
     dd = (event.get('decklist_deadline') or '').strip()
     return bool(dd and datetime.date.today().isoformat() > dd)
 
+
+_PRINT_POLICY_KEYS = ('allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_ie',
+                      'proxy_policy', 'proxy_limit')
+
+def _print_policy(event: dict) -> dict:
+    """The event's print-legality policy passed to validate_decklist (tag checks)."""
+    return {k: event.get(k) for k in _PRINT_POLICY_KEYS}
+
 def _redact_players(event: dict) -> None:
     """Strip guest self-report tokens before sending an event to clients. The
     token is a bearer secret — anyone holding it can report as that player and
@@ -557,20 +839,45 @@ def _redact_players(event: dict) -> None:
         p.pop('decklist', None)
 
 def _enrich_players_discord(event: dict) -> None:
-    """Refresh each linked player's `discord` from their account profile, which is
-    the source of truth going forward — so a handle set or changed *after*
-    registration shows on the event page, not just the registration-time snapshot.
-    Profiles are read once per google_id; guests/ghosts (no google_id) and
-    accounts with no saved handle keep their snapshot."""
+    """Set each player's displayed `discord` to their account's handle (the source of
+    truth), then show it only if it looks like a real handle — a single token. A
+    value with a space is a display name typed into the old free-text field, not a
+    handle, so it's blanked. Mutates the response copy only; profiles read once/id."""
     cache = {}
     for p in event.get('players', []):
         gid = p.get('google_id')
-        if not gid:
+        handle = p.get('discord', '') or ''
+        if gid:
+            if gid not in cache:
+                cache[gid] = get_user_profile(gid).get('discord', '')
+            handle = cache[gid] or handle
+        p['discord'] = handle if (handle and ' ' not in handle) else ''
+
+
+def _players_missing_discord_handle(event: dict) -> bool:
+    """True if any non-dropped player registered via Discord (has a discord_id) but
+    has no @handle recorded — the case backfill_discord_handles repairs."""
+    return any(p.get('discord_id') and not p.get('discord')
+               for p in event.get('players', []) if not p.get('dropped'))
+
+
+def backfill_discord_handles(event_id: str) -> None:
+    """Look up the @handle of players who registered via the bot before we captured
+    it (a discord_id on file but no `discord`) and store it, so it shows on the
+    event page. Best-effort, idempotent; intended to run in a background thread."""
+    e = get_event(event_id)
+    if not e:
+        return
+    changed = False
+    for p in e.get('players', []):
+        if p.get('discord') or not p.get('discord_id'):
             continue
-        if gid not in cache:
-            cache[gid] = get_user_profile(gid).get('discord', '')
-        if cache[gid]:
-            p['discord'] = cache[gid]
+        handle = (discord_api.get_user(p['discord_id']) or {}).get('username', '')
+        if handle:
+            p['discord'] = handle
+            changed = True
+    if changed:
+        save_event(event_id, {'players': e['players']})
 
 def _can_report_match(event: dict, match: dict, data: dict) -> bool:
     """Who may report a match result: a manager, the registered Google player
@@ -618,16 +925,34 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def _new_round_updates(event: dict) -> dict:
-    """Fields to set whenever a new round is created: clear the round timer (the
-    organiser starts it with the Start-timer button — it no longer auto-starts on
-    pairing) and, where delivery is delayed, re-hide pairings/standings until the
-    organiser releases them."""
+    """Fields to set whenever a new round is created: reset the round timer and,
+    where delivery is delayed, re-hide pairings/standings until the organiser
+    releases them.
+
+    The timer normally waits for the organiser's Start-timer button. With the
+    opt-in `auto_start_timer`, it instead starts the moment pairings go live: now
+    if they post immediately, or on release if delayed (see api_release_delivery),
+    so the clock never runs while players can't yet see their pairings."""
     u = {'round_started_at': ''}
     if event.get('delay_pairings'):
         u['pairings_released'] = False
     if event.get('delay_standings'):
         u['standings_released'] = False
+    if (event.get('auto_start_timer') and event.get('round_timer_minutes')
+            and not event.get('delay_pairings')):
+        u['round_started_at'] = _now_iso()
     return u
+
+
+def _deliver_pairings(event: dict, round_num: int, base_url: str):
+    """Announce a round's pairings to the linked Discord channel and DM each player.
+    Withheld when 'Delay pairings' is on — a freshly paired round is then unreleased,
+    so delivery waits until the organiser releases it (see api_release_delivery),
+    keeping Discord in step with the web view that already hides delayed pairings."""
+    if event.get('delay_pairings'):
+        return
+    discord_api.announce_round(event, round_num, base_url)
+    discord_api.dm_round_pairings(event, round_num, base_url)
 
 def _is_bracket_round(rnd: list) -> bool:
     """A round belongs to the single-elimination playoff if its matches are tagged."""
@@ -644,6 +969,21 @@ def _swiss_complete(event: dict) -> bool:
     return all(m.get('is_bye') or m.get('winner_id') or m.get('result') in DRAW_RESULTS
                for m in last)
 
+def _event_complete(event: dict) -> bool:
+    """True once the event is finished — a decided playoff final, an explicit
+    'finished' status, or all Swiss rounds paired AND fully scored. Mirrors the
+    event page's stage logic so the Events-page card doesn't call an event with an
+    unscored final round 'Completed'."""
+    rounds = event.get('rounds') or []
+    if not rounds:
+        return False
+    last = rounds[-1]
+    if _is_bracket_round(last):
+        return len(last) == 1 and bool(last[0].get('winner_id'))
+    if event.get('status') == 'finished':
+        return True
+    return _swiss_complete(event)
+
 
 # ── Pages ──────────────────────────────────────────────────────────────────────
 
@@ -651,9 +991,15 @@ def _swiss_complete(event: dict) -> bool:
 def index():
     return render_template('index.html', user=get_current_user())
 
+# Community Discord server for the "join us" card on /about. Same server across
+# environments, so it's a constant with an env override rather than per-env config.
+DISCORD_COMMUNITY_GUILD_ID = os.environ.get('DISCORD_COMMUNITY_GUILD_ID',
+                                            '1512133524000608276')
+
 @events_bp.route('/about')
 def about():
-    return render_template('about.html', user=get_current_user())
+    return render_template('about.html', user=get_current_user(),
+                           discord=discord_api.get_widget_info(DISCORD_COMMUNITY_GUILD_ID))
 
 @events_bp.route('/terms')
 def terms():
@@ -668,8 +1014,10 @@ def discord_bot():
     # Invite link for this environment's bot (prod vs staging app), built from the
     # app ID in Secret Manager. Omitted if the bot isn't configured for this env.
     app_id = get_secret('DISCORD_APP_ID')
+    # permissions=268453888 = Send Messages + Embed Links + Manage Roles (the last
+    # lets the bot assign an event role to members; it must sit above that role).
     invite_url = (f'https://discord.com/oauth2/authorize?client_id={app_id}'
-                  '&scope=bot+applications.commands&permissions=18432') if app_id else ''
+                  '&scope=bot+applications.commands&permissions=268453888') if app_id else ''
     # User-install link ("Add to your account"): integration_type=1, commands-only
     # scope (no bot/permissions — it isn't joining a server). Lets someone run the
     # /cparty commands anywhere, even in servers PartyBot isn't in.
@@ -684,6 +1032,47 @@ def event_detail(event_id):
     if not event:
         return 'Event not found', 404
     return render_template('event.html', user=get_current_user(), event=event)
+
+@events_bp.route('/events/<event_id>/decklists')
+@login_required
+def decklists_page(event_id):
+    """Organiser-only table view of registered players' decklists (Epic 4)."""
+    event = get_event(event_id)
+    if not event:
+        return 'Event not found', 404
+    if not _can_manage(event):
+        return 'Organizers only.', 403
+    return render_template('decklists.html', user=get_current_user(), event=event)
+
+@events_bp.route('/events/<event_id>/rounds/<int:round_num>/pairings/print')
+def print_pairings(event_id, round_num):
+    """A clean, print-friendly pairings sheet for one round, sorted by table number
+    (byes and unassigned matches last). Public, like the event page. Renders the
+    table column only when the event uses table assignments."""
+    from discord_notify import _round_label
+    event = get_event(event_id)
+    if not event:
+        return 'Event not found', 404
+    rounds = event.get('rounds', [])
+    idx = round_num - 1
+    if not (0 <= idx < len(rounds)):
+        return 'Round not found', 404
+    rnd = rounds[idx]
+    names = {p['id']: p['name'] for p in event.get('players', [])}
+    rows = []
+    for m in rnd:
+        rows.append({
+            'table':   m.get('table'),
+            'label':   (event.get('table_labels') or {}).get(str(m.get('table'))) if m.get('table') else None,
+            'p1':      names.get(m.get('player1_id'), '?'),
+            'p2':      None if m.get('is_bye') else names.get(m.get('player2_id'), '?'),
+            'is_bye':  bool(m.get('is_bye')),
+        })
+    # Sort by table number; unassigned/byes (no table) fall to the end.
+    rows.sort(key=lambda r: (r['table'] is None, r['table'] or 0))
+    return render_template('print_pairings.html', event=event, rows=rows,
+                           tables_enabled=bool(event.get('tables_enabled')),
+                           round_label=_round_label(round_num, rnd))
 
 @events_bp.route('/admin')
 @login_required
@@ -736,6 +1125,15 @@ def users_page():
 
 # ── API: events ────────────────────────────────────────────────────────────────
 
+# Event fields the index cards / filters read. The listing sends only these plus
+# slim players/rounds (below), not the whole event document — the full rounds
+# (every match) and player snapshots are large and unused by the listing, so
+# trimming them cuts payload and serialization as the event count grows.
+_LIST_FIELDS = ('id', 'name', 'owner_id', 'game', 'event_type', 'format', 'date',
+                'start_time', 'location', 'lat', 'lng', 'description', 'entry_cost',
+                'registration', 'registration_cap', 'status', 'num_rounds', 'tags',
+                'test_mode')
+
 @events_bp.route('/api/events', methods=['GET'])
 def api_list_events():
     # Test-mode events stay out of public discovery — only their owner (and global
@@ -748,15 +1146,28 @@ def api_list_events():
     for e in list_events():
         if e.get('test_mode') and not admin and e.get('owner_id') != uid:
             continue
-        e.pop('entry_code', None)   # secret — not needed for the listing
+        rounds = e.get('rounds') or []
         # Don't leak delayed pairings here either — hide the latest round from
         # non-managers until it's released.
-        if (not _can_manage(e) and e.get('delay_pairings')
-                and not e.get('pairings_released', True) and e['rounds']):
-            e['rounds'] = e['rounds'][:-1]
-            e['pairings_hidden'] = True
-        _redact_players(e)
-        events.append(e)
+        pairings_hidden = (e.get('delay_pairings') and not e.get('pairings_released', True)
+                           and rounds and not _can_manage(e))
+        if pairings_hidden:
+            rounds = rounds[:-1]
+        slim = {k: e.get(k) for k in _LIST_FIELDS}
+        # Completion is computed server-side (the slim rounds below drop `result`,
+        # so the client can't tell a finished round from an unscored one).
+        slim['complete'] = _event_complete(e)
+        # Slim players → only what the cards/filters need (active count, the "my
+        # registered" check). No snapshots/decklists/tokens, so nothing to redact.
+        slim['players'] = [{'google_id': p.get('google_id'), 'dropped': p.get('dropped', False)}
+                           for p in (e.get('players') or [])]
+        # Slim matches → only the fields the listing reads (round count, last-round
+        # bracket detection and its winner). Array shape/lengths are preserved.
+        slim['rounds'] = [[{'stage': m.get('stage'), 'winner_id': m.get('winner_id')}
+                           for m in rnd] for rnd in rounds]
+        if pairings_hidden:
+            slim['pairings_hidden'] = True
+        events.append(slim)
     return jsonify(events)
 
 @events_bp.route('/api/events', methods=['POST'])
@@ -781,7 +1192,26 @@ def api_create_event():
         'requires_decklists': bool(data.get('requires_decklists', False)),
         'decklist_deadline': (data.get('decklist_deadline') or '').strip(),  # '' = no cutoff
         'validation_format': data.get('validation_format') if data.get('validation_format') in VALIDATION_FORMATS else 'none',
+        # Print-legality policy (Premodern/Old School): which physical printings are
+        # allowed. Default off — the organiser opts each in.
+        'allow_proxies':     bool(data.get('allow_proxies', False)),
+        'allow_gold_border': bool(data.get('allow_gold_border', False)),
+        'allow_ce':          bool(data.get('allow_ce', False)),   # Collector's Edition
+        'allow_ie':          bool(data.get('allow_ie', False)),   # International Edition
+        # Proxy policy (only meaningful when allow_proxies): unlimited | limited | custom.
+        'proxy_policy': data.get('proxy_policy') if data.get('proxy_policy') in PROXY_POLICIES else 'unlimited',
+        'proxy_limit':  data.get('proxy_limit') if isinstance(data.get('proxy_limit'), int) and data.get('proxy_limit') >= 0 else 0,
+        'proxy_note':   str(data.get('proxy_note') or '').strip()[:500],
+        # Table assignments: a venue's physical-table range + reserved/labeled tables.
+        'tables_enabled':  bool(data.get('tables_enabled', False)),
+        'table_start':     _bounded_table(data.get('table_start'), 1),
+        'table_end':       _bounded_table(data.get('table_end'), 0),   # 0 = unset
+        'tables_excluded': _clean_table_list(data.get('tables_excluded')),
+        'table_labels':    _clean_table_labels(data.get('table_labels')),
         'round_timer_minutes': data.get('round_timer_minutes') if isinstance(data.get('round_timer_minutes'), int) and data.get('round_timer_minutes') >= 0 else 0,
+        # Opt-in (Advanced): start the round timer automatically when pairings go
+        # live — immediately if posted right away, or on release when delayed.
+        'auto_start_timer': bool(data.get('auto_start_timer', False)),
         'round_started_at': '',   # ISO time the current round's timer started
         # Delayed delivery: hide newly-paired pairings / fresh standings from
         # players until the organiser releases them (prevents stream spoilers).
@@ -789,6 +1219,9 @@ def api_create_event():
         'delay_standings': bool(data.get('delay_standings', False)),
         'pairings_released':  True,
         'standings_released': True,
+        # Waitlist records (people who joined after the cap filled). Status is one
+        # of: waitlisted | promoted | removed | removed_by_self. Kept for history.
+        'waitlist': [],
         # When True, only checked-in players are paired (attendance gate).
         'require_check_in': bool(data.get('require_check_in', False)),
         'brand_text':       str(data.get('brand_text') or '')[:300],
@@ -811,6 +1244,10 @@ def api_create_event():
         'payment_url':  payment_url,
         'date':         data.get('date', str(datetime.date.today())),
         'start_time':   (data.get('start_time') or '').strip()[:5],
+        'location':     str(data.get('location') or '').strip()[:200],
+        'lat':          _coord(data.get('lat'), -90, 90),     # from a Places selection
+        'lng':          _coord(data.get('lng'), -180, 180),
+        'place_id':     str(data.get('place_id') or '').strip()[:300],
         'owner_id':     user['id'],
         'owner_name':   user['name'],
         'players':      [],
@@ -823,8 +1260,14 @@ def api_create_event():
         'registration_type':  data.get('registration_type') if data.get('registration_type') in REGISTRATION_TYPES else 'open',
         'registration_start': (data.get('registration_start') or '').strip(),
         'registration_end':   (data.get('registration_end') or '').strip(),
-        'unenroll_end':       (data.get('unenroll_end') or '').strip(),
+        'unenroll_end':       (data.get('unenroll_end') or '').strip(),   # = the drop deadline
         'registration_cap': data.get('registration_cap', 0),  # 0 = no cap
+        # Drop / refund policy. self-service drops on by default (matches prior
+        # behaviour); refund text/window are display-only (no payment processing).
+        'self_service_drop_enabled': bool(data.get('self_service_drop_enabled', True)),
+        'drop_policy_text':   str(data.get('drop_policy_text') or '')[:_COMMS_MAX],
+        'refund_policy_text': str(data.get('refund_policy_text') or '')[:_COMMS_MAX],
+        'refund_window_end':  (data.get('refund_window_end') or '').strip(),
     }
     eid = create_event(event)
     event['id'] = eid
@@ -849,6 +1292,24 @@ def api_get_event(event_id):
     # organiser shares out-of-band, so never send it to non-managers.
     e['entry_code_required'] = bool(e.get('entry_code'))
     _enrich_players_discord(e)
+    # Repair handles for players who registered via the bot before we captured
+    # them — fetched from Discord in the background, so they appear on next load.
+    if e['can_manage'] and _players_missing_discord_handle(e):
+        eid = e['id']
+        threading.Thread(target=backfill_discord_handles, args=(eid,), daemon=True).start()
+    # Waitlist: managers see the full records (names/emails) to manage seats;
+    # everyone else sees only their own status + queue position, never others'.
+    e['is_full'] = _is_full(e)
+    active_wl = _active_waitlist(e)
+    uid = (get_current_user() or {}).get('id')
+    mine = next((w for w in active_wl if w.get('google_id') == uid), None) if uid else None
+    e['my_waitlist'] = ({'status': 'waitlisted',
+                         'position': active_wl.index(mine) + 1,
+                         'total': len(active_wl)} if mine else None)
+    if e['can_manage']:
+        e['waitlist_count'] = len(active_wl)
+    else:
+        e.pop('waitlist', None)
     if not e['can_manage']:
         e.pop('entry_code', None)
         # Delayed delivery: hide the latest round's pairings / the standings from
@@ -871,21 +1332,36 @@ def api_update_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
     data = request.json or {}
-    allowed = {'name', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
+    allowed = {'name', 'advanced', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
                'requires_decklists', 'entry_code', 'intentional_draws_frowned',
-               'round_timer_minutes', 'delay_pairings', 'delay_standings', 'require_check_in',
+               'round_timer_minutes', 'auto_start_timer',
+               'delay_pairings', 'delay_standings', 'require_check_in',
                'brand_text',
                'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
                'event_type', 'format', 'description', 'entry_cost',
-               'payment_url', 'date', 'start_time', 'num_rounds',
+               'payment_url', 'date', 'start_time', 'location', 'lat', 'lng', 'place_id', 'num_rounds',
                'status', 'registration', 'registration_cap',
                'registration_type', 'registration_start', 'registration_end', 'unenroll_end',
-               'decklist_deadline', 'validation_format'}
+               'self_service_drop_enabled', 'drop_policy_text', 'refund_policy_text', 'refund_window_end',
+               'decklist_deadline', 'validation_format',
+               'allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_ie',
+               'proxy_policy', 'proxy_limit', 'proxy_note',
+               'tables_enabled', 'table_start', 'table_end', 'tables_excluded', 'table_labels'}
     updates = {k: v for k, v in data.items() if k in allowed}
     if 'name' in updates and not str(updates['name']).strip():
         return jsonify({'error': 'Event name is required'}), 400
     if 'test_mode' in updates:
         updates['test_mode'] = bool(updates['test_mode'])
+    if 'advanced' in updates:
+        # One-way: an event can be upgraded Simple→Advanced but never downgraded.
+        updates['advanced'] = bool(updates['advanced']) or bool(e.get('advanced'))
+    if 'self_service_drop_enabled' in updates:
+        updates['self_service_drop_enabled'] = bool(updates['self_service_drop_enabled'])
+    for f in ('drop_policy_text', 'refund_policy_text'):
+        if f in updates:
+            updates[f] = str(updates[f] or '')[:_COMMS_MAX]
+    if 'refund_window_end' in updates:
+        updates['refund_window_end'] = str(updates['refund_window_end'] or '').strip()
     if 'entry_code' in updates:
         updates['entry_code'] = str(updates['entry_code'] or '').strip()[:64]
     if 'intentional_draws_frowned' in updates:
@@ -894,20 +1370,48 @@ def api_update_event(event_id):
         updates['registration_type'] = 'open'
     if 'requires_decklists' in updates:
         updates['requires_decklists'] = bool(updates['requires_decklists'])
+    for f in ('allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_ie'):
+        if f in updates:
+            updates[f] = bool(updates[f])
+    if 'proxy_policy' in updates and updates['proxy_policy'] not in PROXY_POLICIES:
+        updates['proxy_policy'] = 'unlimited'
+    if 'proxy_limit' in updates:
+        v = updates['proxy_limit']
+        updates['proxy_limit'] = v if isinstance(v, int) and v >= 0 else 0
+    if 'proxy_note' in updates:
+        updates['proxy_note'] = str(updates['proxy_note'] or '').strip()[:500]
     if 'round_timer_minutes' in updates:
         v = updates['round_timer_minutes']
         updates['round_timer_minutes'] = v if isinstance(v, int) and v >= 0 else 0
-    for f in ('delay_pairings', 'delay_standings', 'require_check_in'):
+    for f in ('delay_pairings', 'delay_standings', 'require_check_in', 'auto_start_timer'):
         if f in updates:
             updates[f] = bool(updates[f])
     if 'brand_text' in updates:
         updates['brand_text'] = str(updates['brand_text'] or '')[:300]
     if 'start_time' in updates:
         updates['start_time'] = str(updates['start_time'] or '').strip()[:5]
+    if 'location' in updates:
+        updates['location'] = str(updates['location'] or '').strip()[:200]
+    if 'lat' in updates:
+        updates['lat'] = _coord(updates['lat'], -90, 90)
+    if 'lng' in updates:
+        updates['lng'] = _coord(updates['lng'], -180, 180)
+    if 'place_id' in updates:
+        updates['place_id'] = str(updates['place_id'] or '').strip()[:300]
     if 'decklist_deadline' in updates:
         updates['decklist_deadline'] = str(updates['decklist_deadline'] or '').strip()
     if 'validation_format' in updates and updates['validation_format'] not in VALIDATION_FORMATS:
         updates['validation_format'] = 'none'
+    if 'tables_enabled' in updates:
+        updates['tables_enabled'] = bool(updates['tables_enabled'])
+    if 'table_start' in updates:
+        updates['table_start'] = _bounded_table(updates['table_start'], 1)
+    if 'table_end' in updates:
+        updates['table_end'] = _bounded_table(updates['table_end'], 0)
+    if 'tables_excluded' in updates:
+        updates['tables_excluded'] = _clean_table_list(updates['tables_excluded'])
+    if 'table_labels' in updates:
+        updates['table_labels'] = _clean_table_labels(updates['table_labels'])
     if 'prize_deadline_days' in updates:
         v = updates['prize_deadline_days']
         updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
@@ -923,16 +1427,19 @@ def api_update_event(event_id):
         if err:
             return jsonify({'error': err}), 400
     old_format = e.get('validation_format', 'none')
+    old_policy = {k: e.get(k) for k in _PRINT_POLICY_KEYS}
     save_event(event_id, updates)
     e.update(updates)
-    # Changing the validation format re-checks every submitted decklist so their
-    # status stays accurate (the client confirms before sending the change).
-    if updates.get('validation_format', old_format) != old_format:
+    # Re-check every submitted decklist when the validation format OR the print-legality
+    # policy changes, so stored statuses (and proxy flags) stay accurate.
+    policy_changed = any(k in updates and updates[k] != old_policy[k] for k in _PRINT_POLICY_KEYS)
+    if updates.get('validation_format', old_format) != old_format or policy_changed:
         revalidated = False
         for p in e.get('players', []):
             dl = p.get('decklist')
             if dl and (dl.get('text') or '').strip():
-                dl['validation'] = validate_decklist(dl['text'], updates['validation_format'])
+                dl['validation'] = validate_decklist(dl['text'], e.get('validation_format', 'none'),
+                                                      _print_policy(e))
                 revalidated = True
         if revalidated:
             save_event(event_id, {'players': e['players']})
@@ -992,6 +1499,7 @@ def api_register(event_id):
             save_user_profile(user['id'], {'discord': discord})
         refresh_event_announcement(get_event(event_id))
         existing['dropped'] = False
+        _log_action(event_id, 'register', 'registered')
         return jsonify(existing), 200
     player = {
         'id':        _slugify(display_name) + '_' + str(len(e['players'])),
@@ -1007,6 +1515,7 @@ def api_register(event_id):
     # Keep the user directory current: capture the discord handle they gave.
     if discord:
         save_user_profile(user['id'], {'discord': discord})
+    _log_action(event_id, 'register', 'registered')
     return jsonify(player), 201
 
 @events_bp.route('/api/events/<event_id>/unregister', methods=['POST'])
@@ -1019,16 +1528,153 @@ def api_unregister(event_id):
     player = _find_player_by_google_id(e, user['id'])
     if not player:
         return jsonify({'error': 'Not registered'}), 400
+    if not e.get('self_service_drop_enabled', True):
+        return jsonify({'error': 'Self-service drops are disabled for this event — contact the organiser.'}), 400
     unenroll_end = e.get('unenroll_end')
     if unenroll_end and datetime.date.today().isoformat() > unenroll_end:
-        return jsonify({'error': 'The unenrollment deadline has passed — contact the organiser'}), 400
+        return jsonify({'error': 'The drop deadline has passed — contact the organiser.'}), 400
     if e['rounds']:
         set_player_dropped(event_id, player['id'], True)
     else:
         e['players'] = [p for p in e['players'] if p.get('google_id') != user['id']]
         save_event(event_id, {'players': e['players']})
     refresh_event_announcement(get_event(event_id))   # a slot may have freed up
+    _log_action(event_id, 'drop', 'dropped')
     return jsonify({'ok': True})
+
+
+# ── API: waitlist ────────────────────────────────────────────────────────────
+
+@events_bp.route('/api/events/<event_id>/waitlist', methods=['POST'])
+@login_required
+def api_join_waitlist(event_id):
+    """Join the waitlist for a full event (signed-in accounts only). No-op-safe:
+    refuses if the event isn't full, registration is otherwise closed, the user is
+    already registered, or they're already waiting."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    blocked = _self_registration_blocked(e)
+    if blocked:
+        return jsonify({'error': blocked}), 400
+    code_err = _entry_code_error(e, request.json or {})
+    if code_err:
+        return jsonify({'error': code_err}), 400
+    if not _is_full(e):
+        return jsonify({'error': 'This event still has open spots — register normally.'}), 400
+    user = get_current_user()
+    existing = _find_player_by_google_id(e, user['id'])
+    if existing and not existing.get('dropped'):
+        return jsonify({'error': "You're already registered for this event."}), 400
+    waitlist = e.get('waitlist') or []
+    if any(w.get('google_id') == user['id'] and w.get('status') == 'waitlisted' for w in waitlist):
+        return jsonify({'error': "You're already on the waitlist."}), 400
+    profile = get_user_profile(user['id'])
+    data = request.json or {}
+    discord = data.get('discord', '').strip() or profile.get('discord', '')
+    record = {
+        'id':         uuid.uuid4().hex,
+        'google_id':  user['id'],
+        'name':       (data.get('display_name', '').strip() or user['name'])[:80],
+        'email':      profile.get('email', '') or user.get('email', ''),
+        'discord':    discord,
+        'status':     'waitlisted',
+        'joined_at':  _now_iso(),
+    }
+    waitlist.append(record)
+    save_event(event_id, {'waitlist': waitlist})
+    if discord:
+        save_user_profile(user['id'], {'discord': discord})
+    _log_action(event_id, 'waitlist_join', f"{record['name']} joined the waitlist")
+    position = sum(1 for w in waitlist if w.get('status') == 'waitlisted')
+    return jsonify({'ok': True, 'position': position}), 201
+
+@events_bp.route('/api/events/<event_id>/waitlist/leave', methods=['POST'])
+@login_required
+def api_leave_waitlist(event_id):
+    """Remove yourself from the waitlist (status → removed_by_self, kept for history)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    user = get_current_user()
+    waitlist = e.get('waitlist') or []
+    rec = next((w for w in waitlist
+                if w.get('google_id') == user['id'] and w.get('status') == 'waitlisted'), None)
+    if not rec:
+        return jsonify({'error': "You're not on the waitlist."}), 400
+    rec['status'] = 'removed_by_self'
+    rec['removed_at'] = _now_iso()
+    save_event(event_id, {'waitlist': waitlist})
+    _log_action(event_id, 'waitlist_leave', f"{rec.get('name', 'A player')} left the waitlist")
+    return jsonify({'ok': True})
+
+@events_bp.route('/api/events/<event_id>/waitlist/<wid>/promote', methods=['POST'])
+@login_required
+def api_promote_waitlist(event_id, wid):
+    """Promote a waitlisted player into the event. Transactional so two organisers
+    can't overfill the last seat; refuses when the event is already at capacity."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    user = get_current_user()
+    promoter = {'id': user['id'], 'name': user['name']}
+
+    def build_player(rec, index):
+        player = {
+            'id':         _slugify(rec.get('name') or 'player') + '_' + str(index),
+            'name':       rec.get('name') or 'Player',
+            'google_id':  rec.get('google_id'),
+            'discord':    rec.get('discord', ''),
+            'dropped':    False,
+            'checked_in': not e.get('require_check_in'),
+        }
+        if rec.get('discord_id'):   # keep the Discord link so they can report via DM/channel
+            player['discord_id'] = rec['discord_id']
+        return player
+
+    status, player = promote_waitlist_entry(event_id, wid, build_player, promoter, _now_iso())
+    if status == 'gone':
+        return jsonify({'error': 'That event no longer exists.'}), 404
+    if status == 'missing':
+        return jsonify({'error': 'That player is no longer on the waitlist.'}), 400
+    if status == 'full':
+        return jsonify({'error': 'The event is already at capacity — drop a player first.'}), 400
+    _log_action(event_id, 'waitlist_promote',
+                f"Promoted {player['name']} from the waitlist", target=player['name'])
+    refresh_event_announcement(get_event(event_id))
+    return jsonify({'ok': True, 'player': player})
+
+@events_bp.route('/api/events/<event_id>/waitlist/<wid>/remove', methods=['POST'])
+@login_required
+def api_remove_waitlist(event_id, wid):
+    """Organiser removes a waitlisted player (status → removed, kept for history)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    waitlist = e.get('waitlist') or []
+    rec = next((w for w in waitlist if w.get('id') == wid), None)
+    if not rec:
+        return jsonify({'error': 'No such waitlist entry.'}), 404
+    if rec.get('status') != 'waitlisted':
+        return jsonify({'error': 'That entry is no longer active.'}), 400
+    rec['status'] = 'removed'
+    rec['removed_at'] = _now_iso()
+    save_event(event_id, {'waitlist': waitlist})
+    _log_action(event_id, 'waitlist_remove',
+                f"Removed {rec.get('name', 'a player')} from the waitlist", target=rec.get('name', ''))
+    return jsonify({'ok': True})
+
+@events_bp.route('/api/events/<event_id>/log', methods=['GET'])
+@login_required
+def api_event_log(event_id):
+    """The event's activity log (organiser/admin only)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    return jsonify(list_event_log(event_id))
 
 @events_bp.route('/api/events/<event_id>/join', methods=['POST'])
 def api_join_guest(event_id):
@@ -1066,6 +1712,7 @@ def api_join_guest(event_id):
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
+    _log_action(event_id, 'register', 'registered as a guest', actor_name=name)
     echo = {k: v for k, v in player.items() if k != 'guest_token'}
     return jsonify({'player': echo, 'token': token}), 201
 
@@ -1114,17 +1761,42 @@ def api_add_player(event_id):
         discord = profile.get('discord', '')
     if google_id and any(p.get('google_id') == google_id for p in e['players']):
         return jsonify({'error': 'That player is already in this event'}), 400
+    # At capacity → route the add onto the waitlist rather than overfilling. This
+    # applies to organisers adding themselves or walk-ins too; promote later to
+    # seat them when a spot opens.
+    if _is_full(e):
+        waitlist = e.get('waitlist') or []
+        if google_id and any(w.get('google_id') == google_id and w.get('status') == 'waitlisted'
+                             for w in waitlist):
+            return jsonify({'error': 'That player is already on the waitlist'}), 400
+        record = {
+            'id':        uuid.uuid4().hex,
+            'google_id': google_id,
+            'name':      name[:80],
+            'email':     get_user_profile(google_id).get('email', '') if google_id else '',
+            'discord':   discord,
+            'status':    'waitlisted',
+            'joined_at': _now_iso(),
+            'added_by_organizer': True,
+        }
+        waitlist.append(record)
+        save_event(event_id, {'waitlist': waitlist})
+        _log_action(event_id, 'waitlist_join', f"{record['name']} added to the waitlist (event full)")
+        return jsonify({'waitlisted': True, 'name': record['name']}), 201
     player = {
         'id':        _slugify(name) + '_' + str(len(e['players'])),
         'name':      name,
         'google_id': google_id,
         'discord':   discord,
         'dropped':   False,
-        'checked_in': True,   # organiser added them, so they're present
+        # Check-in events need an explicit check-in (show the "Check in" button), so
+        # only auto-mark present when check-in isn't required.
+        'checked_in': not e.get('require_check_in'),
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
+    _log_action(event_id, 'register', f'added {name}', target=name)
     return jsonify(player), 201
 
 @events_bp.route('/api/events/<event_id>/player-search', methods=['GET'])
@@ -1164,12 +1836,14 @@ def api_remove_player(event_id, player_id):
     _require_manage(e)
     if e['rounds']:
         return jsonify({'error': 'Drop the player instead once rounds have started'}), 400
+    removed = next((p for p in e['players'] if p['id'] == player_id), None)
     remaining = [p for p in e['players'] if p['id'] != player_id]
     if len(remaining) == len(e['players']):
         return jsonify({'error': 'Player not found'}), 404
     e['players'] = remaining
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # a slot may have freed up
+    _log_action(event_id, 'drop', f"removed {removed['name']}", target=removed['name'])
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/drop', methods=['POST'])
@@ -1179,9 +1853,11 @@ def api_drop_player(event_id, player_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    if not set_player_dropped(event_id, player_id, True):
+    target = set_player_dropped(event_id, player_id, True)
+    if not target:
         return jsonify({'error': 'Player not found'}), 404
     refresh_event_announcement(get_event(event_id))   # a slot may have freed up
+    _log_action(event_id, 'drop', f"dropped {target['name']}", target=target['name'])
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/undrop', methods=['POST'])
@@ -1191,9 +1867,11 @@ def api_undrop_player(event_id, player_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    if not set_player_dropped(event_id, player_id, False):
+    target = set_player_dropped(event_id, player_id, False)
+    if not target:
         return jsonify({'error': 'Player not found'}), 404
     refresh_event_announcement(get_event(event_id))   # may have re-hit the cap
+    _log_action(event_id, 'undrop', f"returned {target['name']} to the event", target=target['name'])
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/rename', methods=['POST'])
@@ -1225,6 +1903,39 @@ def api_rename_player(event_id, player_id):
     player['name'] = name
     save_event(event_id, {'players': e['players']})
     return jsonify({'ok': True, 'name': name})
+
+@events_bp.route('/api/events/<event_id>/players/<player_id>/fixed-table', methods=['POST'])
+@login_required
+def api_set_fixed_table(event_id, player_id):
+    """Organiser pins (or clears) a player's fixed seat, so they keep the same
+    table every round (e.g. a mobility accommodation). Pass {table: <n>} to set,
+    or {table: null} / {table: 0} to clear. Applies from the next pairing."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    player = next((p for p in e['players'] if p['id'] == player_id), None)
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+    raw = (request.json or {}).get('table')
+    table = None
+    if raw not in (None, '', 0, '0'):
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Table must be a number'}), 400
+        if not (1 <= n <= _MAX_TABLE):
+            return jsonify({'error': f'Table must be between 1 and {_MAX_TABLE}'}), 400
+        table = n
+    if table is None:
+        player.pop('fixed_table', None)
+    else:
+        player['fixed_table'] = table
+    save_event(event_id, {'players': e['players']})
+    _log_action(event_id, 'table',
+                f"set {player['name']}'s fixed table to {table}" if table
+                else f"cleared {player['name']}'s fixed table", target=player['name'])
+    return jsonify({'ok': True, 'fixed_table': table})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/checkin', methods=['POST'])
 @login_required
@@ -1262,11 +1973,13 @@ def api_pair_round(event_id):
             return jsonify({'error': 'Every playoff match needs a winner before advancing '
                                      '(resolve any draws first)'}), 400
         new_round = next_bracket_round(last)
+        assign_tables(new_round, e['players'], e)
         e['rounds'].append(new_round)
-        save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
+        ru = _new_round_updates(e)
+        save_event(event_id, {'rounds': e['rounds'], **ru})
+        e.update(ru)   # so _deliver_pairings sees an auto-started timer
         round_num = len(e['rounds'])
-        discord_api.announce_round(e, round_num)
-        discord_api.dm_round_pairings(e, round_num, request.host_url)
+        _deliver_pairings(e, round_num, request.host_url)
         return jsonify({'round_num': round_num, 'pairings': new_round})
 
     if e['rounds'] and e.get('event_type') != 'League':
@@ -1287,16 +2000,16 @@ def api_pair_round(event_id):
         if len([p for p in players_to_pair if not p.get('dropped')]) < 2:
             return jsonify({'error': 'Need at least 2 checked-in players to pair'}), 400
     new_round = pair_round(players_to_pair, e['rounds'])
+    assign_tables(new_round, e['players'], e)
     e['rounds'].append(new_round)
     updates = {'rounds': e['rounds'], 'status': 'active', 'registration': 'closed',
                **_new_round_updates(e)}
     save_event(event_id, updates)
-    e['registration'] = 'closed'    # so the announcement card now shows closed
+    e.update(updates)   # reflect status/registration + any auto-started timer in-memory
     refresh_event_announcement(e)
 
     round_num  = len(e['rounds'])
-    discord_api.announce_round(e, round_num)
-    discord_api.dm_round_pairings(e, round_num, request.host_url)
+    _deliver_pairings(e, round_num, request.host_url)
 
     return jsonify({'round_num': round_num, 'pairings': new_round})
 
@@ -1324,13 +2037,13 @@ def api_cut_to_top(event_id):
 
     standings = compute_standings(e['players'], e['rounds'])
     new_round, seeds = make_bracket(standings, cut_size)
+    assign_tables(new_round, e['players'], e)
     e['rounds'].append(new_round)
     save_event(event_id, {'rounds': e['rounds'], 'cut_size': cut_size, 'cut_seeds': seeds,
                           **_new_round_updates(e)})
 
     round_num = len(e['rounds'])
-    discord_api.announce_round(e, round_num)
-    discord_api.dm_round_pairings(e, round_num, request.host_url)
+    _deliver_pairings(e, round_num, request.host_url)
     return jsonify({'round_num': round_num, 'cut_size': cut_size, 'pairings': new_round})
 
 
@@ -1345,7 +2058,7 @@ def api_restart_timer(event_id):
     now = _now_iso()
     save_event(event_id, {'round_started_at': now})
     e['round_started_at'] = now
-    discord_api.update_round_pairings(e)   # show the live countdown on the pairings card
+    discord_api.update_round_pairings(e, request.host_url)   # show the live countdown on the pairings card
     return jsonify({'round_started_at': now})
 
 
@@ -1362,16 +2075,27 @@ def api_my_decklist(event_id):
     locked = _decklist_locked(e)
     if request.method == 'GET':
         dl = p.get('decklist') or {}
-        return jsonify({'text': dl.get('text', ''), 'updated_at': dl.get('updated_at', ''),
+        return jsonify({'text': dl.get('text', ''), 'name': dl.get('name', ''),
+                        'updated_at': dl.get('updated_at', ''),
                         'validation': dl.get('validation'),
                         'locked': locked, 'deadline': e.get('decklist_deadline', '')})
     if locked:
         return jsonify({'error': 'The decklist deadline has passed.'}), 400
     text = str((request.json or {}).get('text', ''))[:20000]
-    validation = validate_decklist(text, e.get('validation_format', 'none')) if text.strip() else None
-    dl = {'text': text, 'updated_at': _now_iso(), 'validation': validation} if text.strip() else None
+    name = str((request.json or {}).get('name', '')).strip()[:120]
+    validation = validate_decklist(text, e.get('validation_format', 'none'),
+                                   _print_policy(e)) if text.strip() else None
+    dl = {'text': text, 'name': name, 'updated_at': _now_iso(),
+          'validation': validation} if text.strip() else None
+    had = bool((p.get('decklist') or {}).get('text', '').strip())
     if set_player_field(event_id, p['id'], 'decklist', dl) is None:
         return jsonify({'error': 'Could not save your decklist.'}), 400
+    if dl:
+        _log_action(event_id, 'decklist',
+                    'updated their decklist' if had else 'uploaded a decklist',
+                    actor_name=p['name'])
+    elif had:
+        _log_action(event_id, 'decklist', 'removed their decklist', actor_name=p['name'])
     return jsonify({'ok': True, 'updated_at': dl['updated_at'] if dl else '',
                     'has_decklist': bool(dl), 'validation': validation})
 
@@ -1387,10 +2111,10 @@ def api_import_moxfield(event_id):
         return jsonify({'error': "You're not registered for this event."}), 403
     if _decklist_locked(e):
         return jsonify({'error': 'The decklist deadline has passed.'}), 400
-    text, err = import_moxfield((request.json or {}).get('url', ''))
+    text, name, err = import_moxfield((request.json or {}).get('url', ''))
     if err:
         return jsonify({'error': err}), 400
-    return jsonify({'text': text})
+    return jsonify({'text': text, 'name': name})
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET'])
@@ -1405,8 +2129,90 @@ def api_player_decklist(event_id, player_id):
     if not p:
         return jsonify({'error': 'Player not found'}), 404
     dl = p.get('decklist') or {}
-    return jsonify({'name': p.get('name', ''), 'text': dl.get('text', ''),
-                    'updated_at': dl.get('updated_at', ''), 'validation': dl.get('validation')})
+    return jsonify({'name': p.get('name', ''), 'deck_name': dl.get('name', ''),
+                    'text': dl.get('text', ''), 'updated_at': dl.get('updated_at', ''),
+                    'validation': dl.get('validation'),
+                    'proxy_override': bool(dl.get('proxy_override')),
+                    'proxy_override_note': dl.get('proxy_override_note', '')})
+
+
+@events_bp.route('/api/events/<event_id>/players/<player_id>/decklist-name', methods=['POST'])
+@login_required
+def api_set_decklist_name(event_id, player_id):
+    """Organiser sets/edits the deck name on a player's submitted decklist."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    p = next((x for x in e['players'] if x['id'] == player_id), None)
+    if not p:
+        return jsonify({'error': 'Player not found'}), 404
+    dl = p.get('decklist')
+    if not dl or not (dl.get('text') or '').strip():
+        return jsonify({'error': 'That player has no decklist to name.'}), 400
+    dl['name'] = str((request.json or {}).get('name', '')).strip()[:120]
+    if set_player_field(event_id, player_id, 'decklist', dl) is None:
+        return jsonify({'error': 'Could not save the deck name.'}), 400
+    return jsonify({'ok': True, 'name': dl['name']})
+
+
+@events_bp.route('/api/events/<event_id>/players/<player_id>/proxy-override', methods=['POST'])
+@login_required
+def api_proxy_override(event_id, player_id):
+    """Organiser overrides proxy validation for a player's decklist (e.g. accepts an
+    over-limit count), recording a required note. Pass {override: false} to clear."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    p = next((x for x in e['players'] if x['id'] == player_id), None)
+    if not p:
+        return jsonify({'error': 'Player not found'}), 404
+    dl = p.get('decklist')
+    if not dl or not (dl.get('text') or '').strip():
+        return jsonify({'error': 'That player has no decklist.'}), 400
+    data = request.json or {}
+    override = bool(data.get('override'))
+    note = str(data.get('note', '')).strip()[:300]
+    if override and not note:
+        return jsonify({'error': 'A note is required to override.'}), 400
+    dl['proxy_override'] = override
+    dl['proxy_override_note'] = note if override else ''
+    if set_player_field(event_id, player_id, 'decklist', dl) is None:
+        return jsonify({'error': 'Could not save the override.'}), 400
+    return jsonify({'ok': True, 'proxy_override': override, 'proxy_override_note': dl['proxy_override_note']})
+
+
+@events_bp.route('/api/events/<event_id>/decklists', methods=['GET'])
+@login_required
+def api_decklists_table(event_id):
+    """Organiser-only: a per-player decklist summary for the Decklists table view —
+    deck name, maindeck/sideboard/proxy counts, and validation status."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    rows = []
+    for p in e['players']:
+        if p.get('dropped'):
+            continue
+        dl = p.get('decklist') or {}
+        v = dl.get('validation') or {}
+        rows.append({
+            'player_id':   p['id'],
+            'player_name': p.get('name', ''),
+            'google_id':   p.get('google_id'),
+            'has_decklist': bool((dl.get('text') or '').strip()),
+            'deck_name':   dl.get('name', ''),
+            'maindeck':    v.get('maindeck_count', 0),
+            'sideboard':   v.get('sideboard_count', 0),
+            'proxy_count': v.get('proxy_count', 0),
+            'proxy_override': bool(dl.get('proxy_override')),
+            'proxy_override_note': dl.get('proxy_override_note', ''),
+            'status':      v.get('status'),
+        })
+    return jsonify({'event_name': e.get('name', 'Event'), 'players': rows,
+                    'allow_proxies': bool(e.get('allow_proxies'))})
 
 
 @events_bp.route('/api/events/<event_id>/release', methods=['POST'])
@@ -1421,11 +2227,179 @@ def api_release_delivery(event_id):
     field = {'pairings': 'pairings_released', 'standings': 'standings_released'}.get(what)
     if not field:
         return jsonify({'error': 'Specify what to release: pairings or standings'}), 400
+    was_released = e.get(field, True)
     save_event(event_id, {field: True})
+    e[field] = True
+    # Releasing pairings is when their Discord delivery (withheld at pairing time by
+    # _deliver_pairings) actually goes out — only on the unreleased→released flip.
+    if what == 'pairings' and not was_released and e.get('rounds'):
+        round_num = len(e['rounds'])
+        # Opt-in auto-start: with delayed pairings, the clock begins on release.
+        if e.get('auto_start_timer') and e.get('round_timer_minutes'):
+            now = _now_iso()
+            save_event(event_id, {'round_started_at': now})
+            e['round_started_at'] = now
+        discord_api.announce_round(e, round_num, request.host_url)
+        discord_api.dm_round_pairings(e, round_num, request.host_url)
     return jsonify({'ok': True, field: True})
 
 
+@events_bp.route('/api/events/<event_id>/discord-role', methods=['POST', 'DELETE'])
+@login_required
+def api_discord_role(event_id):
+    """Create (or re-sync) a Discord role for this event and assign it to every
+    non-dropped player with a linked Discord ID — so the organiser can @mention all
+    members. DELETE removes the role. Needs the event linked to a Discord channel and
+    the bot to have Manage Roles."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+
+    if request.method == 'DELETE':
+        gid, rid = e.get('discord_guild_id'), e.get('discord_role_id')
+        if gid and rid:
+            discord_api.delete_guild_role(gid, rid)
+        save_event(event_id, {'discord_role_id': '', 'discord_role_name': ''})
+        return jsonify({'ok': True})
+
+    channel_id = e.get('discord_channel_id')
+    if not channel_id:
+        return jsonify({'error': 'Link this event to a Discord channel first '
+                                 f'(/{COMMAND_NAME} link in the channel).'}), 400
+    guild_id = e.get('discord_guild_id') or discord_api.guild_id_for_channel(channel_id)
+    if not guild_id:
+        return jsonify({'error': "Couldn't find the linked Discord server — re-link "
+                                 "the channel and try again."}), 400
+    role_id, role_name = e.get('discord_role_id'), e.get('discord_role_name') or ''
+    if not role_id:
+        role_name = (str((request.json or {}).get('name', '')).strip()[:100]
+                     or f"{e.get('name', 'Event')} players")
+        role_id = discord_api.create_guild_role(guild_id, role_name)
+        if role_id == '':
+            return jsonify({'error': 'I need the Manage Roles permission (with my role '
+                                     'above the new one) in your Discord server. Re-invite '
+                                     'the bot with that permission, then try again.'}), 400
+        if not role_id:
+            return jsonify({'error': "Couldn't create the role in Discord."}), 400
+    save_event(event_id, {'discord_guild_id': guild_id, 'discord_role_id': role_id,
+                          'discord_role_name': role_name})
+    e.update({'discord_guild_id': guild_id, 'discord_role_id': role_id,
+              'discord_role_name': role_name})
+    discord_api.sync_event_role(e, role_id)   # assign + post a summary to the channel
+    return jsonify({'ok': True, 'role_id': role_id, 'role_name': role_name})
+
+
+@events_bp.route('/api/events/<event_id>/discord/guilds', methods=['GET'])
+@login_required
+def api_discord_guilds(event_id):
+    """Servers the bot is in *and* the organiser administers, for the web channel
+    picker. Needs the organiser's Discord linked so we know their Discord user id."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    did = (get_user_profile(get_current_user()['id']).get('discord_id') or '').strip()
+    if not did:
+        return jsonify({'linked': False, 'guilds': []})
+    guilds = [g for g in discord_api.list_bot_guilds()
+              if discord_api.is_user_guild_admin(g['id'], did)]
+    return jsonify({'linked': True, 'guilds': guilds})
+
+@events_bp.route('/api/events/<event_id>/discord/channels', methods=['GET'])
+@login_required
+def api_discord_channels(event_id):
+    """Text channels in the chosen server (organiser-only, and only a server the
+    organiser administers)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    gid = request.args.get('guild_id', '').strip()
+    if not gid:
+        return jsonify([])
+    did = (get_user_profile(get_current_user()['id']).get('discord_id') or '').strip()
+    if not (did and discord_api.is_user_guild_admin(gid, did)):
+        return jsonify([])
+    return jsonify(discord_api.list_guild_text_channels(gid))
+
+@events_bp.route('/api/events/<event_id>/discord/link', methods=['POST'])
+@login_required
+def api_discord_link(event_id):
+    """Link this event to a Discord channel chosen on the web (no /cparty link needed)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    data = request.json or {}
+    channel_id = str(data.get('channel_id', '')).strip()
+    if not channel_id:
+        return jsonify({'error': 'Choose a channel.'}), 400
+    guild_id = str(data.get('guild_id', '')).strip() or (discord_api.guild_id_for_channel(channel_id) or '')
+    did = (get_user_profile(get_current_user()['id']).get('discord_id') or '').strip()
+    if not (did and guild_id and discord_api.is_user_guild_admin(guild_id, did)):
+        return jsonify({'error': 'You can only connect a channel in a server you administer.'}), 403
+    save_event(event_id, {'discord_channel_id': channel_id, 'discord_guild_id': guild_id,
+                          'discord_channel_name': str(data.get('channel_name', '')).strip()[:100]})
+    _log_action(event_id, 'discord', 'linked a Discord channel')
+    return jsonify({'ok': True})
+
+@events_bp.route('/api/events/<event_id>/discord/unlink', methods=['POST'])
+@login_required
+def api_discord_unlink(event_id):
+    """Disconnect Discord: forget the channel and (best-effort) delete the event role."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    gid, rid = e.get('discord_guild_id'), e.get('discord_role_id')
+    if gid and rid:
+        discord_api.delete_guild_role(gid, rid)
+    save_event(event_id, {'discord_channel_id': '', 'discord_guild_id': '',
+                          'discord_channel_name': '', 'discord_role_id': '',
+                          'discord_role_name': '', 'discord_announce': None})
+    _log_action(event_id, 'discord', 'disconnected Discord')
+    return jsonify({'ok': True})
+
+@events_bp.route('/api/events/<event_id>/discord/announce', methods=['POST'])
+@login_required
+def api_discord_announce(event_id):
+    """Post the event card (optionally with a message and/or an @role ping) to the
+    linked channel — the web equivalent of /cparty announce."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    channel_id = e.get('discord_channel_id')
+    if not channel_id:
+        return jsonify({'error': 'Connect a Discord channel first.'}), 400
+    data = request.json or {}
+    message = str(data.get('message', '')).strip()[:1800]
+    mention_role_id = e.get('discord_role_id') if data.get('mention_role') else None
+    name, posted = announce_event_to_channel(event_id, channel_id, request.host_url,
+                                             message, mention_role_id=mention_role_id)
+    if not posted:
+        return jsonify({'error': "Couldn't post — check I have permission to send messages "
+                                 "in that channel."}), 400
+    _log_action(event_id, 'announce', 'announced the event in Discord')
+    return jsonify({'ok': True})
+
+
 # ── API: edit pairings ─────────────────────────────────────────────────────────
+
+def _pairing_state(rnd: list) -> dict:
+    """Map each player in a round to their (opponent_id_or_'bye', table) — used to
+    detect which players' pairings actually changed after an edit."""
+    st = {}
+    for m in rnd:
+        t = m.get('table')
+        if m.get('is_bye'):
+            st[m.get('player1_id')] = ('bye', t)
+        else:
+            p1, p2 = m.get('player1_id'), m.get('player2_id')
+            st[p1] = (p2, t)
+            st[p2] = (p1, t)
+    return st
 
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/pairings', methods=['PUT'])
 @login_required
@@ -1480,9 +2454,73 @@ def api_edit_pairings(event_id, round_num):
     if seen - original:
         return jsonify({'error': 'Pairings can only include players already in this round'}), 400
 
+    old_state = _pairing_state(e['rounds'][idx])   # before re-seating/replacing
+    assign_tables(new_pairings, e['players'], e)    # re-seat the rearranged matches
     e['rounds'][idx] = new_pairings
     save_event(event_id, {'rounds': e['rounds']})
+    # DM the players whose opponent or table actually changed, so they know to move.
+    new_state = _pairing_state(new_pairings)
+    changed = [pid for pid, v in new_state.items() if pid and v != old_state.get(pid)]
+    if changed:
+        discord_api.dm_pairing_changed(e, round_num, changed, request.host_url)
     return jsonify({'round_num': round_num, 'pairings': new_pairings})
+
+
+@events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/matches/<int:match_idx>/table',
+                 methods=['POST'])
+@login_required
+def api_set_match_table(event_id, round_num, match_idx):
+    """Organiser sets (or clears) a single match's table — for venue/coverage needs,
+    allowed any time during the event (even after results). Warns with 409 if the
+    table is already used by another match in the same round; resend with
+    {override: true} to assign it anyway. Byes are never seated. The change shows up
+    in the player-facing pairings on their next load."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    idx = round_num - 1
+    rounds = e.get('rounds', [])
+    if not (0 <= idx < len(rounds)):
+        return jsonify({'error': 'Round not found'}), 404
+    rnd = rounds[idx]
+    if not (0 <= match_idx < len(rnd)):
+        return jsonify({'error': 'Match not found'}), 404
+    match = rnd[match_idx]
+    if match.get('is_bye'):
+        return jsonify({'error': 'Byes are not seated at a table'}), 400
+    data = request.json or {}
+    raw = data.get('table')
+    table = None
+    if raw not in (None, '', 0, '0'):
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Table must be a number'}), 400
+        if not (1 <= n <= _MAX_TABLE):
+            return jsonify({'error': f'Table must be between 1 and {_MAX_TABLE}'}), 400
+        table = n
+    # Warn (don't block) if another match in this round is already on that table —
+    # the organiser can override with an explicit confirm.
+    if table is not None and not data.get('override'):
+        names = {p['id']: p['name'] for p in e['players']}
+        for j, other in enumerate(rnd):
+            if j != match_idx and not other.get('is_bye') and other.get('table') == table:
+                who = ' vs '.join(names.get(other.get(k), '?')
+                                  for k in ('player1_id', 'player2_id'))
+                return jsonify({'error': 'duplicate', 'table': table, 'conflict': who}), 409
+    match['table'] = table
+    save_event(event_id, {'rounds': e['rounds']})
+    # Keep Discord in sync: the posted channel pairings (no-op unless it's the
+    # latest round) and the two players' pairing DMs for this match.
+    discord_api.update_round_pairings(e, request.host_url)
+    discord_api.update_pairing_dm_for_match(e, round_num, match_idx, request.host_url)
+    nm = {p['id']: p['name'] for p in e['players']}
+    pair = ' vs '.join(nm.get(match.get(k), '?') for k in ('player1_id', 'player2_id'))
+    _log_action(event_id, 'table',
+                f"set table {table} for {pair} (round {round_num})" if table
+                else f"cleared the table for {pair} (round {round_num})")
+    return jsonify({'ok': True, 'table': table})
 
 
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/repair', methods=['POST'])
@@ -1505,13 +2543,16 @@ def api_repair_round(event_id, round_num):
         return jsonify({'error': 'Only the latest round can be re-paired'}), 400
     if _is_bracket_round(e['rounds'][idx]):
         return jsonify({'error': 'Playoff rounds cannot be re-paired'}), 400
-    new_round = pair_round(e['players'], e['rounds'][:idx])
+    # shuffle=True so a re-pair yields a *different* valid pairing (the initial
+    # pair is deterministic, so re-pairing it unchanged would reproduce it exactly).
+    new_round = pair_round(e['players'], e['rounds'][:idx], shuffle=True)
+    assign_tables(new_round, e['players'], e)
     e['rounds'][idx] = new_round
     save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
 
-    discord_api.announce_round(e, round_num)
-    discord_api.dm_round_pairings(e, round_num, request.host_url)
+    _deliver_pairings(e, round_num, request.host_url)
 
+    _log_action(event_id, 'repair', f're-paired round {round_num}')
     return jsonify({'round_num': round_num, 'pairings': new_round})
 
 
@@ -1546,21 +2587,21 @@ def api_record_result(event_id, round_num):
     match['winner_id'] = winner_id
     match['result']    = result
     save_event(event_id, {'rounds': e['rounds']})
-    # Notify the other player(s) via Discord so they don't report it again. The
-    # reporter (a player) is excluded; an organiser reporting excludes no one.
-    reporter_pid = None
-    user = get_current_user()
-    if user:
-        gp = _find_player_by_google_id(e, user['id'])
-        if gp:
-            reporter_pid = gp['id']
-    if reporter_pid is None:
-        token = request.headers.get('X-Guest-Token') or data.get('guest_token')
-        gp = _find_player_by_guest_token(e, token)
-        if gp:
-            reporter_pid = gp['id']
-    discord_api.dm_result_recorded(e, idx, match_index,
-                                   exclude_player_id=reporter_pid, base_url=request.host_url)
+    # Tell both players over Discord: turn their pairing DM into a result card
+    # (outcome + event link + a disabled "Result reported" button), or send a fresh
+    # card if they have none. Covers TO/web entry, not just an opponent reporting.
+    discord_api.notify_result(e, idx, match_index, request.host_url)
+    # Log it, naming the reporter (signed-in user, or the guest who holds the token).
+    u = get_current_user()
+    actor = u['name'] if u else None
+    if not actor:
+        gp = _find_player_by_guest_token(e, request.headers.get('X-Guest-Token') or data.get('guest_token'))
+        actor = gp['name'] if gp else None
+    names = {p['id']: p['name'] for p in e['players']}
+    summ = 'draw' if result in DRAW_RESULTS else (result or '')
+    _log_action(event_id, 'result',
+                f"reported round {round_num}: {names.get(match.get('player1_id'), '?')} vs "
+                f"{names.get(match.get('player2_id'), '?')} ({summ})", actor_name=actor)
     return jsonify(match)
 
 
@@ -1678,11 +2719,15 @@ def player_profile(google_id):
     profile['about'] = saved.get('about', '')
     profile['pronouns'] = saved.get('pronouns', '')
     profile['pronunciation'] = saved.get('pronunciation', '')
+    # Whether a Discord account is linked — drives the read-only handle vs the
+    # "Link Discord" button on the edit screen (the handle is no longer free-text).
+    profile['discord_linked'] = bool(saved.get('discord_id'))
 
     return render_template('player.html',
         user=get_current_user(),
         profile=profile,
         google_id=google_id,
+        discord_enabled=discord_login_enabled(),
         event_history=event_history,
         total_wins=sum(h['wins'] for h in event_history),
         total_losses=sum(h['losses'] for h in event_history),
@@ -1723,6 +2768,12 @@ def api_edit_result(event_id, round_num, match_index):
     rnd[match_index]['winner_id'] = winner_id
     rnd[match_index]['result']    = result
     save_event(event_id, {'rounds': e['rounds']})
+    names = {p['id']: p['name'] for p in e['players']}
+    m = rnd[match_index]
+    summ = 'draw' if result in DRAW_RESULTS else (result or '')
+    _log_action(event_id, 'result',
+                f"edited round {round_num}: {names.get(m.get('player1_id'), '?')} vs "
+                f"{names.get(m.get('player2_id'), '?')} ({summ})")
     return jsonify(rnd[match_index])
 
 
@@ -1741,16 +2792,107 @@ def api_get_profile():
         'about':   profile.get('about', ''),
     })
 
+# ── Admin: profile delete / merge ─────────────────────────────────────────────
+# Global admins can clean up the account directory: merge a duplicate/ghost profile
+# into the real one (reassigning all its event entries), or delete a spurious one.
+# Player entries are never deleted — matches reference them by their per-event id —
+# so merges/deletes only re-point or clear the entry's account link (google_id).
+
+def _merge_profiles(source_id: str, target_id: str) -> dict:
+    """Re-point every event entry from `source_id` to `target_id`, backfill any
+    profile fields the target is missing from the source, then delete the source
+    profile. A shared-event collision just leaves two target-linked entries (safe —
+    deleting an entry would break its matches)."""
+    reassigned = 0
+    for e in list_events():
+        changed = False
+        for p in e.get('players', []):
+            if p.get('google_id') == source_id:
+                p['google_id'] = target_id
+                changed = True
+                reassigned += 1
+        if changed:
+            save_event(e['id'], {'players': e['players']})
+    src, tgt = get_user_profile(source_id), get_user_profile(target_id)
+    fill = {k: src[k] for k in ('discord', 'discord_id', 'discord_picture',
+                                'google_picture', 'avatar_url', 'avatar_object',
+                                'email', 'about', 'pronouns', 'pronunciation', 'name')
+            if src.get(k) and not tgt.get(k)}
+    if fill:
+        save_user_profile(target_id, fill)
+    delete_user_profile(source_id)
+    return {'reassigned': reassigned}
+
+def _delete_profile(profile_id: str) -> dict:
+    """Delete the profile doc and unlink its event entries (google_id → None),
+    keeping each as a named non-account player so results are preserved."""
+    unlinked = 0
+    for e in list_events():
+        changed = False
+        for p in e.get('players', []):
+            if p.get('google_id') == profile_id:
+                p['google_id'] = None
+                changed = True
+                unlinked += 1
+        if changed:
+            save_event(e['id'], {'players': e['players']})
+    delete_user_profile(profile_id)
+    return {'unlinked': unlinked}
+
+@events_bp.route('/api/profiles/search', methods=['GET'])
+@login_required
+def api_profiles_search():
+    """Admin-only directory search, for picking a merge target."""
+    user = get_current_user()
+    if not is_admin(user['id']):
+        abort(403)
+    q = (request.args.get('q') or '').strip().lower()
+    if not q:
+        return jsonify([])
+    out = []
+    for u in list_users():
+        hay = ' '.join((u.get('name', ''), u.get('discord', ''), u.get('email', ''))).lower()
+        if q in hay:
+            out.append({'id': u['google_id'], 'name': u.get('name', ''),
+                        'discord': u.get('discord', ''), 'email': u.get('email', '')})
+        if len(out) >= 20:
+            break
+    return jsonify(out)
+
+@events_bp.route('/api/profiles/<profile_id>/merge', methods=['POST'])
+@login_required
+def api_merge_profile(profile_id):
+    """Admin: merge `profile_id` into the given target, then delete the source."""
+    user = get_current_user()
+    if not is_admin(user['id']):
+        abort(403)
+    target_id = (request.json or {}).get('target_id', '')
+    if not target_id or target_id == profile_id:
+        return jsonify({'error': 'Choose a different profile to merge into.'}), 400
+    if profile_id == user['id']:
+        return jsonify({'error': "You can't merge your own account."}), 400
+    return jsonify({'ok': True, **_merge_profiles(profile_id, target_id)})
+
+@events_bp.route('/api/profiles/<profile_id>', methods=['DELETE'])
+@login_required
+def api_delete_profile(profile_id):
+    """Admin: delete a profile, unlinking (keeping) its event entries."""
+    user = get_current_user()
+    if not is_admin(user['id']):
+        abort(403)
+    if profile_id == user['id']:
+        return jsonify({'error': "You can't delete your own account."}), 400
+    return jsonify({'ok': True, **_delete_profile(profile_id)})
+
 @events_bp.route('/api/profile', methods=['PUT'])
 @login_required
 def api_update_profile():
     user = get_current_user()
     data = request.json or {}
     updates = {}
-    # Display name is not editable — it comes strictly from Google (refreshed on
-    # login), so any 'name' in the request is ignored.
-    if 'discord' in data:
-        updates['discord'] = data['discord'].strip()
+    # Display name comes strictly from Google (refreshed on login) and the Discord
+    # handle now comes only from linking a Discord account — neither is free-text
+    # editable here, so any 'name'/'discord' in the request is ignored.
     if 'pronouns' in data:
         updates['pronouns'] = data['pronouns'].strip()[:40]
     if 'pronunciation' in data:

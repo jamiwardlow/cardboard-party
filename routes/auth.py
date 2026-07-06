@@ -103,11 +103,17 @@ def login_discord():
     if not discord_login_enabled():
         return 'Discord login is not configured.', 503
     state = _begin_oauth(request.args.get('next', ''))
+    # Link mode (?link=1): a signed-in user attaching Discord to their existing
+    # account, rather than signing in. Remember which account to attach it to.
+    linking = bool(request.args.get('link') and get_current_user())
+    session['oauth_link_account'] = get_current_user()['id'] if linking else None
     params = {
         'client_id':     DISCORD_CLIENT_ID,
         'redirect_uri':  url_for('auth.discord_callback', _external=True),
         'response_type': 'code',
-        'scope':         'identify email',
+        # Sign-in matches accounts by email, so it needs the email scope; linking
+        # attaches to the current account, so it only needs identify (lighter consent).
+        'scope':         'identify' if linking else 'identify email',
         'state':         state,
     }
     return redirect(f'{DISCORD_AUTH_URL}?{urlencode(params)}')
@@ -117,7 +123,7 @@ def login_discord():
 def callback():
     state = request.args.get('state')
     if not state or state != session.pop('oauth_state', None):
-        return 'Login failed: invalid state.', 400
+        return render_template('login_error.html'), 400
 
     code = request.args.get('code')
     if not code:
@@ -142,6 +148,7 @@ def callback():
     )
     user_info = user_resp.json()
 
+    session.permanent = True   # persist login across browser/app restarts
     session['user'] = {
         'id':      user_info.get('sub'),
         'email':   user_info.get('email'),
@@ -193,7 +200,7 @@ def discord_callback():
         return 'Discord login is not configured.', 503
     state = request.args.get('state')
     if not state or state != session.pop('oauth_state', None):
-        return 'Login failed: invalid state.', 400
+        return render_template('login_error.html'), 400
     code = request.args.get('code')
     if not code:
         return 'Login failed: no code received.', 400
@@ -220,6 +227,37 @@ def discord_callback():
     avatar   = (f"https://cdn.discordapp.com/avatars/{discord_id}/{du['avatar']}.png"
                 if du.get('avatar') else '')
 
+    # Link mode: attach this Discord to the signed-in account that started the flow
+    # (rather than signing in / switching accounts). The captured handle becomes the
+    # account's Discord handle — this is how handles get set now (no free-text edit).
+    link_account = session.pop('oauth_link_account', None)
+    if link_account:
+        cur = get_current_user()
+        if not cur or cur['id'] != link_account:
+            return render_template('login_error.html', next=''), 400
+        did = str(discord_id)
+        other = next((u['google_id'] for u in list_users()
+                      if u.get('discord_id') == did and u['google_id'] != link_account), None)
+        # If this Discord already backs a *different real* account, refuse — we
+        # can't safely fold two claimed accounts together.
+        if other and not other.startswith('discord:'):
+            return render_template('login_error.html', next='',
+                heading='That Discord is already linked',
+                message='This Discord account is already linked to a different '
+                        'Cardboard Party account.'), 400
+        # If it's an unclaimed Discord-only account (from a bot registration), merge
+        # its event history into this account — this is how a bot-registered player
+        # claims their past events after signing in with Google and linking Discord.
+        if other:
+            from routes.events import _merge_profiles
+            _merge_profiles(other, link_account)
+        updates = {'discord_id': did, 'discord': username}
+        if avatar:
+            updates['discord_picture'] = avatar
+        save_user_profile(link_account, updates)
+        next_url = session.pop('oauth_next', None) or url_for('events.index')
+        return redirect(next_url)
+
     # Link into an existing account if we recognise them, else make a new one.
     account_id = _resolve_account_for_discord(discord_id, email)
     if account_id is None:
@@ -227,8 +265,8 @@ def discord_callback():
     saved = get_user_profile(account_id)
 
     updates = {'discord_id': str(discord_id)}
-    if not (saved.get('discord') or '').strip():
-        updates['discord'] = username           # don't clobber a chosen handle
+    if username:
+        updates['discord'] = username           # the captured @handle is authoritative
     if avatar:
         updates['discord_picture'] = avatar
     if email and not saved.get('email'):
@@ -237,6 +275,7 @@ def discord_callback():
         updates['name'] = display               # keep an existing (e.g. Google) name
     save_user_profile(account_id, updates)
 
+    session.permanent = True   # persist login across browser/app restarts
     session['user'] = {
         'id':      account_id,
         'email':   saved.get('email') or email,
@@ -268,7 +307,9 @@ def me():
     # form can skip asking for it again.
     profile = get_user_profile(user['id'])
     return jsonify({'signed_in': True, 'user': user,
-                    'has_discord': bool((profile.get('discord') or '').strip())})
+                    'has_discord': bool((profile.get('discord') or '').strip()),
+                    'discord_linked': bool(profile.get('discord_id')),
+                    'discord_enabled': discord_login_enabled()})
 
 
 def _resolve_pending_admin(user: dict):

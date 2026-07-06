@@ -11,8 +11,11 @@ inbound_services:
   - warmup
 
 handlers:
+  # Assets are requested with ?v=<deploy version>, so the URL changes every deploy
+  # — safe to cache aggressively for repeat visits.
   - url: /static
     static_dir: static
+    expiration: "30d"
 
   - url: /.*
     script: auto
@@ -31,3 +34,6 @@ env_variables:
   # appspot/www hits 301-redirect to it. Also add the new host to the OAuth
   # client's Authorized redirect URIs (https://cardboardparty.gg/auth/callback).
   CANONICAL_HOST: cardboardparty.gg
+  # Google Maps (Places autocomplete + maps). Public, HTTP-referrer-restricted key
+  # (same key used by staging.yaml); restrict it to cardboardparty.gg in the Console.
+  MAPS_API_KEY: "AIzaSyDMxQqafNXtkSTDYyan2K4Fa4W0aj5j174"
