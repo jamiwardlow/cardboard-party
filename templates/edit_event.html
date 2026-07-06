@@ -126,7 +126,7 @@
     <input type="checkbox" id="ee-decklists"{% if event.requires_decklists %} checked{% endif %}>
     <span>Submit decklists</span>
   </label>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row no-divider{% if not adv %} ee-adv{% endif %}" style="margin-bottom: 0.75rem">
     <input type="checkbox" id="ee-decklists-required"{% if event.decklists_required | default(event.requires_decklists) %} checked{% endif %}>
     <span>Decklists are required</span>
   </label>
@@ -141,7 +141,7 @@
     </select>
     <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
   </label>
-  <div class="field-group print-legality{% if not adv %} ee-adv{% endif %}">
+  <div class="field-group print-legality{% if not adv %} ee-adv{% endif %}" style="border-top: none; padding-top: 0">
     <span class="field-label">Allowed card printings</span>
     <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
     <label class="checkbox-row"><input type="checkbox" id="ee-allow-proxies"{% if event.allow_proxies %} checked{% endif %} onchange="onProxyToggle('ee')"> <span>Proxies allowed</span></label>

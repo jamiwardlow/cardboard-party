@@ -164,7 +164,7 @@
     <span>Submit decklists</span>
   </label>
   <div id="e-decklist-opts"{% if not source or not source.requires_decklists %} class="hidden"{% endif %}>
-    <label class="checkbox-row">
+    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
       <input type="checkbox" id="e-decklists-required"{% if source and (source.decklists_required | default(source.requires_decklists)) %} checked{% endif %}>
       <span>Decklists are required</span>
     </label>
