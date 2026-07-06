@@ -1033,6 +1033,17 @@ def event_detail(event_id):
         return 'Event not found', 404
     return render_template('event.html', user=get_current_user(), event=event)
 
+@events_bp.route('/events/<event_id>/edit')
+@login_required
+def edit_event_page(event_id):
+    e = get_event(event_id)
+    if not e:
+        return 'Event not found', 404
+    _require_manage(e)
+    active_count = len([p for p in e.get('players', []) if not p.get('dropped')])
+    return render_template('edit_event.html', user=get_current_user(), event=e,
+                           active_count=active_count)
+
 @events_bp.route('/events/<event_id>/decklists')
 @login_required
 def decklists_page(event_id):
