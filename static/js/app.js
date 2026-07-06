@@ -141,31 +141,37 @@ async function attachPlaceAutocomplete(inputId) {
   const input = document.getElementById(inputId);
   if (!input || !window.mapsReady || input.dataset.acAttached) return;
   input.dataset.acAttached = '1';
-  let AutocompleteSuggestion, AutocompleteSessionToken;
-  try {
-    ({ AutocompleteSuggestion, AutocompleteSessionToken } =
-       await google.maps.importLibrary('places'));
-  } catch (e) { return; }
-  if (!AutocompleteSuggestion) return;
+
+  // Kick off library loading immediately but don't block listener setup on it.
+  // On mobile, importLibrary can take a few seconds; setting acAttached before
+  // the await meant early keystrokes were silently dropped with no retry possible.
+  const libPromise = google.maps.importLibrary('places').catch(() => null);
 
   const dd = document.createElement('div');
   dd.className = 'place-suggest';
   dd.style.display = 'none';
   document.body.appendChild(dd);
-  let token = new AutocompleteSessionToken();
-  let items = [], seq = 0;
+  let token = null, items = [], seq = 0;
 
   const position = () => {
     const r  = input.getBoundingClientRect();
     const vv = window.visualViewport;
-    // getBoundingClientRect() is relative to the layout viewport; position:fixed
-    // is relative to the visual viewport. On iOS Safari the two diverge when the
-    // virtual keyboard appears, pushing the visual viewport up inside the layout
-    // viewport. Subtracting the visual-viewport offsets keeps the dropdown under
-    // the input after the keyboard slides in.
-    dd.style.left  = `${r.left   - (vv ? vv.offsetLeft : 0)}px`;
-    dd.style.top   = `${r.bottom - (vv ? vv.offsetTop  : 0) + 2}px`;
+    const vOffTop  = vv ? vv.offsetTop  : 0;
+    const vOffLeft = vv ? vv.offsetLeft : 0;
+    const vHeight  = vv ? vv.height : window.innerHeight;
+    const inputTop    = r.top    - vOffTop;
+    const inputBottom = r.bottom - vOffTop;
+    const spaceBelow  = vHeight - inputBottom;
+    dd.style.left  = `${r.left - vOffLeft}px`;
     dd.style.width = `${r.width}px`;
+    // Flip above the input when the keyboard leaves too little room below.
+    if (spaceBelow < 120 && inputTop > spaceBelow) {
+      dd.style.top    = 'auto';
+      dd.style.bottom = `${vHeight - inputTop + 2}px`;
+    } else {
+      dd.style.top    = `${inputBottom + 2}px`;
+      dd.style.bottom = 'auto';
+    }
   };
   const hide = () => { dd.style.display = 'none'; };
   const reposition = () => { if (dd.style.display !== 'none') position(); };
@@ -174,10 +180,13 @@ async function attachPlaceAutocomplete(inputId) {
     delete placeData[inputId];                 // typing invalidates a prior selection
     const q = input.value.trim();
     if (q.length < 3) { hide(); return; }
+    const lib = await libPromise;
+    if (!lib || !lib.AutocompleteSuggestion) return;
+    if (!token) token = new lib.AutocompleteSessionToken();
     const mine = ++seq;
     let suggestions = [];
     try {
-      ({ suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(
+      ({ suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions(
         { input: q, sessionToken: token }));
     } catch (e) { hide(); return; }
     if (mine !== seq) return;                   // a newer keystroke superseded this one
@@ -194,6 +203,8 @@ async function attachPlaceAutocomplete(inputId) {
     if (!el) return;
     e.preventDefault();
     hide();
+    const lib = await libPromise;
+    if (!lib) return;
     try {
       const p = items[+el.dataset.i].toPlace();
       await p.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'id'] });
@@ -202,7 +213,7 @@ async function attachPlaceAutocomplete(inputId) {
       placeData[inputId] = { location: text, lat: p.location.lat(), lng: p.location.lng(),
                              place_id: p.id || '' };
     } catch (err) { /* keep the typed text; coords stay unset */ }
-    token = new AutocompleteSessionToken();     // a selection ends the billing session
+    if (lib.AutocompleteSessionToken) token = new lib.AutocompleteSessionToken();
   });
 
   input.addEventListener('blur', () => setTimeout(hide, 150));
