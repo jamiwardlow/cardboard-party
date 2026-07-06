@@ -12,7 +12,7 @@ import os
 import uuid
 
 from google.cloud import storage as gcs
-from PIL import Image
+from PIL import Image, ImageOps
 
 # Per-environment bucket (staging sets AVATARS_BUCKET to its own bucket); defaults
 # to the production bucket so prod config is unchanged.
@@ -36,6 +36,7 @@ def upload_avatar(google_id: str, raw: bytes) -> tuple[str, str]:
     try:
         Image.open(io.BytesIO(raw)).verify()      # cheap validity check
         img = Image.open(io.BytesIO(raw))          # reopen (verify() exhausts it)
+        img = ImageOps.exif_transpose(img)
         img = img.convert('RGB')
     except Exception:
         raise ValueError('That file is not a valid image')
@@ -74,6 +75,7 @@ def upload_brand_image(event_id: str, raw: bytes) -> tuple[str, str]:
     try:
         Image.open(io.BytesIO(raw)).verify()
         img = Image.open(io.BytesIO(raw))
+        img = ImageOps.exif_transpose(img)
     except Exception:
         raise ValueError('That file is not a valid image')
 

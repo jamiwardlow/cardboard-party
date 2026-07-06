@@ -342,18 +342,22 @@ async function uploadBrandImage(ev) {
   if (!file) return;
   const msg = document.getElementById('ee-brand-msg');
   msg.style.color = 'var(--muted)'; msg.textContent = 'Uploading…';
-  const fd = new FormData();
-  fd.append('image', file);
-  const res = await fetch(`/api/events/${EVENT_ID}/brand-image`, { method: 'POST', body: fd });
-  if (res.ok) {
-    const d = await res.json();
-    const preview = document.getElementById('ee-brand-preview');
-    preview.src = d.brand_image_url; preview.style.display = '';
-    document.getElementById('ee-brand-remove').style.display = '';
-    msg.style.color = 'var(--accent)'; msg.textContent = '✓ Image uploaded.';
-  } else {
-    const e = await res.json().catch(() => ({}));
-    msg.style.color = 'var(--danger)'; msg.textContent = e.error || 'Upload failed.';
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    const res = await fetch(`/api/events/${EVENT_ID}/brand-image`, { method: 'POST', body: fd });
+    if (res.ok) {
+      const d = await res.json();
+      const preview = document.getElementById('ee-brand-preview');
+      preview.src = d.brand_image_url; preview.style.display = '';
+      document.getElementById('ee-brand-remove').style.display = '';
+      msg.style.color = 'var(--accent)'; msg.textContent = '✓ Image uploaded.';
+    } else {
+      const e = await res.json().catch(() => ({}));
+      msg.style.color = 'var(--danger)'; msg.textContent = e.error || 'Upload failed.';
+    }
+  } catch (_) {
+    msg.style.color = 'var(--danger)'; msg.textContent = 'Upload failed — check your connection and try again.';
   }
 }
 

@@ -153,25 +153,16 @@ async function attachPlaceAutocomplete(inputId) {
   document.body.appendChild(dd);
   let token = null, items = [], seq = 0;
 
+  // Document-absolute positioning: add scrollX/Y to getBoundingClientRect so the
+  // dropdown tracks the input in document space, not the viewport. This means it
+  // scrolls with the page naturally and needs no visualViewport math at all.
   const position = () => {
-    const r  = input.getBoundingClientRect();
-    const vv = window.visualViewport;
-    const vOffTop  = vv ? vv.offsetTop  : 0;
-    const vOffLeft = vv ? vv.offsetLeft : 0;
-    const vHeight  = vv ? vv.height : window.innerHeight;
-    const inputTop    = r.top    - vOffTop;
-    const inputBottom = r.bottom - vOffTop;
-    const spaceBelow  = vHeight - inputBottom;
-    dd.style.left  = `${r.left - vOffLeft}px`;
-    dd.style.width = `${r.width}px`;
-    // Flip above the input when the keyboard leaves too little room below.
-    if (spaceBelow < 120 && inputTop > spaceBelow) {
-      dd.style.top    = 'auto';
-      dd.style.bottom = `${vHeight - inputTop + 2}px`;
-    } else {
-      dd.style.top    = `${inputBottom + 2}px`;
-      dd.style.bottom = 'auto';
-    }
+    const r = input.getBoundingClientRect();
+    dd.style.left      = `${r.left + window.scrollX}px`;
+    dd.style.width     = `${r.width}px`;
+    dd.style.top       = `${r.bottom + window.scrollY + 2}px`;
+    dd.style.bottom    = 'auto';
+    dd.style.maxHeight = '220px';
   };
   const hide = () => { dd.style.display = 'none'; };
   const reposition = () => { if (dd.style.display !== 'none') position(); };
@@ -197,16 +188,12 @@ async function attachPlaceAutocomplete(inputId) {
     position(); dd.style.display = '';
   });
 
-  // mousedown (not click) so the pick registers before the input's blur hides the list.
-  dd.addEventListener('mousedown', async (e) => {
-    const el = e.target.closest('.place-suggest-item');
-    if (!el) return;
-    e.preventDefault();
+  const selectItem = async (idx) => {
     hide();
     const lib = await libPromise;
     if (!lib) return;
     try {
-      const p = items[+el.dataset.i].toPlace();
+      const p = items[idx].toPlace();
       await p.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'id'] });
       const text = p.formattedAddress || p.displayName || input.value;
       input.value = text;
@@ -214,16 +201,38 @@ async function attachPlaceAutocomplete(inputId) {
                              place_id: p.id || '' };
     } catch (err) { /* keep the typed text; coords stay unset */ }
     if (lib.AutocompleteSessionToken) token = new lib.AutocompleteSessionToken();
+  };
+
+  // Touch: prevent blur/keyboard-dismiss on suggestion tap so the dropdown stays
+  // in place (no viewport reflow), then select on touchend.
+  dd.addEventListener('touchstart', (e) => {
+    if (e.target.closest('.place-suggest-item')) e.preventDefault();
+  }, { passive: false });
+  dd.addEventListener('touchend', (e) => {
+    const el = e.target.closest('.place-suggest-item');
+    if (!el) return;
+    e.preventDefault();
+    selectItem(+el.dataset.i);
   });
 
-  input.addEventListener('blur', () => setTimeout(hide, 150));
-  // Reposition on scroll (desktop) or visual-viewport change (iOS keyboard).
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', reposition);
-    window.visualViewport.addEventListener('scroll', reposition);
-  } else {
-    window.addEventListener('scroll', reposition, true);
-  }
+  // Mouse (desktop): mousedown so the pick registers before the input's blur hides the list.
+  dd.addEventListener('mousedown', (e) => {
+    const el = e.target.closest('.place-suggest-item');
+    if (!el) return;
+    e.preventDefault();
+    selectItem(+el.dataset.i);
+  });
+
+  // Hide when the user taps/clicks outside the input or dropdown.
+  // Using pointerdown on document avoids the iOS Safari quirk where focusing
+  // the input for the first time (keyboard animating in) fires a spurious blur,
+  // which would otherwise hide the list before the user ever sees it.
+  document.addEventListener('pointerdown', (e) => {
+    if (!dd.contains(e.target) && e.target !== input) hide();
+  });
+  // Reposition on device rotation or desktop window resize. Scroll is not needed:
+  // position:absolute at document coords scrolls with the page automatically.
+  window.addEventListener('resize', reposition);
 }
 
 // Location + coords to submit for an input. Coords only count when the captured

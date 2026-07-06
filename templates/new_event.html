@@ -44,8 +44,14 @@
     <input id="e-brand-text" type="text" maxlength="300"
            placeholder="Optional — series, organiser, sponsor, or community"
            value="{{ source.brand_text | default('') | e }}">
-    <span class="field-help">A brand image can be added after creating the event.</span>
   </label>
+  <div class="field-group">
+    <span class="field-label">Brand image</span>
+    <img id="e-brand-preview" class="brand-preview" style="display:none" alt="">
+    <input id="e-brand-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+           onchange="previewBrandImage()" style="font-size:0.85rem">
+    <span id="e-brand-msg" class="field-help"></span>
+  </div>
   {% endif %}
 
   <label>Date
@@ -324,7 +330,7 @@
   </p>
   <div class="modal-actions">
     <a class="btn" href="/">Cancel</a>
-    <button class="btn btn-primary" onclick="submitCreateEvent()">Create</button>
+    <button type="button" class="btn btn-primary" onclick="submitCreateEvent()">Create</button>
   </div>
 </div>
 {% endif %}
@@ -341,6 +347,15 @@ const IS_ADVANCED = {{ (mode == 'advanced') | tojson }};
 const IS_DUPLICATE = {{ (source is not none) | tojson }};
 
 {% if mode == 'advanced' %}
+function previewBrandImage() {
+  const file = document.getElementById('e-brand-file').files[0];
+  if (!file) return;
+  const preview = document.getElementById('e-brand-preview');
+  const reader = new FileReader();
+  reader.onload = ev => { preview.src = ev.target.result; preview.style.display = ''; };
+  reader.readAsDataURL(file);
+}
+
 function populateFormats() {
   const game = document.getElementById('e-game').value;
   const sel  = document.getElementById('e-format-select');
@@ -415,6 +430,9 @@ function validateCreate() {
 
 async function submitCreateEvent() {
   if (!validateCreate()) return;
+  const btn = document.querySelector('button[onclick="submitCreateEvent()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+  try {
   const numRounds = parseInt(document.getElementById('e-rounds').value) || 0;
   const cap       = parseInt(document.getElementById('e-cap').value) || 0;
 
@@ -496,15 +514,52 @@ async function submitCreateEvent() {
   body.auto_start_timer            = document.getElementById('e-auto-start-timer').checked;
   {% endif %}
 
-  const res = await fetch('/api/events', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(body),
-  });
-  if (res.ok) {
-    const e = await res.json();
-    window.location = `/events/${e.id}`;
-  } else {
-    alert('Failed to create event.');
+  let res;
+  try {
+    res = await fetch('/api/events', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    alert('Network error — could not create event. Check your connection and try again.');
+    return;
+  }
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    alert(errBody.error || 'Failed to create event.');
+    return;
+  }
+  const e = await res.json();
+  const brandFile = IS_ADVANCED && document.getElementById('e-brand-file');
+  if (brandFile && brandFile.files.length) {
+    const msg = document.getElementById('e-brand-msg');
+    if (msg) msg.textContent = 'Uploading brand image…';
+    try {
+      const fd = new FormData();
+      fd.append('image', brandFile.files[0]);
+      const bRes = await fetch(`/api/events/${e.id}/brand-image`, { method: 'POST', body: fd });
+      if (!bRes.ok) {
+        const bErr = await bRes.json().catch(() => ({}));
+        if (msg) msg.textContent = bErr.error || 'Event created but brand image upload failed.';
+      }
+    } catch (_) {
+      // Upload failed (network); still navigate to the event
+      const msgEl = document.getElementById('e-brand-msg');
+      if (msgEl) msgEl.textContent = 'Event created but brand image upload failed.';
+    }
+  }
+  window.location.href = `/events/${e.id}`;
+  // Fallback: if navigation doesn't fire within 2 s (shouldn't happen but
+  // iOS Safari can be quirky), show a direct link the user can tap.
+  setTimeout(() => {
+    const box = document.getElementById('create-errors');
+    box.innerHTML = `Event created! <a href="/events/${e.id}" style="text-decoration:underline">Go to event →</a>`;
+    box.classList.remove('hidden');
+    if (btn) { btn.disabled = false; btn.textContent = 'Create'; }
+  }, 2000);
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Create'; }
+    alert('Could not create event: ' + (err.message || err));
   }
 }
 

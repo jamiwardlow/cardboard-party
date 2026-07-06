@@ -241,9 +241,10 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .loc-link:hover { color: var(--accent); }
 
 /* New Places API autocomplete dropdown (custom, themed) under a Location field. */
-.place-suggest { position: fixed; z-index: 1000; background: var(--bg2);
+.place-suggest { position: absolute; z-index: 1000; background: var(--bg2);
                  border: 1px solid var(--border); border-radius: var(--radius);
-                 box-shadow: 0 8px 24px rgba(0,0,0,0.4); overflow: hidden; }
+                 box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+                 overflow-y: auto; overflow-x: hidden; }
 .place-suggest-item { padding: 0.5rem 0.7rem; font-size: 0.88rem; cursor: pointer;
                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .place-suggest-item:hover, .place-suggest-item.active { background: var(--accent-soft); }
@@ -711,6 +712,10 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
      appearance:none hides the empty mm/dd/yyyy placeholder. So keep the native
      control, but let it size to its (small) content and cap it at the form width
      so it can't overflow — this keeps the placeholder visible AND fits. */
+  /* Prevent iOS Safari from auto-zooming when focusing form fields: the
+     browser zooms in on any input < 16px, which shifts visualViewport
+     offsets and breaks position:fixed calculations (e.g. the Places dropdown). */
+  .modal input, .modal select, .modal textarea { font-size: 16px; }
   .modal input[type="date"],
   .modal input[type="time"] { width: auto; max-width: 100%; align-self: flex-start; }
 
