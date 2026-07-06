@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+{% block title %}New event — Cardboard Party{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>New event</h1>
+</div>
+
+{% if mode is none %}
+<p><a href="/">← Back to events</a></p>
+<div class="mode-cards">
+  <a class="mode-card" href="/events/new{% if source %}?mode=simple&amp;duplicate={{ source.id | e }}{% else %}?mode=simple{% endif %}">
+    <strong>Simple</strong>
+    <span>Just the essentials for casual play.</span>
+  </a>
+  <a class="mode-card" href="/events/new{% if source %}?mode=advanced&amp;duplicate={{ source.id | e }}{% else %}?mode=advanced{% endif %}">
+    <strong>Advanced</strong>
+    <span>Require decklists, add a payment link, delay pairings, and more.</span>
+  </a>
+</div>
+{% else %}
+
+<div class="modal" style="max-height:none;overflow-y:visible;width:min(520px,100%);margin:1.5rem auto 3rem;">
+  <h2>{% if source %}Duplicate event{% else %}New event — {{ 'Advanced' if mode == 'advanced' else 'Simple' }}{% endif %}</h2>
+
+  <p style="font-size:0.88rem;margin-bottom:0.75rem">
+    <a href="/events/new{% if source %}?duplicate={{ source.id | e }}{% endif %}">← Change mode</a>
+  </p>
+
+  <div id="create-errors" class="form-errors hidden"></div>
+
+  <label>Name
+    <input id="e-name" type="text" placeholder="Friday Night Draft" value="{{ source.name | default('') | e }}">
+  </label>
+
+  {% if mode == 'advanced' %}
+  <label>Game
+    <select id="e-game" onchange="populateFormats()"></select>
+    <span class="field-help">More games coming soon.</span>
+  </label>
+  <label>Brand text
+    <input id="e-brand-text" type="text" maxlength="300"
+           placeholder="Optional — series, organiser, sponsor, or community"
+           value="{{ source.brand_text | default('') | e }}">
+    <span class="field-help">A brand image can be added after creating the event.</span>
+  </label>
+  {% endif %}
+
+  <label>Date
+    <input id="e-date" type="date" value="{{ source.date | default(today) | e }}">
+  </label>
+  <label>Start time
+    <input id="e-time" type="time" value="{{ source.start_time | default('') | e }}">
+  </label>
+  <label>Location
+    <input id="e-location" type="text" maxlength="200"
+           placeholder="Optional — venue or city"
+           value="{{ source.location | default('') | e }}">
+  </label>
+
+  {% if mode == 'advanced' %}
+  <label>Entry cost
+    <input id="e-cost" type="text" placeholder="e.g. $10 or Free"
+           value="{{ source.entry_cost | default('') | e }}">
+  </label>
+  <label>Payment link
+    <input id="e-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)"
+           value="{{ source.payment_url | default('') | e }}">
+  </label>
+  {% endif %}
+
+  <label>Type
+    <select id="e-type">
+      <option value="One-day"{% if (source.event_type | default('One-day')) == 'One-day' %} selected{% endif %}>One-day</option>
+      <option value="League"{% if source and source.event_type == 'League' %} selected{% endif %}>League</option>
+    </select>
+  </label>
+
+  {% if mode == 'simple' %}
+  <label>Format
+    <input id="e-format" type="text" value="{{ source.format | default('Limited: Draft') | e }}">
+  </label>
+  {% else %}
+  <label>Format
+    <select id="e-format-select" onchange="onFormatSelectChange()"></select>
+    <input id="e-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
+  </label>
+  {% endif %}
+
+  {% if mode == 'advanced' %}
+  <div class="field-group">
+    <span class="field-label">Tags</span>
+    <div class="chip-options" id="e-tags">
+      {%- set src_tags = source.tags | default([]) if source else [] -%}
+      <label class="chip"><input type="checkbox" value="Weekly Play"{% if 'Weekly Play' in src_tags %} checked{% endif %}> Weekly Play</label>
+      <label class="chip"><input type="checkbox" value="Prerelease"{% if 'Prerelease' in src_tags %} checked{% endif %}> Prerelease</label>
+      <label class="chip"><input type="checkbox" value="Regional Championship Qualifier"{% if 'Regional Championship Qualifier' in src_tags %} checked{% endif %}> Regional Championship Qualifier</label>
+      <label class="chip"><input type="checkbox" value="Spotlight Series"{% if 'Spotlight Series' in src_tags %} checked{% endif %}> Spotlight Series</label>
+    </div>
+  </div>
+  <label>Structure
+    <select id="e-structure" onchange="onStructureChange()">
+      <option value=""{% if not source or not source.structure %} selected{% endif %}>— Select —</option>
+      <option value="swiss"{% if source and source.structure == 'swiss' %} selected{% endif %}>Swiss only</option>
+      <option value="swiss_top_cut"{% if source and source.structure == 'swiss_top_cut' %} selected{% endif %}>Swiss + Top Cut</option>
+      <option value="custom"{% if source and source.structure == 'custom' %} selected{% endif %}>Custom</option>
+    </select>
+  </label>
+  <label id="e-topcut-wrap"{% if not source or source.structure != 'swiss_top_cut' %} class="hidden"{% endif %}>Top cut size
+    <select id="e-topcut">
+      <option value="8"{% if not source or (source.planned_cut_size | default(8)) == 8 %} selected{% endif %}>Top 8</option>
+      <option value="4"{% if source and source.planned_cut_size == 4 %} selected{% endif %}>Top 4</option>
+      <option value="16"{% if source and source.planned_cut_size == 16 %} selected{% endif %}>Top 16</option>
+    </select>
+    <span class="field-help">Seeds the playoff bracket; you confirm the cut when Swiss ends.</span>
+  </label>
+  {% endif %}
+
+  {% if mode == 'advanced' %}
+  <label id="e-rounds-row">Number of rounds
+    <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto"
+           value="{{ source.num_rounds | default('') }}">
+  </label>
+  <label id="e-description-row">Description
+    <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc.">{{ source.description | default('') | e }}</textarea>
+  </label>
+  {% else %}
+  <label id="e-description-row">Description
+    <textarea id="e-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc.">{{ source.description | default('') | e }}</textarea>
+  </label>
+  <label id="e-rounds-row">Number of rounds
+    <input id="e-rounds" type="number" min="1" max="20" placeholder="Auto"
+           value="{{ source.num_rounds | default('') }}">
+  </label>
+  {% endif %}
+
+  {% if mode == 'advanced' %}
+  <label>Schedule
+    <textarea id="e-schedule" rows="3" placeholder="Optional — registration, check-in, rounds, breaks, top cut times">{{ source.schedule | default('') | e }}</textarea>
+  </label>
+  <label>Rules
+    <textarea id="e-rules" rows="3" placeholder="Optional — format rules, banned cards, deck restrictions">{{ source.rules | default('') | e }}</textarea>
+  </label>
+  <label>Prizes
+    <textarea id="e-prizes" rows="3" placeholder="Optional — prize breakdown by placement">{{ source.prizes | default('') | e }}</textarea>
+  </label>
+  <label>Prize distribution deadline (days)
+    <input id="e-prize-deadline" type="number" min="0" max="365" placeholder="e.g. 14"
+           value="{{ source.prize_deadline_days | default('') }}">
+  </label>
+  <label>Contact
+    <textarea id="e-contact" rows="2" placeholder="Optional — how to reach the organiser with questions">{{ source.contact | default('') | e }}</textarea>
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="e-decklists"{% if source and source.requires_decklists %} checked{% endif %} onchange="onDecklistsChange()">
+    <span>Require decklists</span>
+  </label>
+  <div id="e-decklist-opts"{% if not source or not source.requires_decklists %} class="hidden"{% endif %}>
+    <label>Decklist deadline
+      <input id="e-decklist-deadline" type="date" value="{{ source.decklist_deadline | default('') | e }}">
+      <span class="field-help">After this date, players can't submit or edit decklists.</span>
+    </label>
+    <label style="margin-top:0.9rem">Decklist validation
+      <select id="e-validation-format">
+        <option value="none"{% if not source or (source.validation_format | default('none')) == 'none' %} selected{% endif %}>No automatic validation</option>
+        <option value="premodern"{% if source and source.validation_format == 'premodern' %} selected{% endif %}>Premodern</option>
+      </select>
+      <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
+    </label>
+    <div class="field-group print-legality">
+      <span class="field-label">Allowed card printings</span>
+      <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
+      <label class="checkbox-row"><input type="checkbox" id="e-allow-proxies"{% if source and source.allow_proxies %} checked{% endif %} onchange="onProxyToggle('e')"> <span>Proxies allowed</span></label>
+      <div id="e-proxy-opts"{% if not source or not source.allow_proxies %} class="hidden"{% endif %} style="margin:0.15rem 0 0.4rem 1.6rem">
+        <label>Proxy limit
+          <select id="e-proxy-policy" onchange="onProxyToggle('e')">
+            <option value="unlimited"{% if not source or (source.proxy_policy | default('unlimited')) == 'unlimited' %} selected{% endif %}>No limit</option>
+            <option value="limited"{% if source and source.proxy_policy == 'limited' %} selected{% endif %}>Up to a set number</option>
+            <option value="custom"{% if source and source.proxy_policy == 'custom' %} selected{% endif %}>Custom policy</option>
+          </select>
+        </label>
+        <label id="e-proxy-limit-wrap"{% if not source or source.proxy_policy != 'limited' %} class="hidden"{% endif %}>Max proxies per deck
+          <input id="e-proxy-limit" type="number" min="0" max="999" placeholder="e.g. 10"
+                 value="{{ source.proxy_limit | default('') if source else '' }}">
+        </label>
+        <label>Proxy policy details
+          <input id="e-proxy-note" type="text" maxlength="500"
+                 placeholder="Optional — e.g. must be clearly marked"
+                 value="{{ source.proxy_note | default('') | e if source else '' }}">
+        </label>
+      </div>
+      <label class="checkbox-row"><input type="checkbox" id="e-allow-gold"{% if source and source.allow_gold_border %} checked{% endif %}> <span>Gold-border cards allowed</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="e-allow-ce"{% if source and source.allow_ce %} checked{% endif %}> <span>Collector's Edition (CE) allowed</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="e-allow-ie"{% if source and source.allow_ie %} checked{% endif %}> <span>International Edition (IE) allowed</span></label>
+    </div>
+  </div>
+  {% endif %}
+
+  <label class="cap-field">Registration cap
+    <input id="e-cap" type="number" min="2" max="256" placeholder="No cap"
+           value="{{ source.registration_cap | default('') if source else '' }}">
+  </label>
+
+  {% if mode == 'advanced' %}
+  <label>Registration type
+    <select id="e-reg-type">
+      <option value="open"{% if not source or (source.registration_type | default('open')) == 'open' %} selected{% endif %}>Open</option>
+      <option value="invite_only"{% if source and source.registration_type == 'invite_only' %} selected{% endif %}>Invite only</option>
+    </select>
+    <span class="field-help">Invite only disables self sign-up — you add players yourself.</span>
+  </label>
+  <label>Entry code
+    <input id="e-entry-code" type="text" maxlength="64"
+           placeholder="Optional — players must enter it to register"
+           value="{{ source.entry_code | default('') | e if source else '' }}">
+  </label>
+  <label>Registration opens
+    <input id="e-reg-start" type="date" value="{{ source.registration_start | default('') | e if source else '' }}">
+  </label>
+  <label>Registration closes
+    <input id="e-reg-end" type="date" value="{{ source.registration_end | default('') | e if source else '' }}">
+  </label>
+  <div class="field-group group-divider">
+    <span class="field-label">Drop &amp; refund policy</span>
+    <label class="checkbox-row no-divider">
+      <input type="checkbox" id="e-self-drop"{% if not source or source.self_service_drop_enabled is not false %} checked{% endif %}>
+      <span>Allow players to drop themselves</span>
+    </label>
+    <label>Drop deadline
+      <input id="e-unenroll-end" type="date" value="{{ source.unenroll_end | default('') | e if source else '' }}">
+      <span class="field-help">After this date, players can't drop themselves.</span>
+    </label>
+    <label>Drop policy
+      <textarea id="e-drop-policy" rows="2" placeholder="Optional — when and how players may drop">{{ source.drop_policy_text | default('') | e if source else '' }}</textarea>
+    </label>
+    <label>Refund policy
+      <textarea id="e-refund-policy" rows="2" placeholder="Optional — whether refunds are available (no payments are processed here)">{{ source.refund_policy_text | default('') | e if source else '' }}</textarea>
+    </label>
+    <label>Refund window closes
+      <input id="e-refund-window" type="date" value="{{ source.refund_window_end | default('') | e if source else '' }}">
+      <span class="field-help">Optional — the last day refunds are offered.</span>
+    </label>
+  </div>
+  <label class="checkbox-row">
+    <input type="checkbox" id="e-require-checkin"{% if source and source.require_check_in %} checked{% endif %}>
+    <span>Require check-in
+      <span class="field-help">Only players you check in get paired.</span>
+    </span>
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="e-tables"{% if source and source.tables_enabled %} checked{% endif %} onchange="onTablesChange()">
+    <span>Assign tables
+      <span class="field-help">Give each pairing a table number for in-person seating.</span>
+    </span>
+  </label>
+  <div id="e-table-opts"{% if not source or not source.tables_enabled %} class="hidden"{% endif %}>
+    <label>First table number
+      <input id="e-table-start" type="number" min="1" max="999" placeholder="1"
+             oninput="onTableConfigChange()">
+    </label>
+    <label>Last table number
+      <input id="e-table-end" type="number" min="1" max="999" placeholder="e.g. 50"
+             oninput="onTableConfigChange()">
+      <span class="field-help">The range of physical tables available.</span>
+    </label>
+    <label>Reserved / unavailable tables
+      <input id="e-table-excluded" type="text" placeholder="e.g. 13, 21-24"
+             oninput="onTableConfigChange()">
+      <span class="field-help">Held out of automatic assignment.</span>
+    </label>
+    <label>Labeled tables
+      <input id="e-table-labels" type="text" placeholder="e.g. 1:Feature Match, 2:Coverage"
+             oninput="onTableConfigChange()">
+      <span class="field-help">Labeled tables are placed manually, so they're held out of auto-assignment too.</span>
+    </label>
+    <span id="e-table-warn" class="field-help" style="color:var(--danger)"></span>
+  </div>
+  <label class="checkbox-row">
+    <input type="checkbox" id="e-delay-pairings"{% if source and source.delay_pairings %} checked{% endif %}>
+    <span>Delay pairings
+      <span class="field-help">New pairings stay hidden from players until you release them.</span>
+    </span>
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="e-delay-standings"{% if source and source.delay_standings %} checked{% endif %}>
+    <span>Delay standings
+      <span class="field-help">Standings stay hidden from players until you release them.</span>
+    </span>
+  </label>
+  {% endif %}
+
+  <label class="timer-field">Round timer (minutes)
+    <input id="e-round-timer" type="number" min="0" max="180" placeholder="No timer"
+           value="{{ source.round_timer_minutes | default('') if source else '' }}">
+    <span class="field-help">Shows a countdown to players each round.</span>
+  </label>
+
+  {% if mode == 'advanced' %}
+  <label class="checkbox-row no-divider">
+    <input type="checkbox" id="e-auto-start-timer"{% if source and source.auto_start_timer %} checked{% endif %}>
+    <span>Start the timer when pairings are released
+      <span class="field-help">Auto-starts the round timer when pairings go live — right away if posted immediately, or when you release delayed pairings. Off by default; start it manually with the button.</span>
+    </span>
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="e-draws-frowned"{% if source and source.intentional_draws_frowned %} checked{% endif %}>
+    <span>Intentional draws are frowned upon
+      <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
+    </span>
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="e-test-mode"{% if source and source.test_mode %} checked{% endif %}>
+    <span>This event is in Test Mode
+      <span class="field-help">Hidden from public event discovery — only you see it.</span>
+    </span>
+  </label>
+  {% endif %}
+
+  <p class="form-discord-link">
+    <a href="/discord-bot" target="_blank" rel="noopener">Manage this event on Discord</a>
+    <span class="field-help">Players can register, report results, and follow standings via DM or a linked channel.</span>
+  </p>
+  <div class="modal-actions">
+    <a class="btn" href="/">Cancel</a>
+    <button class="btn btn-primary" onclick="submitCreateEvent()">Create</button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if mode is not none %}
+<script>
+const GAME_FORMATS = {
+  'Magic: The Gathering': ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage',
+    'Commander', 'Pauper', 'Limited', 'Draft', 'Sealed', 'Premodern', 'Canlander', 'Custom'],
+};
+const IS_ADVANCED = {{ (mode == 'advanced') | tojson }};
+const IS_DUPLICATE = {{ (source is not none) | tojson }};
+
+{% if mode == 'advanced' %}
+function populateFormats() {
+  const game = document.getElementById('e-game').value;
+  const sel  = document.getElementById('e-format-select');
+  sel.innerHTML = (GAME_FORMATS[game] || [])
+    .map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+  onFormatSelectChange();
+}
+
+function onFormatSelectChange() {
+  const isCustom = document.getElementById('e-format-select').value === 'Custom';
+  document.getElementById('e-format-custom').classList.toggle('hidden', !isCustom);
+}
+
+function onStructureChange() {
+  const isTopCut = document.getElementById('e-structure').value === 'swiss_top_cut';
+  document.getElementById('e-topcut-wrap').classList.toggle('hidden', !isTopCut);
+}
+
+function onDecklistsChange() {
+  const on = document.getElementById('e-decklists').checked;
+  document.getElementById('e-decklist-opts').classList.toggle('hidden', !on);
+}
+
+function onTablesChange() {
+  toggleTableOpts('e');
+  onTableConfigChange();
+}
+
+function onTableConfigChange() {
+  refreshTableWarning('e', parseInt(document.getElementById('e-cap').value) || 0);
+}
+{% endif %}
+
+function checkedTags(containerId) {
+  return [...document.querySelectorAll(`#${containerId} input:checked`)].map(c => c.value);
+}
+
+function validateCreate() {
+  const errors = [];
+  const mark = id => document.getElementById(id).classList.add('invalid');
+  document.querySelectorAll('.modal .invalid').forEach(el => el.classList.remove('invalid'));
+
+  if (!document.getElementById('e-name').value.trim()) { errors.push('Event name is required.'); mark('e-name'); }
+  if (!document.getElementById('e-date').value) { errors.push('Date is required.'); mark('e-date'); }
+
+  {% if mode == 'advanced' %}
+  if (!document.getElementById('e-game').value) { errors.push('Game is required.'); mark('e-game'); }
+  const fsel = document.getElementById('e-format-select').value;
+  if (fsel === 'Custom' && !document.getElementById('e-format-custom').value.trim()) {
+    errors.push('Enter a name for the custom format.'); mark('e-format-custom');
+  }
+  const start = document.getElementById('e-reg-start').value;
+  const end   = document.getElementById('e-reg-end').value;
+  if (start && end && end < start) {
+    errors.push('Registration close date is before the open date.'); mark('e-reg-start'); mark('e-reg-end');
+  }
+  {% else %}
+  if (!document.getElementById('e-format').value.trim()) { errors.push('Format is required.'); mark('e-format'); }
+  {% endif %}
+
+  const box = document.getElementById('create-errors');
+  if (errors.length) {
+    box.innerHTML = 'Please fix the following:<ul>' + errors.map(e => `<li>${escapeHtml(e)}</li>`).join('') + '</ul>';
+    box.classList.remove('hidden');
+    const first = document.querySelector('.modal .invalid');
+    if (first) first.focus();
+    return false;
+  }
+  box.classList.add('hidden');
+  return true;
+}
+
+async function submitCreateEvent() {
+  if (!validateCreate()) return;
+  const numRounds = parseInt(document.getElementById('e-rounds').value) || 0;
+  const cap       = parseInt(document.getElementById('e-cap').value) || 0;
+
+  let format, game = '', testMode = false, tags = [], structure = '', plannedCut = 0;
+  {% if mode == 'advanced' %}
+  game = document.getElementById('e-game').value;
+  const sel = document.getElementById('e-format-select').value;
+  format = sel === 'Custom'
+    ? document.getElementById('e-format-custom').value.trim()
+    : sel;
+  testMode  = document.getElementById('e-test-mode').checked;
+  tags      = checkedTags('e-tags');
+  structure = document.getElementById('e-structure').value;
+  if (structure === 'swiss_top_cut')
+    plannedCut = parseInt(document.getElementById('e-topcut').value) || 0;
+  {% else %}
+  format = document.getElementById('e-format').value;
+  {% endif %}
+
+  const place = placeFields('e-location');
+  const body = {
+    name:             document.getElementById('e-name').value,
+    advanced:         IS_ADVANCED,
+    game,
+    test_mode:        testMode,
+    tags,
+    structure,
+    planned_cut_size: plannedCut,
+    event_type:       document.getElementById('e-type').value,
+    format,
+    description:      document.getElementById('e-description').value,
+    entry_cost:       IS_ADVANCED ? document.getElementById('e-cost').value : '',
+    payment_url:      IS_ADVANCED ? document.getElementById('e-payment').value : '',
+    date:             document.getElementById('e-date').value,
+    start_time:       document.getElementById('e-time').value,
+    location:         place.location,
+    lat:              place.lat,
+    lng:              place.lng,
+    place_id:         place.place_id,
+    num_rounds:       numRounds,
+    registration_cap: cap,
+    brand_text:       IS_ADVANCED ? document.getElementById('e-brand-text').value : '',
+    round_timer_minutes: parseInt(document.getElementById('e-round-timer').value) || 0,
+  };
+  {% if mode == 'advanced' %}
+  body.requires_decklists  = document.getElementById('e-decklists').checked;
+  body.decklist_deadline   = document.getElementById('e-decklist-deadline').value;
+  body.validation_format   = document.getElementById('e-validation-format').value;
+  body.allow_proxies       = document.getElementById('e-allow-proxies').checked;
+  body.allow_gold_border   = document.getElementById('e-allow-gold').checked;
+  body.allow_ce            = document.getElementById('e-allow-ce').checked;
+  body.allow_ie            = document.getElementById('e-allow-ie').checked;
+  body.proxy_policy        = document.getElementById('e-proxy-policy').value;
+  body.proxy_limit         = parseInt(document.getElementById('e-proxy-limit').value) || 0;
+  body.proxy_note          = document.getElementById('e-proxy-note').value;
+  body.tables_enabled      = document.getElementById('e-tables').checked;
+  body.table_start         = parseInt(document.getElementById('e-table-start').value) || 1;
+  body.table_end           = parseInt(document.getElementById('e-table-end').value) || 0;
+  body.tables_excluded     = parseTableList(document.getElementById('e-table-excluded').value);
+  body.table_labels        = parseTableLabels(document.getElementById('e-table-labels').value);
+  body.prize_deadline_days = parseInt(document.getElementById('e-prize-deadline').value) || 0;
+  body.rules    = document.getElementById('e-rules').value;
+  body.schedule = document.getElementById('e-schedule').value;
+  body.prizes   = document.getElementById('e-prizes').value;
+  body.contact  = document.getElementById('e-contact').value;
+  body.registration_type  = document.getElementById('e-reg-type').value;
+  body.registration_start = document.getElementById('e-reg-start').value;
+  body.registration_end   = document.getElementById('e-reg-end').value;
+  body.unenroll_end        = document.getElementById('e-unenroll-end').value;
+  body.self_service_drop_enabled = document.getElementById('e-self-drop').checked;
+  body.drop_policy_text          = document.getElementById('e-drop-policy').value;
+  body.refund_policy_text        = document.getElementById('e-refund-policy').value;
+  body.refund_window_end         = document.getElementById('e-refund-window').value;
+  body.entry_code                  = document.getElementById('e-entry-code').value;
+  body.intentional_draws_frowned   = document.getElementById('e-draws-frowned').checked;
+  body.delay_pairings              = document.getElementById('e-delay-pairings').checked;
+  body.delay_standings             = document.getElementById('e-delay-standings').checked;
+  body.require_check_in            = document.getElementById('e-require-checkin').checked;
+  body.auto_start_timer            = document.getElementById('e-auto-start-timer').checked;
+  {% endif %}
+
+  const res = await fetch('/api/events', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    const e = await res.json();
+    window.location = `/events/${e.id}`;
+  } else {
+    alert('Failed to create event.');
+  }
+}
+
+whenMapsReady(() => attachPlaceAutocomplete('e-location'));
+
+document.addEventListener('DOMContentLoaded', () => {
+  {% if mode == 'advanced' %}
+  const gameSel = document.getElementById('e-game');
+  gameSel.innerHTML = Object.keys(GAME_FORMATS)
+    .map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+  populateFormats();
+  {% if source %}
+  gameSel.value = {{ (source.game or '') | tojson }};
+  populateFormats();
+  const fmts = GAME_FORMATS[gameSel.value] || [];
+  const srcFmt = {{ (source.format or '') | tojson }};
+  const fmtSel = document.getElementById('e-format-select');
+  if (srcFmt && fmts.includes(srcFmt)) { fmtSel.value = srcFmt; }
+  else if (srcFmt) { fmtSel.value = 'Custom'; document.getElementById('e-format-custom').value = srcFmt; }
+  onFormatSelectChange();
+  {% endif %}
+  onStructureChange();
+  onDecklistsChange();
+  {% if source %}
+  document.getElementById('e-table-start').value = {{ source.table_start | default(1) }};
+  document.getElementById('e-table-end').value = {{ source.table_end | default(0) or '' | tojson }};
+  document.getElementById('e-table-excluded').value = formatTableList({{ source.tables_excluded | default([]) | tojson }});
+  document.getElementById('e-table-labels').value = formatTableLabels({{ source.table_labels | default({}) | tojson }});
+  {% endif %}
+  toggleTableOpts('e');
+  refreshTableWarning('e', parseInt(document.getElementById('e-cap').value) || 0);
+  {% if source and source.lat is not none and source.lng is not none %}
+  placeData['e-location'] = {
+    location: {{ (source.location or '') | tojson }},
+    lat: {{ source.lat }},
+    lng: {{ source.lng }},
+    place_id: {{ (source.place_id or '') | tojson }},
+  };
+  {% endif %}
+  {% endif %}
+});
+</script>
+{% endif %}
+{% endblock %}

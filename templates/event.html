@@ -432,7 +432,7 @@ async function deleteEvent() {
 // Open the create form pre-filled with this event's settings (the home page
 // reads ?duplicate and populates the modal); the user reviews, then creates.
 function duplicateEvent() {
-  window.location.href = '/?duplicate=' + encodeURIComponent(EVENT_ID);
+  window.location.href = '/events/new?duplicate=' + encodeURIComponent(EVENT_ID);
 }
 
 // Identify a returning guest from a magic-link token (?t=) or one saved in this

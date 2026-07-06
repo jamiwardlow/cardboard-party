@@ -1033,6 +1033,24 @@ def event_detail(event_id):
         return 'Event not found', 404
     return render_template('event.html', user=get_current_user(), event=event)
 
+@events_bp.route('/events/new')
+@login_required
+def new_event_page():
+    import datetime
+    mode = request.args.get('mode')
+    if mode not in ('simple', 'advanced'):
+        mode = None
+    duplicate_id = request.args.get('duplicate')
+    source = None
+    if duplicate_id:
+        src = get_event(duplicate_id)
+        if src:
+            source = src
+            if mode is None:
+                mode = 'advanced' if src.get('advanced') else 'simple'
+    return render_template('new_event.html', user=get_current_user(), mode=mode,
+                           source=source, today=datetime.date.today().isoformat())
+
 @events_bp.route('/events/<event_id>/edit')
 @login_required
 def edit_event_page(event_id):
