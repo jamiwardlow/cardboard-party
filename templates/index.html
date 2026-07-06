@@ -110,12 +110,12 @@ function renderAllEvents() {
 function onNearMeToggle() {
   if (!document.getElementById('ev-near').checked) { userLoc = null; renderAllEvents(); return; }
   if (!navigator.geolocation) {
-    alert('Location isn't available in this browser.');
+    alert(`Location isn't available in this browser.`);
     document.getElementById('ev-near').checked = false; return;
   }
   navigator.geolocation.getCurrentPosition(
     pos => { userLoc = { lat: pos.coords.latitude, lng: pos.coords.longitude }; renderAllEvents(); },
-    ()  => { alert('Couldn't get your location. Allow location access to use "Near me."');
+    ()  => { alert(`Couldn't get your location. Allow location access to use “Near me”.`);
              document.getElementById('ev-near').checked = false; userLoc = null; renderAllEvents(); }
   );
 }
