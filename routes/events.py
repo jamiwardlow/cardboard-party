@@ -2062,6 +2062,8 @@ def api_add_player(event_id):
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
     _log_action(event_id, 'register', f'added {name}', target=name)
+    if google_id:
+        _dm_registration_confirmation(google_id, e, event_id, request.host_url)
     return jsonify(player), 201
 
 @events_bp.route('/api/events/<event_id>/player-search', methods=['GET'])
