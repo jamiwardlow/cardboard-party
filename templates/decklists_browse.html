@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Decklists{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="title-row"><h1>Decklists</h1></div>
+    <p class="subtitle">Decks from completed events</p>
+  </div>
+</div>
+
+<div class="dl-browse-bar">
+  <input id="dlb-search" type="search" placeholder="Search player or deck name…" oninput="filter()">
+  <select id="dlb-format" onchange="filter()"><option value="">All formats</option></select>
+</div>
+
+<div id="dlb-wrap"><p class="loading">Loading…</p></div>
+
+<!-- Decklist modal -->
+<div id="dlb-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="dlb-modal-title"></h2>
+    <p id="dlb-modal-meta" style="color:var(--muted);font-size:0.85rem;margin:0.25rem 0 0.75rem"></p>
+    <div id="dlb-modal-body" class="decklist-view" style="max-height:60vh;overflow-y:auto"></div>
+    <div class="modal-actions"><button class="btn" onclick="closeDlModal()">Close</button></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allDecks = [], filtered = [];
+
+async function load() {
+  const res = await fetch('/api/decklists');
+  if (!res.ok) { document.getElementById('dlb-wrap').innerHTML = '<p class="empty">Could not load decklists.</p>'; return; }
+  const d = await res.json();
+  allDecks = d.decks || [];
+
+  // Populate format filter
+  const formats = [...new Set(allDecks.map(dk => dk.event_format).filter(Boolean))].sort();
+  const sel = document.getElementById('dlb-format');
+  formats.forEach(f => { const o = document.createElement('option'); o.value = f; o.textContent = f; sel.appendChild(o); });
+
+  filter();
+}
+
+function filter() {
+  const q    = document.getElementById('dlb-search').value.trim().toLowerCase();
+  const fmt  = document.getElementById('dlb-format').value;
+  filtered = allDecks.filter(dk => {
+    if (fmt && dk.event_format !== fmt) return false;
+    if (q && !dk.player_name.toLowerCase().includes(q) && !(dk.deck_name || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  render();
+}
+
+function render() {
+  const wrap = document.getElementById('dlb-wrap');
+  if (!filtered.length) { wrap.innerHTML = '<p class="empty">No decklists match.</p>'; return; }
+
+  const rows = filtered.map(dk => {
+    const player = dk.google_id
+      ? `<a href="/players/${encodeURIComponent(dk.google_id)}">${escapeHtml(dk.player_name)}</a>`
+      : escapeHtml(dk.player_name);
+    const event = `<a href="/events/${encodeURIComponent(dk.event_id)}">${escapeHtml(dk.event_name)}</a>`;
+    const deck  = dk.deck_name
+      ? `<a href="#" class="dlb-deck-link" data-eid="${dk.event_id}" data-pid="${dk.player_id}">${escapeHtml(dk.deck_name)}</a>`
+      : `<a href="#" class="dlb-deck-link" data-eid="${dk.event_id}" data-pid="${dk.player_id}" style="color:var(--muted)">View decklist</a>`;
+    const record = `${dk.wins}–${dk.losses}${dk.draws ? '–' + dk.draws : ''}`;
+    return `<tr>
+      <td>${deck}</td>
+      <td>${player}</td>
+      <td>${event}</td>
+      <td>${escapeHtml(dk.event_format || '')}</td>
+      <td>${dk.event_date || ''}</td>
+      <td class="rank-cell">#${dk.rank}</td>
+      <td style="font-variant-numeric:tabular-nums">${record}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<div class="table-scroll"><table class="decklist-table">
+    <thead><tr>
+      <th>Deck</th><th>Player</th><th>Event</th><th>Format</th><th>Date</th><th>#</th><th>Record</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+
+  wrap.querySelectorAll('.dlb-deck-link').forEach(a => {
+    a.addEventListener('click', e => { e.preventDefault(); viewDeck(a.dataset.eid, a.dataset.pid); });
+  });
+}
+
+async function viewDeck(eventId, playerId) {
+  const modal = document.getElementById('dlb-modal');
+  document.getElementById('dlb-modal-title').textContent = 'Loading…';
+  document.getElementById('dlb-modal-meta').textContent = '';
+  document.getElementById('dlb-modal-body').textContent = '';
+  modal.classList.remove('hidden');
+
+  const res = await fetch(`/api/decklists/${encodeURIComponent(eventId)}/${encodeURIComponent(playerId)}`);
+  if (!res.ok) { document.getElementById('dlb-modal-title').textContent = 'Could not load decklist.'; return; }
+  const d = await res.json();
+
+  const dk = allDecks.find(x => x.event_id === eventId && x.player_id === playerId);
+  document.getElementById('dlb-modal-title').textContent = d.deck_name || d.player_name;
+  document.getElementById('dlb-modal-meta').textContent =
+    [d.player_name, dk?.event_name, dk?.event_format, dk?.event_date].filter(Boolean).join(' · ');
+  document.getElementById('dlb-modal-body').textContent = d.text || '';
+}
+
+function closeDlModal() { document.getElementById('dlb-modal').classList.add('hidden'); }
+
+document.getElementById('dlb-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('dlb-modal')) closeDlModal();
+});
+
+load();
+</script>
+{% endblock %}

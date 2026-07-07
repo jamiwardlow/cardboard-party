@@ -63,6 +63,9 @@ a { color: var(--accent); }
 .nav-links a  { color: var(--muted); text-decoration: none; font-size: 0.9rem;
                 margin-right: 1rem; transition: color 0.12s; }
 .nav-links a:hover { color: var(--accent); }
+.nav-decklists { color: var(--muted); text-decoration: none; font-size: 0.9rem;
+                 transition: color 0.12s; }
+.nav-decklists:hover { color: var(--accent); }
 .nav-user     { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
 .avatar       { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; object-fit: cover;
                 border: 1px solid var(--border); }
@@ -852,6 +855,17 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* Decklist view: note + issues + proxy-override grouped tightly together. */
 .dv-meta { display: flex; flex-direction: column; gap: 0.4rem; }
 .dv-meta > * { margin: 0; }
+
+/* ── Public decklists browser ───────────────────────────────────────────── */
+.dl-browse-bar { display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+.dl-browse-bar input  { flex: 1; min-width: 200px; padding: 0.4rem 0.7rem;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: 0.9rem; font-family: var(--font-body); }
+.dl-browse-bar select { padding: 0.4rem 0.6rem; background: var(--bg);
+  color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 0.9rem; font-family: var(--font-body); }
+.dl-browse-bar input:focus, .dl-browse-bar select:focus
+  { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
 
 /* ── MTG Goldfish copy-paste helper ──────────────────────────────────────── */
 .mgf-fields { display: flex; flex-direction: column; gap: 0.5rem; max-width: 540px; }

@@ -992,6 +992,78 @@ def _event_complete(event: dict) -> bool:
 def index():
     return render_template('index.html', user=get_current_user())
 
+
+@events_bp.route('/decklists')
+def public_decklists_page():
+    return render_template('decklists_browse.html', user=get_current_user())
+
+
+@events_bp.route('/api/decklists')
+def api_public_decklists():
+    """Public: flat list of all deck summaries from completed events with decklists."""
+    decks = []
+    for e in list_events():
+        if not e.get('requires_decklists') or not _event_complete(e):
+            continue
+        event_rounds = e.get('rounds', [])
+        standings = compute_standings(e['players'], event_rounds)
+        player_map = {p['id']: p for p in e['players']}
+        rank = 0
+        for s in standings:
+            p = player_map.get(s['id'])
+            if not p or p.get('dropped'):
+                continue
+            rank += 1
+            dl = p.get('decklist') or {}
+            if not (dl.get('text') or '').strip():
+                continue
+            wins = losses = draws = 0
+            for rnd in event_rounds:
+                for match in rnd:
+                    pid = p['id']
+                    if pid not in (match['player1_id'], match['player2_id']):
+                        continue
+                    if match.get('is_bye') or not match.get('result'):
+                        continue
+                    winner_id = match.get('winner_id')
+                    if match['result'] in DRAW_RESULTS or winner_id is None:
+                        draws += 1
+                    elif winner_id == pid:
+                        wins += 1
+                    else:
+                        losses += 1
+            decks.append({
+                'event_id':     e['id'],
+                'event_name':   e.get('name', ''),
+                'event_date':   e.get('date', ''),
+                'event_format': e.get('format', ''),
+                'player_id':    p['id'],
+                'player_name':  p.get('name', ''),
+                'google_id':    p.get('google_id'),
+                'deck_name':    dl.get('name', ''),
+                'rank': rank, 'wins': wins, 'losses': losses, 'draws': draws,
+            })
+    # Sort by event date descending (stable, so rank order within event preserved)
+    decks.sort(key=lambda d: d['rank'])
+    decks.sort(key=lambda d: d['event_date'] or '', reverse=True)
+    return jsonify({'decks': decks})
+
+
+@events_bp.route('/api/decklists/<event_id>/<player_id>')
+def api_public_player_decklist(event_id, player_id):
+    """Public: full decklist text for one player in a completed event."""
+    e = get_event(event_id)
+    if not e or not e.get('requires_decklists') or not _event_complete(e):
+        return jsonify({'error': 'Not found'}), 404
+    p = next((x for x in e['players'] if x['id'] == player_id), None)
+    if not p:
+        return jsonify({'error': 'Not found'}), 404
+    dl = p.get('decklist') or {}
+    text = (dl.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'No decklist'}), 404
+    return jsonify({'player_name': p.get('name', ''), 'deck_name': dl.get('name', ''), 'text': text})
+
 # Community Discord server for the "join us" card on /about. Same server across
 # environments, so it's a constant with an env override rather than per-env config.
 DISCORD_COMMUNITY_GUILD_ID = os.environ.get('DISCORD_COMMUNITY_GUILD_ID',
