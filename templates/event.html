@@ -384,6 +384,7 @@ const MOXFIELD_IMPORT = true;
 let state        = null;
 let me           = null;
 let myPlayer     = null;
+let decklistOrgPlayerId = null;  // non-null when organiser is editing a player's decklist
 let editingRound = null;
 let pendingResult = null;
 let roundCollapsed = {};   // round index -> explicit collapsed state (user override)
@@ -1124,11 +1125,12 @@ async function importMoxfield(btn) {
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Importing…';
   try {
-    const res = await fetch(`/api/events/${EVENT_ID}/decklist/import-moxfield`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ..._guestHeaders() },
-      body: JSON.stringify({ url }),
-    });
+    const endpoint = decklistOrgPlayerId
+      ? `/api/events/${EVENT_ID}/players/${encodeURIComponent(decklistOrgPlayerId)}/decklist/import-moxfield`
+      : `/api/events/${EVENT_ID}/decklist/import-moxfield`;
+    const headers = {'Content-Type': 'application/json'};
+    if (!decklistOrgPlayerId) Object.assign(headers, _guestHeaders());
+    const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ url }) });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) { alertDialog(d.error || 'Could not import from Moxfield.'); return; }
     document.getElementById('decklist-text').value = d.text || '';
@@ -1150,40 +1152,54 @@ async function saveMyDecklist(close) {
   try {
     const text = document.getElementById('decklist-text').value;
     const name = document.getElementById('decklist-name').value;
-    const res = await fetch(`/api/events/${EVENT_ID}/decklist`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ..._guestHeaders() },
-      body: JSON.stringify({ text, name }),
-    });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not save your decklist.'); return; }
+    const url = decklistOrgPlayerId
+      ? `/api/events/${EVENT_ID}/players/${encodeURIComponent(decklistOrgPlayerId)}/decklist`
+      : `/api/events/${EVENT_ID}/decklist`;
+    const headers = {'Content-Type': 'application/json'};
+    if (!decklistOrgPlayerId) Object.assign(headers, _guestHeaders());
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ text, name }) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not save the decklist.'); return; }
     const d = await res.json();
-    if (myPlayer) myPlayer.has_decklist = d.has_decklist;
-    const p = state.players.find(x => x.id === (myPlayer && myPlayer.id));
-    if (p) { p.has_decklist = d.has_decklist; p.decklist_status = d.validation ? d.validation.status : null; }
-    renderPlayers();
-    renderDecklistButton();   // first save flips "Submit decklist" → "Edit decklist"
+    if (decklistOrgPlayerId) {
+      const p = state.players.find(x => x.id === decklistOrgPlayerId);
+      if (p) { p.has_decklist = d.has_decklist; p.decklist_status = d.validation ? d.validation.status : null; }
+      renderPlayers();
+    } else {
+      if (myPlayer) myPlayer.has_decklist = d.has_decklist;
+      const p = state.players.find(x => x.id === (myPlayer && myPlayer.id));
+      if (p) { p.has_decklist = d.has_decklist; p.decklist_status = d.validation ? d.validation.status : null; }
+      renderPlayers();
+      renderDecklistButton();   // first save flips "Submit decklist" → "Edit decklist"
+    }
     if (close) closeDecklistModal();
     else renderDecklistValidation(d.validation, 'Saved.');   // keep modal open to show feedback
   } finally { saveBtn.disabled = closeBtn.disabled = false; active.textContent = orig; }
 }
 
 function closeDecklistModal() {
+  decklistOrgPlayerId = null;
   document.getElementById('decklist-modal').classList.add('hidden');
 }
 
-// Organiser: view a specific player's submitted decklist (read-only).
+// Organiser: view/edit a specific player's decklist.
 async function openPlayerDecklist(playerId) {
   const res = await fetch(`/api/events/${EVENT_ID}/players/${playerId}/decklist`);
   if (!res.ok) { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not load that decklist.'); return; }
   const d = await res.json();
+  decklistOrgPlayerId = playerId;
   document.getElementById('decklist-modal-title').textContent = `${d.name}'s decklist`;
   document.getElementById('decklist-modal-note').textContent =
     d.updated_at ? `Submitted ${new Date(d.updated_at).toLocaleString()}.` : 'No decklist submitted yet.';
-  setDecklistMode(true, d.text || '');
-  document.getElementById('decklist-save-btn').style.display = 'none';
-  document.getElementById('moxfield-import').style.display = 'none';
+  document.getElementById('decklist-name').value = d.deck_name || '';
+  setDecklistMode(false, d.text || '');
+  document.getElementById('decklist-save-btn').style.display = '';
+  document.getElementById('decklist-save-close-btn').style.display = '';
+  document.getElementById('moxfield-import').style.display = MOXFIELD_IMPORT ? 'flex' : 'none';
+  document.getElementById('moxfield-url').value = '';
+  renderPrintHelp(false);
   renderDecklistValidation(d.validation);
   document.getElementById('decklist-modal').classList.remove('hidden');
+  autoGrowDecklist(document.getElementById('decklist-text'));
 }
 
 // Mirrors the backend gate: why self-registration is unavailable, or null if open.
@@ -1835,10 +1851,7 @@ function openPlayerDetails(playerId) {
   const acts = [`<button class="btn" onclick="pdRun('rename')">✎ Edit display name</button>`];
   if (state.requires_decklists && !p.dropped) {
     if (!p.has_decklist) {
-      if (state.decklists_required ?? state.requires_decklists) {
-        // Nothing to open yet — a static badge, not a button.
-        acts.push(`<div class="pd-static">📋 No decklist yet</div>`);
-      }
+      acts.push(`<button class="btn" onclick="pdRun('decklist')">📋 Add decklist</button>`);
     } else {
       const flagged = p.decklist_status === 'errors' || p.decklist_status === 'warnings';
       acts.push(`<button class="btn" onclick="pdRun('decklist')">${flagged ? '⚠️ View decklist' : '📋 View decklist'}</button>`);

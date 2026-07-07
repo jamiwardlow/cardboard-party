@@ -2368,6 +2368,20 @@ def api_import_moxfield(event_id):
     return jsonify({'text': text, 'name': name})
 
 
+@events_bp.route('/api/events/<event_id>/players/<player_id>/decklist/import-moxfield', methods=['POST'])
+@login_required
+def api_organizer_import_moxfield(event_id, player_id):
+    """Organiser: import a Moxfield deck URL for a specific player."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    text, name, err = import_moxfield((request.json or {}).get('url', ''))
+    if err:
+        return jsonify({'error': err}), 400
+    return jsonify({'text': text, 'name': name})
+
+
 @events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET', 'POST'])
 @login_required
 def api_player_decklist(event_id, player_id):

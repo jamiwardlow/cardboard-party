@@ -42,7 +42,11 @@
       <div id="dv-result" class="decklist-result"></div>
       <div id="dv-proxy"></div>
     </div>
-    <label style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.88rem;font-weight:500;margin-top:0.5rem">Decklist
+    <div class="mox-row" style="margin-top:0.5rem">
+      <input id="dv-mox-url" type="url" placeholder="…or paste a Moxfield deck URL to import">
+      <button class="btn btn-sm" onclick="importMoxfieldDv(this)">Import</button>
+    </div>
+    <label style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.88rem;font-weight:500">Decklist
       <textarea id="dv-text" class="decklist-view" style="min-height:16rem;resize:vertical;cursor:text;width:100%;box-sizing:border-box" placeholder="Paste decklist here…"></textarea>
     </label>
     <div id="dv-save-result" style="font-size:0.85rem;margin-top:0.3rem"></div>
@@ -108,7 +112,6 @@ function render() {
       ${isComplete ? `<th onclick="setSort('rank')">#${arrow('rank')}</th>` : ''}
       <th onclick="setSort('player_name')">Player${arrow('player_name')}</th>
       <th onclick="setSort('has_decklist')">Submitted${arrow('has_decklist')}</th>
-      <th onclick="setSort('deck_name')">Deck name${arrow('deck_name')}</th>
       <th onclick="setSort('maindeck')">Maindeck${arrow('maindeck')}</th>
       <th onclick="setSort('sideboard')">Sideboard${arrow('sideboard')}</th>
       ${allowProxies ? `<th onclick="setSort('proxy_count')">Proxy${arrow('proxy_count')}</th>` : ''}
@@ -124,7 +127,6 @@ function render() {
         ${isComplete ? `<td class="rank-cell">${r.rank ?? '—'}</td>` : ''}
         <td>${player}</td>
         <td>${submitted_cell}</td>
-        <td>${r.has_decklist && r.deck_name ? escapeHtml(r.deck_name) : '—'}</td>
         <td>${r.has_decklist ? r.maindeck : '—'}</td>
         <td>${r.has_decklist ? r.sideboard : '—'}</td>
         ${allowProxies ? `<td>${!r.has_decklist ? '—' : (r.proxy_count + (r.proxy_override ? ` <span class="proxy-ovr" title="${escapeHtml(r.proxy_override_note)}">override</span>` : ''))}</td>` : ''}
@@ -191,6 +193,27 @@ async function saveDvText() {
 }
 
 function closeDv() { document.getElementById('dv-modal').classList.add('hidden'); }
+
+async function importMoxfieldDv(btn) {
+  const url = document.getElementById('dv-mox-url').value.trim();
+  if (!url) return;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Importing…';
+  const resultEl = document.getElementById('dv-save-result');
+  try {
+    const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(dvPlayerId)}/decklist/import-moxfield`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      resultEl.style.color = 'var(--danger)'; resultEl.textContent = d.error || 'Could not import from Moxfield.'; return;
+    }
+    document.getElementById('dv-text').value = d.text || '';
+    if (d.name) document.getElementById('dv-name').value = d.name;
+    resultEl.style.color = 'var(--muted)'; resultEl.textContent = 'Imported — review and save.';
+  } finally { btn.disabled = false; btn.textContent = orig; }
+}
 
 async function setProxyOverride(pid) {
   const note = prompt('Note for overriding proxy validation (required):', '');
