@@ -1164,6 +1164,7 @@ async function saveMyDecklist(close) {
       const p = state.players.find(x => x.id === decklistOrgPlayerId);
       if (p) { p.has_decklist = d.has_decklist; p.decklist_status = d.validation ? d.validation.status : null; }
       renderPlayers();
+      renderOwnerActions();
     } else {
       if (myPlayer) myPlayer.has_decklist = d.has_decklist;
       const p = state.players.find(x => x.id === (myPlayer && myPlayer.id));

@@ -122,7 +122,7 @@ function render() {
       : escapeHtml(r.player_name);
     const submitted_cell = r.has_decklist
       ? `<a href="#" onclick="viewDeck('${r.player_id}');return false">${r.deck_name ? escapeHtml(r.deck_name) : 'View decklist'}</a>`
-      : `<a href="#" onclick="viewDeck('${r.player_id}');return false" class="${decklistsRequired ? 'dl-missing' : 'text-muted'}">${decklistsRequired ? 'Missing' : 'Add decklist'}</a>`;
+      : `<a href="#" onclick="viewDeck('${r.player_id}');return false" style="color:var(${decklistsRequired ? '--danger' : '--muted'})">Add decklist</a>`;
     return `<tr${!r.has_decklist && decklistsRequired ? ' class="dl-row-missing"' : ''}>
         ${isComplete ? `<td class="rank-cell">${r.rank ?? '—'}</td>` : ''}
         <td>${player}</td>
