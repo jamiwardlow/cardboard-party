@@ -3341,5 +3341,9 @@ def api_submit_mtgdecks(event_id):
         err = resp.json()
     except Exception:
         err = {}
+    errors = err.get('errors') or []
+    if isinstance(errors, list) and errors:
+        return jsonify({'error': f'MTGDecks rejected the submission ({resp.status_code})',
+                        'errors': errors}), 400
     msg = err.get('message') or err.get('error') or resp.text[:400] or 'Unknown error.'
-    return jsonify({'error': f'MTGDecks {resp.status_code}: {msg}', 'raw': resp.text[:400]}), 400
+    return jsonify({'error': f'MTGDecks {resp.status_code}: {msg}'}), 400

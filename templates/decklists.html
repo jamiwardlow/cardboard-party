@@ -226,7 +226,12 @@ async function submitToMtgDecks() {
     const res  = await fetch(`/api/events/${EVENT_ID}/submit-mtgdecks`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      body.innerHTML = `<p style="color:var(--danger)">${escapeHtml(data.error || 'Submission failed.')}</p>`;
+      let html = `<p style="color:var(--danger)">${escapeHtml(data.error || 'Submission failed.')}</p>`;
+      if (data.errors && data.errors.length) {
+        html += '<ul style="color:var(--danger);margin:0.4rem 0 0 1.2rem;font-size:0.9rem">'
+          + data.errors.map(e => `<li>${escapeHtml(e)}</li>`).join('') + '</ul>';
+      }
+      body.innerHTML = html;
       submitBtn.textContent = 'Retry';
       submitBtn.disabled = false;
       return;
