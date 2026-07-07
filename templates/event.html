@@ -406,6 +406,19 @@ async function init() {
     : (guestPlayerId ? (state.players.find(p => p.id === guestPlayerId) || null) : null);
   applyStageCollapse();   // completed events open collapsed except Standings
   render();
+  _maybeAutoRegister();
+}
+
+function _maybeAutoRegister() {
+  if (new URLSearchParams(window.location.search).get('register') !== '1') return;
+  history.replaceState(null, '', window.location.pathname);  // clean URL to prevent re-trigger
+  if (!me.signed_in) return;
+  if (canManage()) return;
+  if (myPlayer && !myPlayer.dropped) return;
+  if (selfRegBlockedReason()) return;
+  if (state.is_full) { joinWaitlist(); return; }
+  if (state.entry_code_required || !me.has_discord) { showRegisterForm(); return; }
+  submitRegister();
 }
 
 // On a completed event, collapse the other collapsible sections on load so
@@ -985,8 +998,9 @@ function renderBanners() {
       msg += ' Sign in or create an account to register.';
     }
     document.getElementById('register-banner-msg').textContent = msg;
-    signinBtn.href = '/auth/login?next=' +
-      encodeURIComponent(window.location.pathname + window.location.search);
+    const _regNext = window.location.pathname +
+      (window.location.search ? window.location.search + '&register=1' : '?register=1');
+    signinBtn.href = '/auth/login?next=' + encodeURIComponent(_regNext);
     signinBtn.textContent = full ? 'Sign in to join the waitlist' : 'Register for this event';
     if (!me.signed_in)   signinBtn.style.display = '';
     else if (full)       waitBtn.style.display = '';
