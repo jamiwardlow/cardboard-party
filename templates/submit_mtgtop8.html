@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Submit to MTG Top 8 — {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="title-row"><h1>Submit to MTG Top 8</h1></div>
+    <p class="subtitle"><a href="/events/{{ event.id }}">← {{ event.name }}</a></p>
+  </div>
+</div>
+
+<p style="margin-bottom:1.5rem">Review the details below, fill in your email, then click <strong>Pre-fill MTG Top 8 →</strong>. MTG Top 8 will open with your tournament and deck data already loaded — you may need to click their Submit button once more to confirm.</p>
+
+<form method="POST" action="https://mtgtop8.com/submit_event" id="mt8-form">
+
+  <!-- ── Tournament metadata (visible + editable) ─────────────────────────── -->
+  <div class="tc-meta">
+    <label>Event title
+      <input type="text" name="event_title" value="{{ event.name | e }}" required>
+    </label>
+    <label>Event place
+      <input type="text" name="event_place" value="{{ event.location | default('') | e }}">
+    </label>
+    <label>Format
+      <input type="text" name="event_format" value="{{ event.format | default('') | e }}" required>
+    </label>
+    <label>Date
+      {% set dp = (event.date or '').split('-') %}
+      <div style="display:flex;gap:0.4rem">
+        <input type="number" name="event_day"   value="{{ dp[2] if dp|length > 2 else '' }}" min="1" max="31" placeholder="DD"   style="width:4rem" required>
+        <input type="number" name="event_month" value="{{ dp[1] if dp|length > 1 else '' }}" min="1" max="12" placeholder="MM"   style="width:4rem" required>
+        <input type="number" name="event_year"  value="{{ dp[0] if dp|length > 0 else '' }}" min="2000"        placeholder="YYYY" style="width:5rem" required>
+      </div>
+    </label>
+    <label>Number of players
+      <input type="number" name="event_players" value="{{ decks | length }}" min="1" required>
+    </label>
+    <label>Paper / Online
+      <select name="event_mtgo">
+        <option value="0" selected>Paper</option>
+        <option value="1">Online (MTGO)</option>
+      </select>
+    </label>
+    <label>Link <span class="field-help" style="display:inline">(optional tournament report)</span>
+      <input type="url" name="event_link" placeholder="https://…">
+    </label>
+    <label>Your email <span class="field-help" style="display:inline">(required by MTG Top 8)</span>
+      <input type="email" name="event_email" placeholder="you@example.com" required>
+    </label>
+  </div>
+
+  <!-- ── Hidden deck fields ──────────────────────────────────────────────── -->
+  {% for deck in decks %}{% set i = loop.index %}
+  <input type="hidden" name="titre[{{ i }}]"      value="{{ deck.deck_name | e }}">
+  <input type="hidden" name="player[{{ i }}]"     value="{{ deck.player | e }}">
+  <input type="hidden" name="rank[{{ i }}]"       value="{{ deck.rank }}">
+  <textarea name="deck_cards[{{ i }}]" style="display:none">{{ deck.cards }}</textarea>
+  {% endfor %}
+
+  <!-- ── Deck preview ─────────────────────────────────────────────────────── -->
+  <h2 style="margin:1.5rem 0 0.75rem">Decks ({{ decks | length }})</h2>
+  {% set missing = decks | selectattr('has_decklist', 'false') | list %}
+  {% if missing %}
+  <p class="dl-summary dl-summary-warn" style="margin-bottom:0.75rem">{{ missing | length }} player{{ 's' if missing | length != 1 }} without a decklist — their slots will be submitted empty.</p>
+  {% endif %}
+  <div class="tc-deck-list">
+    {% for deck in decks %}
+    <div class="tc-deck-row{% if not deck.has_decklist %} tc-no-deck{% endif %}">
+      <span class="tc-rank">#{{ deck.rank }}</span>
+      <span class="tc-player">{{ deck.player }}</span>
+      {% if deck.deck_name %}<span class="tc-deckname">{{ deck.deck_name }}</span>{% endif %}
+      {% if not deck.has_decklist %}<span class="dl-missing">No decklist</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="margin-top:1.5rem">
+    <button type="submit" class="btn btn-primary">Pre-fill MTG Top 8 →</button>
+    <a href="/events/{{ event.id }}" class="btn" style="margin-left:0.5rem">Cancel</a>
+  </div>
+
+</form>
+{% endblock %}

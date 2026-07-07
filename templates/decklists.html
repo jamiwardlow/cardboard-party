@@ -9,6 +9,24 @@
   </div>
 </div>
 
+<div class="action-row" style="margin-bottom:1rem">
+  <button class="btn btn-sm" onclick="openMtgDecksModal()">Submit to MTGDecks</button>
+  <a class="btn btn-sm" href="/events/{{ event.id }}/submit-tcdecks" target="_blank">Submit to TCDecks</a>
+  <a class="btn btn-sm" href="/events/{{ event.id }}/submit-mtgtop8" target="_blank">Submit to MTG Top 8</a>
+</div>
+
+<!-- Submit to MTGDecks modal -->
+<div id="mtgdecks-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Submit to MTGDecks</h2>
+    <div id="mtgdecks-body" style="margin:0.75rem 0"></div>
+    <div class="modal-actions">
+      <button class="btn" id="mtgdecks-cancel-btn" onclick="closeMtgDecksModal()">Cancel</button>
+      <button class="btn btn-primary" id="mtgdecks-submit-btn" onclick="submitToMtgDecks()">Submit</button>
+    </div>
+  </div>
+</div>
+
 <div id="decklists-wrap"><p class="loading">Loading…</p></div>
 
 <!-- View a player's decklist: editable deck name, proxy override, and the list -->
@@ -167,5 +185,58 @@ async function saveDvName() {
 }
 
 load();
+
+function openMtgDecksModal() {
+  const withDeck = rows.filter(r => r.has_decklist).length;
+  const missing  = rows.length - withDeck;
+  const body = document.getElementById('mtgdecks-body');
+  const submitBtn = document.getElementById('mtgdecks-submit-btn');
+  const cancelBtn = document.getElementById('mtgdecks-cancel-btn');
+  submitBtn.disabled = withDeck === 0;
+  submitBtn.textContent = 'Submit';
+  cancelBtn.textContent = 'Cancel';
+  if (withDeck === 0) {
+    body.innerHTML = '<p>No players have submitted decklists yet.</p>';
+  } else {
+    let html = `<p>${withDeck} of ${rows.length} player${rows.length === 1 ? '' : 's'} will be submitted.`;
+    if (missing > 0) html += ` <strong>${missing} without a decklist will be skipped.</strong>`;
+    html += '</p>';
+    body.innerHTML = html;
+  }
+  document.getElementById('mtgdecks-modal').classList.remove('hidden');
+}
+
+function closeMtgDecksModal() {
+  document.getElementById('mtgdecks-modal').classList.add('hidden');
+}
+
+async function submitToMtgDecks() {
+  const body      = document.getElementById('mtgdecks-body');
+  const submitBtn = document.getElementById('mtgdecks-submit-btn');
+  const cancelBtn = document.getElementById('mtgdecks-cancel-btn');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting…';
+  try {
+    const res  = await fetch(`/api/events/${EVENT_ID}/submit-mtgdecks`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      body.innerHTML = `<p style="color:var(--danger)">${escapeHtml(data.error || 'Submission failed.')}</p>`;
+      submitBtn.textContent = 'Retry';
+      submitBtn.disabled = false;
+      return;
+    }
+    let html = `<p>${data.submitted} decklist${data.submitted === 1 ? '' : 's'} submitted successfully.</p>`;
+    if (data.url) {
+      html += `<p><a href="${escapeHtml(data.url)}" target="_blank" rel="noopener">View on MTGDecks →</a></p>`;
+    }
+    body.innerHTML = html;
+    submitBtn.style.display = 'none';
+    cancelBtn.textContent = 'Close';
+  } catch (_) {
+    body.innerHTML = `<p style="color:var(--danger)">Network error — please try again.</p>`;
+    submitBtn.textContent = 'Retry';
+    submitBtn.disabled = false;
+  }
+}
 </script>
 {% endblock %}

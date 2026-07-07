@@ -1112,6 +1112,48 @@ def submit_tcdecks_page(event_id):
     return render_template('submit_tcdecks.html',
                            user=get_current_user(), event=e, decks=decks)
 
+
+@events_bp.route('/events/<event_id>/submit-mtgtop8')
+@login_required
+def submit_mtgtop8_page(event_id):
+    """Organiser: review + relay form that POSTs event results to mtgtop8.com."""
+    e = get_event(event_id)
+    if not e:
+        return 'Event not found', 404
+    if not _can_manage(e):
+        return 'Organizers only.', 403
+
+    standings = compute_standings(e['players'], e.get('rounds', []))
+    player_map = {p['id']: p for p in e['players']}
+
+    def deck_lines(entries):
+        return '\n'.join(f"{count} {name}" for count, name, _tag in entries)
+
+    decks = []
+    rank = 0
+    for s in standings:
+        p = player_map.get(s['id'])
+        if not p or p.get('dropped'):
+            continue
+        rank += 1
+        dl = p.get('decklist') or {}
+        text = (dl.get('text') or '').strip()
+        if text:
+            main_entries, side_entries = parse_decklist(text)
+            cards = deck_lines(main_entries)
+            if side_entries:
+                cards += '\nSideboard\n' + deck_lines(side_entries)
+        else:
+            cards = ''
+        decks.append({'player': p.get('name', ''),
+                      'deck_name': dl.get('name', ''),
+                      'cards': cards,
+                      'rank': rank,
+                      'has_decklist': bool(text)})
+
+    return render_template('submit_mtgtop8.html',
+                           user=get_current_user(), event=e, decks=decks)
+
 @events_bp.route('/events/<event_id>/rounds/<int:round_num>/pairings/print')
 def print_pairings(event_id, round_num):
     """A clean, print-friendly pairings sheet for one round, sorted by table number
