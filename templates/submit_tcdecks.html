@@ -11,7 +11,7 @@
 
 <p style="margin-bottom:1.5rem">Review the details below, fill in your email, then click <strong>Submit to TCDecks</strong>. Your browser will send the form directly to TCDecks and land on their confirmation page.</p>
 
-<form method="POST" action="https://www.tcdecks.net/submit.php">
+<form method="POST" action="https://www.tcdecks.net/insert.php" id="tc-form">
 
   <!-- ── Tournament metadata (visible + editable) ─────────────────────────── -->
   <div class="tc-meta">
@@ -38,9 +38,9 @@
     </label>
     <label>Platform
       <select name="source">
-        <option value="Paper" selected>Paper</option>
-        <option value="Webcam">Webcam</option>
-        <option value="MOL">MOL</option>
+        <option value="paper" selected>Paper</option>
+        <option value="webcam">Webcam</option>
+        <option value="mol">MOL</option>
       </select>
     </label>
     <label>Your email <span class="field-help" style="display:inline">(required by TCDecks)</span>
@@ -48,11 +48,15 @@
     </label>
   </div>
 
+  <!-- ── Hidden fields required by TCDecks ──────────────────────────────── -->
+  <input type="hidden" name="time1" id="tc-time1" value="">
+  <input type="hidden" name="visibleDecks" value="{{ decks | length }}">
+
   <!-- ── Hidden deck fields ──────────────────────────────────────────────── -->
   {% for deck in decks %}{% set i = loop.index %}
   <input  type="hidden" name="pl{{ i }}" value="{{ deck.player | e }}">
   <input  type="hidden" name="n{{ i }}"  value="{{ deck.deck_name | e }}">
-  <input  type="hidden" name="a{{ i }}"  value="{{ deck.deck_name | e }}">
+  <input  type="hidden" name="a{{ i }}"  value="">
   <textarea name="m{{ i }}" style="display:none">{{ deck.main }}</textarea>
   <textarea name="s{{ i }}" style="display:none">{{ deck.side }}</textarea>
   {% endfor %}
@@ -80,4 +84,10 @@
   </div>
 
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('tc-time1').value = Math.floor(Date.now() / 1000);
+</script>
 {% endblock %}
