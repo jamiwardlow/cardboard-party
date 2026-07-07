@@ -3098,8 +3098,8 @@ def api_submit_mtgdecks(event_id):
         resp = requests.post(
             'https://mtgdecks.net/api/importEvent',
             json={'Event': event_obj, 'Decks': decks},
-            headers={'Authorization': f'Bearer {api_key}'},
-            params={'discard_failed_decks': 'true'},
+            headers={'Authorization': f'Bearer {api_key}', 'X-Api-Key': api_key},
+            params={'api_key': api_key, 'discard_failed_decks': 'true'},
             timeout=30,
         )
     except Exception as ex:
@@ -3116,5 +3116,5 @@ def api_submit_mtgdecks(event_id):
         err = resp.json()
     except Exception:
         err = {}
-    msg = err.get('message') or err.get('error') or f'MTGDecks returned {resp.status_code}.'
-    return jsonify({'error': msg}), 400
+    msg = err.get('message') or err.get('error') or resp.text[:200] or 'Unknown error.'
+    return jsonify({'error': f'MTGDecks {resp.status_code}: {msg}'}), 400
