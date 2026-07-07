@@ -35,18 +35,21 @@
   <div class="modal">
     <h2 id="dv-title">Decklist</h2>
     <label>Deck name
-      <span class="dv-name-row">
-        <input id="dv-name" type="text" maxlength="120" placeholder="e.g. Mono-Red Burn">
-        <button class="btn btn-sm" onclick="saveDvName()">Save</button>
-      </span>
+      <input id="dv-name" type="text" maxlength="120" placeholder="e.g. Mono-Red Burn">
     </label>
     <div class="dv-meta">
       <p id="dv-note" class="field-help"></p>
       <div id="dv-result" class="decklist-result"></div>
       <div id="dv-proxy"></div>
     </div>
-    <div id="dv-view" class="decklist-view"></div>
-    <div class="modal-actions"><button class="btn" onclick="closeDv()">Close</button></div>
+    <label style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.88rem;font-weight:500;margin-top:0.5rem">Decklist
+      <textarea id="dv-text" class="decklist-view" style="min-height:16rem;resize:vertical;cursor:text;width:100%;box-sizing:border-box" placeholder="Paste decklist here…"></textarea>
+    </label>
+    <div id="dv-save-result" style="font-size:0.85rem;margin-top:0.3rem"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeDv()">Close</button>
+      <button class="btn btn-primary" onclick="saveDvText()">Save decklist</button>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -116,7 +119,7 @@ function render() {
       : escapeHtml(r.player_name);
     const submitted_cell = r.has_decklist
       ? `<a href="#" onclick="viewDeck('${r.player_id}');return false">${r.deck_name ? escapeHtml(r.deck_name) : 'View decklist'}</a>`
-      : (decklistsRequired ? '<span class="dl-missing">Missing</span>' : '<span class="text-muted">—</span>');
+      : `<a href="#" onclick="viewDeck('${r.player_id}');return false" class="${decklistsRequired ? 'dl-missing' : 'text-muted'}">${decklistsRequired ? 'Missing' : 'Add decklist'}</a>`;
     return `<tr${!r.has_decklist && decklistsRequired ? ' class="dl-row-missing"' : ''}>
         ${isComplete ? `<td class="rank-cell">${r.rank ?? '—'}</td>` : ''}
         <td>${player}</td>
@@ -131,8 +134,12 @@ function render() {
 }
 
 async function viewDeck(pid) {
+  document.getElementById('dv-modal').classList.remove('hidden');
+  document.getElementById('dv-title').textContent = 'Loading…';
+  document.getElementById('dv-text').value = '';
+  document.getElementById('dv-save-result').textContent = '';
   const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(pid)}/decklist`);
-  if (!res.ok) { alert('Could not load that decklist.'); return; }
+  if (!res.ok) { document.getElementById('dv-title').textContent = 'Could not load decklist.'; return; }
   const d = await res.json();
   dvPlayerId = pid;
   document.getElementById('dv-title').textContent = `${d.name}'s decklist`;
@@ -147,7 +154,8 @@ async function viewDeck(pid) {
     ? '<ul class="dl-issues">' + issues.map(i =>
         `<li class="dl-${i.severity}">${escapeHtml(i.message)}</li>`).join('') + '</ul>'
     : '';
-  document.getElementById('dv-view').textContent = d.text || '';
+  document.getElementById('dv-text').value = d.text || '';
+  document.getElementById('dv-save-result').textContent = '';
   const dvp = document.getElementById('dv-proxy');
   if (allowProxies) {
     dvp.style.display = '';
@@ -158,6 +166,30 @@ async function viewDeck(pid) {
   } else { dvp.style.display = 'none'; }
   document.getElementById('dv-modal').classList.remove('hidden');
 }
+async function saveDvText() {
+  const text = document.getElementById('dv-text').value;
+  const name = document.getElementById('dv-name').value;
+  const resultEl = document.getElementById('dv-save-result');
+  resultEl.textContent = 'Saving…';
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(dvPlayerId)}/decklist`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ text, name }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { resultEl.style.color = 'var(--danger)'; resultEl.textContent = d.error || 'Could not save.'; return; }
+  const r = rows.find(x => x.player_id === dvPlayerId);
+  if (r) {
+    r.has_decklist = d.has_decklist;
+    r.deck_name = name.trim();
+    const v = d.validation || {};
+    r.maindeck = v.maindeck_count ?? 0;
+    r.sideboard = v.sideboard_count ?? 0;
+    r.proxy_count = v.proxy_count ?? 0;
+  }
+  render();
+  closeDv();
+}
+
 function closeDv() { document.getElementById('dv-modal').classList.add('hidden'); }
 
 async function setProxyOverride(pid) {
@@ -179,16 +211,6 @@ async function sendProxyOverride(pid, override, note) {
   render(); viewDeck(pid);   // refresh the open modal
 }
 
-async function saveDvName() {
-  const name = document.getElementById('dv-name').value;
-  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(dvPlayerId)}/decklist-name`, {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }),
-  });
-  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save the deck name.'); return; }
-  const r = rows.find(x => x.player_id === dvPlayerId); if (r) r.deck_name = name.trim();
-  render();
-  closeDv();
-}
 
 load();
 

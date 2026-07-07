@@ -2368,10 +2368,10 @@ def api_import_moxfield(event_id):
     return jsonify({'text': text, 'name': name})
 
 
-@events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET'])
+@events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET', 'POST'])
 @login_required
 def api_player_decklist(event_id, player_id):
-    """Organiser-only: read a specific player's submitted decklist."""
+    """Organiser-only: read (GET) or set (POST) a specific player's decklist."""
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
@@ -2379,12 +2379,27 @@ def api_player_decklist(event_id, player_id):
     p = next((x for x in e['players'] if x['id'] == player_id), None)
     if not p:
         return jsonify({'error': 'Player not found'}), 404
-    dl = p.get('decklist') or {}
-    return jsonify({'name': p.get('name', ''), 'deck_name': dl.get('name', ''),
-                    'text': dl.get('text', ''), 'updated_at': dl.get('updated_at', ''),
-                    'validation': dl.get('validation'),
-                    'proxy_override': bool(dl.get('proxy_override')),
-                    'proxy_override_note': dl.get('proxy_override_note', '')})
+    if request.method == 'GET':
+        dl = p.get('decklist') or {}
+        return jsonify({'name': p.get('name', ''), 'deck_name': dl.get('name', ''),
+                        'text': dl.get('text', ''), 'updated_at': dl.get('updated_at', ''),
+                        'validation': dl.get('validation'),
+                        'proxy_override': bool(dl.get('proxy_override')),
+                        'proxy_override_note': dl.get('proxy_override_note', '')})
+    data = request.json or {}
+    text = str(data.get('text', ''))[:20000]
+    name = str(data.get('name', '')).strip()[:120]
+    had  = bool((p.get('decklist') or {}).get('text', '').strip())
+    validation = validate_decklist(text, e.get('validation_format', 'none'),
+                                   _print_policy(e)) if text.strip() else None
+    dl = {'text': text, 'name': name, 'updated_at': _now_iso(),
+          'validation': validation} if text.strip() else None
+    if set_player_field(event_id, player_id, 'decklist', dl) is None:
+        return jsonify({'error': 'Could not save the decklist.'}), 400
+    action = ('updated' if had else 'uploaded') + f" {p.get('name','')}'s decklist"
+    _log_action(event_id, 'decklist', action)
+    return jsonify({'ok': True, 'has_decklist': bool(dl),
+                    'updated_at': dl['updated_at'] if dl else '', 'validation': validation})
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/decklist-name', methods=['POST'])
