@@ -2307,7 +2307,7 @@ def api_decklists_table(event_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    complete = _is_complete(e)
+    complete = _event_complete(e)
     rank_map = {}
     if complete:
         standings = compute_standings(e['players'], e.get('rounds', []))
