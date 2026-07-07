@@ -2245,7 +2245,9 @@ def api_decklists_table(event_id):
             'status':      v.get('status'),
         })
     return jsonify({'event_name': e.get('name', 'Event'), 'players': rows,
-                    'allow_proxies': bool(e.get('allow_proxies'))})
+                    'allow_proxies': bool(e.get('allow_proxies')),
+                    'decklists_required': bool(e.get('decklists_required',
+                                                     e.get('requires_decklists', False)))})
 
 
 @events_bp.route('/api/events/<event_id>/release', methods=['POST'])

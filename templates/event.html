@@ -108,7 +108,7 @@
   <span id="reg-status" style="margin-top:0.5rem"></span>
   <div id="owner-actions" class="hidden action-row" style="margin-top:0.9rem">
     <a class="btn btn-sm" href="/events/{{ event.id }}/edit">Edit event</a>
-    {% if event.requires_decklists %}<a class="btn btn-sm" href="/events/{{ event.id }}/decklists">Decklists</a>{% endif %}
+    {% if event.requires_decklists %}<a class="btn btn-sm" id="btn-decklists" href="/events/{{ event.id }}/decklists">Decklists</a>{% endif %}
     {% if event.requires_decklists %}<button class="btn btn-sm hidden" id="btn-mtgdecks" onclick="openMtgDecksModal()">Submit to MTGDecks</button>{% endif %}
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
     <button class="btn btn-sm hidden" id="btn-release-standings" onclick="releaseDelivery('standings')">Release standings</button>
@@ -726,6 +726,12 @@ function renderOwnerActions() {
   document.getElementById('btn-duplicate').classList.toggle('hidden', !me.signed_in);
   const mtgBtn = document.getElementById('btn-mtgdecks');
   if (mtgBtn) mtgBtn.classList.toggle('hidden', !canManage() || eventStage() !== 'completed');
+  const dlBtn = document.getElementById('btn-decklists');
+  if (dlBtn && canManage()) {
+    const active    = state.players.filter(p => !p.dropped);
+    const submitted = active.filter(p => p.has_decklist).length;
+    dlBtn.textContent = `Decklists (${submitted}/${active.length})`;
+  }
   if (!canManage()) return;
   document.getElementById('owner-actions').classList.remove('hidden');
   document.getElementById('player-actions').classList.remove('hidden');

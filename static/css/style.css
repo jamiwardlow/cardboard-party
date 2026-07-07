@@ -824,6 +824,11 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 }
 .proxy-ovr { color: var(--green); font-size: 0.78rem; text-transform: uppercase;
              letter-spacing: 0.04em; cursor: help; }
+.dl-summary { font-size: 0.88rem; color: var(--muted); margin: 0 0 0.75rem; }
+.dl-summary-warn { color: var(--danger); }
+.dl-missing { color: var(--danger); font-size: 0.82rem; font-weight: 600;
+              text-transform: uppercase; letter-spacing: 0.04em; }
+.dl-row-missing td { color: var(--muted); }
 .dv-name-row { display: flex; gap: 0.5rem; align-items: center; }
 .dv-name-row input { flex: 1; min-width: 0; }
 /* Decklist view: note + issues + proxy-override grouped tightly together. */

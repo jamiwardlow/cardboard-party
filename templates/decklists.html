@@ -35,7 +35,8 @@
 {% block scripts %}
 <script>
 const EVENT_ID = "{{ event.id }}";
-let rows = [], allowProxies = false, sortKey = 'player_name', sortDir = 1, dvPlayerId = null;
+let rows = [], allowProxies = false, decklistsRequired = false,
+    sortKey = 'has_decklist', sortDir = 1, dvPlayerId = null;
 
 async function load() {
   const res = await fetch(`/api/events/${EVENT_ID}/decklists`);
@@ -44,7 +45,7 @@ async function load() {
     return;
   }
   const d = await res.json();
-  rows = d.players || []; allowProxies = !!d.allow_proxies;
+  rows = d.players || []; allowProxies = !!d.allow_proxies; decklistsRequired = !!d.decklists_required;
   render();
 }
 
@@ -56,17 +57,33 @@ function setSort(key) {
 function render() {
   const wrap = document.getElementById('decklists-wrap');
   if (!rows.length) { wrap.innerHTML = '<p class="empty">No registered players yet.</p>'; return; }
+
+  const submitted = rows.filter(r => r.has_decklist).length;
+  const total     = rows.length;
+  const missing   = total - submitted;
+  let summary;
+  if (decklistsRequired && missing > 0) {
+    summary = `<p class="dl-summary dl-summary-warn">${submitted} of ${total} submitted — <strong>${missing} missing</strong></p>`;
+  } else {
+    summary = `<p class="dl-summary">${submitted} of ${total} submitted</p>`;
+  }
+
   const sorted = rows.slice().sort((a, b) => {
+    // Primary: sort key; secondary: always player name ascending.
     let av = a[sortKey], bv = b[sortKey];
     if (typeof av === 'string' || typeof bv === 'string') {
       av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase();
-    } else { av = av || 0; bv = bv || 0; }
-    return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
+    } else { av = av ?? 0; bv = bv ?? 0; }
+    const primary = (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
+    if (primary !== 0) return primary;
+    return (a.player_name || '').toLowerCase() < (b.player_name || '').toLowerCase() ? -1 : 1;
   });
+
   const arrow = k => sortKey === k ? (sortDir === 1 ? ' ▲' : ' ▼') : '';
   const head = `<tr>
       <th onclick="setSort('player_name')">Player${arrow('player_name')}</th>
-      <th onclick="setSort('deck_name')">Decklist${arrow('deck_name')}</th>
+      <th onclick="setSort('has_decklist')">Submitted${arrow('has_decklist')}</th>
+      <th onclick="setSort('deck_name')">Deck name${arrow('deck_name')}</th>
       <th onclick="setSort('maindeck')">Maindeck${arrow('maindeck')}</th>
       <th onclick="setSort('sideboard')">Sideboard${arrow('sideboard')}</th>
       ${allowProxies ? `<th onclick="setSort('proxy_count')">Proxy${arrow('proxy_count')}</th>` : ''}
@@ -75,18 +92,19 @@ function render() {
     const player = r.google_id
       ? `<a href="/players/${encodeURIComponent(r.google_id)}">${escapeHtml(r.player_name)}</a>`
       : escapeHtml(r.player_name);
-    const decklist = r.has_decklist
+    const submitted_cell = r.has_decklist
       ? `<a href="#" onclick="viewDeck('${r.player_id}');return false">${r.deck_name ? escapeHtml(r.deck_name) : 'View decklist'}</a>`
-      : '<span class="text-muted">—</span>';
-    return `<tr>
+      : (decklistsRequired ? '<span class="dl-missing">Missing</span>' : '<span class="text-muted">—</span>');
+    return `<tr${!r.has_decklist && decklistsRequired ? ' class="dl-row-missing"' : ''}>
         <td>${player}</td>
-        <td>${decklist}</td>
+        <td>${submitted_cell}</td>
+        <td>${r.has_decklist && r.deck_name ? escapeHtml(r.deck_name) : '—'}</td>
         <td>${r.has_decklist ? r.maindeck : '—'}</td>
         <td>${r.has_decklist ? r.sideboard : '—'}</td>
         ${allowProxies ? `<td>${!r.has_decklist ? '—' : (r.proxy_count + (r.proxy_override ? ` <span class="proxy-ovr" title="${escapeHtml(r.proxy_override_note)}">override</span>` : ''))}</td>` : ''}
       </tr>`;
   }).join('');
-  wrap.innerHTML = `<div class="table-scroll"><table class="decklist-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  wrap.innerHTML = summary + `<div class="table-scroll"><table class="decklist-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 
 async function viewDeck(pid) {
