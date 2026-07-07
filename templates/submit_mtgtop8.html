@@ -22,7 +22,27 @@
       <input type="text" name="event_place" value="{{ event.location | default('') | e }}">
     </label>
     <label>Format
-      <input type="text" name="event_format" value="{{ event.format | default('') | e }}" required>
+      <select name="event_format" required>
+        {% set f = (event.format or '') | lower %}
+        <option value="ST"  {% if 'standard'             in f %}selected{% endif %}>Standard</option>
+        <option value="ALCH"{% if 'alchemy'              in f %}selected{% endif %}>Alchemy</option>
+        <option value="EXP" {% if 'explorer'             in f %}selected{% endif %}>Explorer</option>
+        <option value="HI"  {% if 'historic'             in f %}selected{% endif %}>Historic</option>
+        <option value="PI"  {% if 'pioneer'              in f %}selected{% endif %}>Pioneer</option>
+        <option value="MO"  {% if 'modern'               in f %}selected{% endif %}>Modern</option>
+        <option value="PREM"{% if 'premodern'            in f %}selected{% endif %}>Premodern</option>
+        <option value="LE"  {% if 'legacy'               in f %}selected{% endif %}>Legacy</option>
+        <option value="VI"  {% if 'vintage'              in f %}selected{% endif %}>Vintage</option>
+        <option value="cEDH"{% if 'cedh'                 in f %}selected{% endif %}>cEDH</option>
+        <option value="EDH" {% if 'duel commander'       in f %}selected{% endif %}>Duel Commander</option>
+        <option value="EDHM"{% if 'mtgo commander'       in f %}selected{% endif %}>MTGO Commander</option>
+        <option value="BL"  {% if 'block'                in f %}selected{% endif %}>Block</option>
+        <option value="EX"  {% if 'extended'             in f %}selected{% endif %}>Extended</option>
+        <option value="PAU" {% if 'pauper'               in f %}selected{% endif %}>Pauper</option>
+        <option value="PEA" {% if 'peasant'              in f %}selected{% endif %}>Peasant</option>
+        <option value="HIGH"{% if 'highlander'           in f and 'canadian' not in f %}selected{% endif %}>Highlander</option>
+        <option value="CHL" {% if 'canadian highlander'  in f %}selected{% endif %}>Canadian Highlander</option>
+      </select>
     </label>
     <label>Date
       {% set dp = (event.date or '').split('-') %}
@@ -37,8 +57,10 @@
     </label>
     <label>Paper / Online
       <select name="event_mtgo">
-        <option value="0" selected>Paper</option>
-        <option value="1">Online (MTGO)</option>
+        <option value="P" selected>Paper</option>
+        <option value="Y">MTGO</option>
+        <option value="A">MTGA</option>
+        <option value="O">Other (Webcam…)</option>
       </select>
     </label>
     <label>Link <span class="field-help" style="display:inline">(optional tournament report)</span>
