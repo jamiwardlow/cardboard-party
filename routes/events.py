@@ -1151,8 +1151,10 @@ def submit_mtgtop8_page(event_id):
                       'rank': rank,
                       'has_decklist': bool(text)})
 
+    event_url = request.host_url.rstrip('/') + f'/events/{event_id}'
     return render_template('submit_mtgtop8.html',
-                           user=get_current_user(), event=e, decks=decks)
+                           user=get_current_user(), event=e, decks=decks,
+                           event_url=event_url)
 
 @events_bp.route('/events/<event_id>/rounds/<int:round_num>/pairings/print')
 def print_pairings(event_id, round_num):
