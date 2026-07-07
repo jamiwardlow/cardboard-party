@@ -1156,6 +1156,70 @@ def submit_mtgtop8_page(event_id):
                            user=get_current_user(), event=e, decks=decks,
                            event_url=event_url)
 
+
+@events_bp.route('/events/<event_id>/submit-mtggoldfish')
+@login_required
+def submit_mtggoldfish_page(event_id):
+    """Organiser: review + relay form that POSTs event results to mtggoldfish.com."""
+    e = get_event(event_id)
+    if not e:
+        return 'Event not found', 404
+    if not _can_manage(e):
+        return 'Organizers only.', 403
+
+    rounds = e.get('rounds', [])
+    standings = compute_standings(e['players'], rounds)
+    player_map = {p['id']: p for p in e['players']}
+
+    def deck_lines(entries):
+        return '\n'.join(f"{count} {name}" for count, name, _tag in entries)
+
+    def match_record(player_id):
+        wins = losses = draws = 0
+        for rnd in rounds:
+            for match in rnd:
+                p1, p2 = match['player1_id'], match['player2_id']
+                if player_id not in (p1, p2):
+                    continue
+                if match.get('is_bye') or not match.get('result'):
+                    continue
+                winner_id = match.get('winner_id')
+                if match['result'] in DRAW_RESULTS or winner_id is None:
+                    draws += 1
+                elif winner_id == player_id:
+                    wins += 1
+                else:
+                    losses += 1
+        return wins, losses, draws
+
+    decks = []
+    rank = 0
+    for s in standings:
+        p = player_map.get(s['id'])
+        if not p or p.get('dropped'):
+            continue
+        rank += 1
+        dl = p.get('decklist') or {}
+        text = (dl.get('text') or '').strip()
+        if text:
+            main_entries, side_entries = parse_decklist(text)
+            main_text = deck_lines(main_entries)
+            side_text = deck_lines(side_entries)
+        else:
+            main_text = side_text = ''
+        wins, losses, draws = match_record(p['id'])
+        decks.append({'player': p.get('name', ''),
+                      'deck_name': dl.get('name', ''),
+                      'main': main_text, 'side': side_text,
+                      'rank': rank,
+                      'wins': wins, 'losses': losses, 'draws': draws,
+                      'has_decklist': bool(text)})
+
+    event_url = request.host_url.rstrip('/') + f'/events/{event_id}'
+    return render_template('submit_mtggoldfish.html',
+                           user=get_current_user(), event=e, decks=decks,
+                           event_url=event_url)
+
 @events_bp.route('/events/<event_id>/rounds/<int:round_num>/pairings/print')
 def print_pairings(event_id, round_num):
     """A clean, print-friendly pairings sheet for one round, sorted by table number

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Submit to MTG Goldfish — {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="title-row"><h1>Submit to MTG Goldfish</h1></div>
+    <p class="subtitle"><a href="/events/{{ event.id }}">← {{ event.name }}</a></p>
+  </div>
+</div>
+
+<p style="margin-bottom:1.5rem">Review the details below, fill in your email if required, then click <strong>Pre-fill MTG Goldfish →</strong>. MTG Goldfish will open with your tournament and deck data already loaded — you may need to click their Submit button once more to confirm. <strong>Select the format manually</strong> on their page before submitting.</p>
+
+<form method="POST" action="https://www.mtggoldfish.com/tournaments" id="mgf-form">
+
+  <!-- ── Tournament metadata (visible + editable) ─────────────────────────── -->
+  <div class="tc-meta">
+    <label>Tournament name
+      <input type="text" name="tournament[name]" value="{{ event.name | e }}" required>
+    </label>
+    <label>Date
+      <input type="date" name="tournament[date]" value="{{ event.date | default('') | e }}" required>
+    </label>
+    <label>Result link
+      <input type="url" name="tournament[result_link]" value="{{ event_url | e }}">
+    </label>
+    <label>Comments
+      <input type="text" name="tournament[comments]" value="">
+    </label>
+  </div>
+
+  <!-- ── Hidden deck fields ──────────────────────────────────────────────── -->
+  {% for deck in decks %}{% set i = loop.index0 %}
+  <input type="hidden" name="tournament[decks_attributes][{{ i }}][suggested_name]" value="{{ deck.deck_name | e }}">
+  <input type="hidden" name="tournament[decks_attributes][{{ i }}][author]"         value="{{ deck.player | e }}">
+  <input type="hidden" name="tournament[decks_attributes][{{ i }}][place]"          value="{{ deck.rank }}">
+  <input type="hidden" name="tournament[decks_attributes][{{ i }}][wins]"           value="{{ deck.wins }}">
+  <input type="hidden" name="tournament[decks_attributes][{{ i }}][losses]"         value="{{ deck.losses }}">
+  <input type="hidden" name="tournament[decks_attributes][{{ i }}][draws]"          value="{{ deck.draws }}">
+  <textarea name="tournament[decks_attributes][{{ i }}][deck_input_maindeck]" style="display:none">{{ deck.main }}</textarea>
+  <textarea name="tournament[decks_attributes][{{ i }}][deck_input_sideboard]" style="display:none">{{ deck.side }}</textarea>
+  {% endfor %}
+
+  <!-- ── Deck preview ─────────────────────────────────────────────────────── -->
+  <h2 style="margin:1.5rem 0 0.75rem">Decks ({{ decks | length }})</h2>
+  {% set missing = decks | selectattr('has_decklist', 'false') | list %}
+  {% if missing %}
+  <p class="dl-summary dl-summary-warn" style="margin-bottom:0.75rem">{{ missing | length }} player{{ 's' if missing | length != 1 }} without a decklist — their slots will be submitted empty.</p>
+  {% endif %}
+  <div class="tc-deck-list">
+    {% for deck in decks %}
+    <div class="tc-deck-row{% if not deck.has_decklist %} tc-no-deck{% endif %}">
+      <span class="tc-rank">#{{ deck.rank }}</span>
+      <span class="tc-player">{{ deck.player }}</span>
+      {% if deck.deck_name %}<span class="tc-deckname">{{ deck.deck_name }}</span>{% endif %}
+      <span class="tc-wld" style="margin-left:auto;color:var(--muted);font-size:0.82rem">{{ deck.wins }}–{{ deck.losses }}{% if deck.draws %}–{{ deck.draws }}{% endif %}</span>
+      {% if not deck.has_decklist %}<span class="dl-missing">No decklist</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="margin-top:1.5rem">
+    <button type="submit" class="btn btn-primary">Pre-fill MTG Goldfish →</button>
+    <a href="/events/{{ event.id }}" class="btn" style="margin-left:0.5rem">Cancel</a>
+  </div>
+
+</form>
+{% endblock %}
