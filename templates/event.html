@@ -110,6 +110,7 @@
     <a class="btn btn-sm" href="/events/{{ event.id }}/edit">Edit event</a>
     {% if event.requires_decklists %}<a class="btn btn-sm" id="btn-decklists" href="/events/{{ event.id }}/decklists">Decklists</a>{% endif %}
     {% if event.requires_decklists %}<button class="btn btn-sm hidden" id="btn-mtgdecks" onclick="openMtgDecksModal()">Submit to MTGDecks</button>{% endif %}
+    {% if event.requires_decklists %}<a class="btn btn-sm hidden" id="btn-tcdecks" href="/events/{{ event.id }}/submit-tcdecks" target="_blank">Submit to TCDecks</a>{% endif %}
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
     <button class="btn btn-sm hidden" id="btn-release-standings" onclick="releaseDelivery('standings')">Release standings</button>
     <button class="btn btn-sm btn-danger" id="btn-delete-event" onclick="deleteEvent()">Delete event</button>
@@ -726,6 +727,8 @@ function renderOwnerActions() {
   document.getElementById('btn-duplicate').classList.toggle('hidden', !me.signed_in);
   const mtgBtn = document.getElementById('btn-mtgdecks');
   if (mtgBtn) mtgBtn.classList.toggle('hidden', !canManage() || eventStage() !== 'completed');
+  const tcBtn = document.getElementById('btn-tcdecks');
+  if (tcBtn) tcBtn.classList.toggle('hidden', !canManage() || eventStage() !== 'completed');
   const dlBtn = document.getElementById('btn-decklists');
   if (dlBtn && canManage()) {
     const active    = state.players.filter(p => !p.dropped);

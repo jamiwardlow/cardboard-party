@@ -829,6 +829,24 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .dl-missing { color: var(--danger); font-size: 0.82rem; font-weight: 600;
               text-transform: uppercase; letter-spacing: 0.04em; }
 .dl-row-missing td { color: var(--muted); }
+/* TCDecks relay page */
+.tc-meta { display: flex; flex-direction: column; gap: 0.75rem; max-width: 420px;
+           margin-bottom: 1rem; }
+.tc-meta label { display: flex; flex-direction: column; gap: 0.35rem;
+                 font-size: 0.88rem; font-weight: 500; }
+.tc-meta input, .tc-meta select { padding: 0.4rem 0.6rem; background: var(--bg);
+  color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: 0.9rem; font-family: var(--font-body); width: 100%; }
+.tc-meta input:focus, .tc-meta select:focus
+  { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.tc-deck-list { display: flex; flex-direction: column; gap: 0.3rem; max-width: 540px; }
+.tc-deck-row { display: flex; align-items: center; gap: 0.6rem;
+               padding: 0.4rem 0; border-bottom: 1px solid var(--border);
+               font-size: 0.9rem; }
+.tc-no-deck { color: var(--muted); }
+.tc-rank { flex: 0 0 2rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tc-player { font-weight: 500; }
+.tc-deckname { color: var(--muted); font-size: 0.85rem; }
 .dv-name-row { display: flex; gap: 0.5rem; align-items: center; }
 .dv-name-row input { flex: 1; min-width: 0; }
 /* Decklist view: note + issues + proxy-override grouped tightly together. */

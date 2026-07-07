@@ -21,7 +21,7 @@ from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER
 from routes.auth import get_current_user, login_required, discord_login_enabled
 from gcp_secrets import get_secret
 import discord_api
-from decklist import validate_decklist, import_moxfield, VALIDATION_FORMATS
+from decklist import parse_decklist, validate_decklist, import_moxfield, VALIDATION_FORMATS
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import os
@@ -1073,6 +1073,44 @@ def decklists_page(event_id):
     if not _can_manage(event):
         return 'Organizers only.', 403
     return render_template('decklists.html', user=get_current_user(), event=event)
+
+
+@events_bp.route('/events/<event_id>/submit-tcdecks')
+@login_required
+def submit_tcdecks_page(event_id):
+    """Organiser: review + relay form that POSTs event results to tcdecks.net."""
+    e = get_event(event_id)
+    if not e:
+        return 'Event not found', 404
+    if not _can_manage(e):
+        return 'Organizers only.', 403
+
+    standings = compute_standings(e['players'], e.get('rounds', []))
+    player_map = {p['id']: p for p in e['players']}
+
+    def deck_lines(entries):
+        return '\n'.join(f"{count} {name}" for count, name, _tag in entries)
+
+    decks = []
+    for s in standings:
+        p = player_map.get(s['id'])
+        if not p or p.get('dropped'):
+            continue
+        dl = p.get('decklist') or {}
+        text = (dl.get('text') or '').strip()
+        if text:
+            main_entries, side_entries = parse_decklist(text)
+            main_text = deck_lines(main_entries)
+            side_text = deck_lines(side_entries)
+        else:
+            main_text = side_text = ''
+        decks.append({'player': p.get('name', ''),
+                      'deck_name': dl.get('name', ''),
+                      'main': main_text, 'side': side_text,
+                      'has_decklist': bool(text)})
+
+    return render_template('submit_tcdecks.html',
+                           user=get_current_user(), event=e, decks=decks)
 
 @events_bp.route('/events/<event_id>/rounds/<int:round_num>/pairings/print')
 def print_pairings(event_id, round_num):

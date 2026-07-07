@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Submit to TCDecks — {{ event.name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="title-row"><h1>Submit to TCDecks</h1></div>
+    <p class="subtitle"><a href="/events/{{ event.id }}">← {{ event.name }}</a></p>
+  </div>
+</div>
+
+<p style="margin-bottom:1.5rem">Review the details below, fill in your email, then click <strong>Submit to TCDecks</strong>. Your browser will send the form directly to TCDecks and land on their confirmation page.</p>
+
+<form method="POST" action="https://www.tcdecks.net/submit.php">
+
+  <!-- ── Tournament metadata (visible + editable) ─────────────────────────── -->
+  <div class="tc-meta">
+    <label>Tournament name
+      <input type="text" name="tname" value="{{ event.name | e }}" required>
+    </label>
+    <label>Date
+      <input type="date" name="tdate" value="{{ event.date | default('') | e }}" required>
+    </label>
+    <label>Format
+      <select name="format" required>
+        {% set f = (event.format or '') | lower %}
+        <option value="Premodern"    {% if 'premodern'   in f %} selected{% endif %}>Premodern</option>
+        <option value="Old School"   {% if 'old school'  in f or 'oldschool' in f %} selected{% endif %}>Old School</option>
+        <option value="Old Frame"    {% if 'old frame'   in f or 'oldframe'  in f %} selected{% endif %}>Old Frame</option>
+        <option value="Legacy"       {% if 'legacy'      in f %} selected{% endif %}>Legacy</option>
+        <option value="Vintage"      {% if 'vintage'     in f %} selected{% endif %}>Vintage</option>
+        <option value="2015 Modern"  {% if '2015'        in f %} selected{% endif %}>2015 Modern</option>
+        <option value="Prefire"      {% if 'prefire'     in f %} selected{% endif %}>Prefire</option>
+      </select>
+    </label>
+    <label>Number of players
+      <input type="number" name="players" value="{{ decks | length }}" min="1" required>
+    </label>
+    <label>Platform
+      <select name="source">
+        <option value="Paper" selected>Paper</option>
+        <option value="Webcam">Webcam</option>
+        <option value="MOL">MOL</option>
+      </select>
+    </label>
+    <label>Your email <span class="field-help" style="display:inline">(required by TCDecks)</span>
+      <input type="email" name="email" placeholder="you@example.com" required>
+    </label>
+  </div>
+
+  <!-- ── Hidden deck fields ──────────────────────────────────────────────── -->
+  {% for deck in decks %}{% set i = loop.index %}
+  <input  type="hidden" name="pl{{ i }}" value="{{ deck.player | e }}">
+  <input  type="hidden" name="n{{ i }}"  value="{{ deck.deck_name | e }}">
+  <input  type="hidden" name="a{{ i }}"  value="{{ deck.deck_name | e }}">
+  <textarea name="m{{ i }}" style="display:none">{{ deck.main }}</textarea>
+  <textarea name="s{{ i }}" style="display:none">{{ deck.side }}</textarea>
+  {% endfor %}
+
+  <!-- ── Deck preview ─────────────────────────────────────────────────────── -->
+  <h2 style="margin:1.5rem 0 0.75rem">Decks ({{ decks | length }})</h2>
+  {% set missing = decks | selectattr('has_decklist', 'false') | list %}
+  {% if missing %}
+  <p class="dl-summary dl-summary-warn" style="margin-bottom:0.75rem">{{ missing | length }} player{{ 's' if missing | length != 1 }} without a decklist — their slots will be submitted empty.</p>
+  {% endif %}
+  <div class="tc-deck-list">
+    {% for deck in decks %}
+    <div class="tc-deck-row{% if not deck.has_decklist %} tc-no-deck{% endif %}">
+      <span class="tc-rank">#{{ loop.index }}</span>
+      <span class="tc-player">{{ deck.player }}</span>
+      {% if deck.deck_name %}<span class="tc-deckname">{{ deck.deck_name }}</span>{% endif %}
+      {% if not deck.has_decklist %}<span class="dl-missing">No decklist</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="margin-top:1.5rem">
+    <button type="submit" class="btn btn-primary">Submit to TCDecks →</button>
+    <a href="/events/{{ event.id }}" class="btn" style="margin-left:0.5rem">Cancel</a>
+  </div>
+
+</form>
+{% endblock %}
