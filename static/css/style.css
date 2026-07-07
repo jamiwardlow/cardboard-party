@@ -871,6 +871,8 @@ textarea.mgf-val { resize: vertical; min-height: 8rem; font-size: 0.8rem; }
 .mgf-deck-fields { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .tc-wld { margin-left: auto; color: var(--muted); font-size: 0.82rem;
           font-variant-numeric: tabular-nums; }
+.mgf-copied { outline: 2px solid var(--accent); outline-offset: 1px;
+              transition: outline 0.1s; }
 
 /* ── Misc ─────────────────────────────────────────────────────────────────── */
 .loading, .empty { color: var(--muted); font-size: 0.9rem; padding: 1rem 0; }

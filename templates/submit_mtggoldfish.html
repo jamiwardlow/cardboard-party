@@ -16,15 +16,15 @@
 <div class="mgf-fields">
   <div class="mgf-row">
     <span class="mgf-label">Tournament name</span>
-    <input class="mgf-val" readonly value="{{ event.name | e }}" onclick="this.select()">
+    <input class="mgf-val" readonly value="{{ event.name | e }}">
   </div>
   <div class="mgf-row">
     <span class="mgf-label">Date</span>
-    <input class="mgf-val" readonly value="{{ event.date | default('') | e }}" onclick="this.select()">
+    <input class="mgf-val" readonly value="{{ event.date | default('') | e }}">
   </div>
   <div class="mgf-row">
     <span class="mgf-label">Result link</span>
-    <input class="mgf-val" readonly value="{{ event_url | e }}" onclick="this.select()">
+    <input class="mgf-val" readonly value="{{ event_url | e }}">
   </div>
 </div>
 
@@ -48,36 +48,36 @@
     <div class="mgf-deck-fields">
       <div class="mgf-row">
         <span class="mgf-label">Deck name</span>
-        <input class="mgf-val" readonly value="{{ deck.deck_name | e }}" onclick="this.select()">
+        <input class="mgf-val" readonly value="{{ deck.deck_name | e }}">
       </div>
       <div class="mgf-row">
         <span class="mgf-label">Player</span>
-        <input class="mgf-val" readonly value="{{ deck.player | e }}" onclick="this.select()">
+        <input class="mgf-val" readonly value="{{ deck.player | e }}">
       </div>
       <div class="mgf-row">
         <span class="mgf-label">Place</span>
-        <input class="mgf-val" readonly value="{{ deck.rank }}" onclick="this.select()" style="width:4rem">
+        <input class="mgf-val" readonly value="{{ deck.rank }}" style="width:4rem">
       </div>
       <div class="mgf-row">
         <span class="mgf-label">Wins</span>
-        <input class="mgf-val" readonly value="{{ deck.wins }}" onclick="this.select()" style="width:4rem">
+        <input class="mgf-val" readonly value="{{ deck.wins }}" style="width:4rem">
       </div>
       <div class="mgf-row">
         <span class="mgf-label">Losses</span>
-        <input class="mgf-val" readonly value="{{ deck.losses }}" onclick="this.select()" style="width:4rem">
+        <input class="mgf-val" readonly value="{{ deck.losses }}" style="width:4rem">
       </div>
       <div class="mgf-row">
         <span class="mgf-label">Draws</span>
-        <input class="mgf-val" readonly value="{{ deck.draws }}" onclick="this.select()" style="width:4rem">
+        <input class="mgf-val" readonly value="{{ deck.draws }}" style="width:4rem">
       </div>
       {% if deck.has_decklist %}
       <div class="mgf-row mgf-row-tall">
         <span class="mgf-label">Main deck</span>
-        <textarea class="mgf-val" readonly onclick="this.select()">{{ deck.main }}</textarea>
+        <textarea class="mgf-val" readonly>{{ deck.main }}</textarea>
       </div>
       <div class="mgf-row mgf-row-tall">
         <span class="mgf-label">Sideboard</span>
-        <textarea class="mgf-val" readonly onclick="this.select()">{{ deck.side }}</textarea>
+        <textarea class="mgf-val" readonly>{{ deck.side }}</textarea>
       </div>
       {% endif %}
     </div>
@@ -97,5 +97,20 @@
 if (document.querySelectorAll('.mgf-deck').length <= 8) {
   document.querySelectorAll('.mgf-deck').forEach(d => d.open = true);
 }
+
+// Click-to-copy: copy the field value and briefly highlight the element
+document.querySelectorAll('.mgf-val').forEach(el => {
+  el.addEventListener('click', async () => {
+    const text = el.value !== undefined ? el.value : el.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      el.select?.();
+      return;
+    }
+    el.classList.add('mgf-copied');
+    setTimeout(() => el.classList.remove('mgf-copied'), 1200);
+  });
+});
 </script>
 {% endblock %}
