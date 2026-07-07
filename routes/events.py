@@ -3343,7 +3343,13 @@ def api_submit_mtgdecks(event_id):
         err = {}
     errors = err.get('errors') or []
     if isinstance(errors, list) and errors:
+        import re
+        def _sub_deck(m):
+            idx = int(m.group(1)) - 1  # MTGDecks uses 1-based indexing
+            name = decks[idx]['player'] if 0 <= idx < len(decks) else m.group(0)
+            return f"{name}'s deck"
+        friendly = [re.sub(r'Decks\[(\d+)\]', _sub_deck, e) for e in errors]
         return jsonify({'error': f'MTGDecks rejected the submission ({resp.status_code})',
-                        'errors': errors}), 400
+                        'errors': friendly}), 400
     msg = err.get('message') or err.get('error') or resp.text[:400] or 'Unknown error.'
     return jsonify({'error': f'MTGDecks {resp.status_code}: {msg}'}), 400
