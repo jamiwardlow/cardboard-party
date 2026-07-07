@@ -3042,7 +3042,7 @@ def api_submit_mtgdecks(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
 
-    api_key = get_secret('MTGDECKS_API_KEY')
+    api_key = get_secret('MTGDECKS_API_KEY').strip()
     if not api_key:
         return jsonify({'error': 'MTGDecks API key is not configured on this server.'}), 503
 
