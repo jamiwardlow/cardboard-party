@@ -3323,9 +3323,8 @@ def api_submit_mtgdecks(event_id):
     try:
         resp = requests.post(
             'https://mtgdecks.net/api/importEvent',
-            json={'api_key': api_key, 'Event': event_obj, 'Decks': decks},
-            headers={'Authorization': f'Bearer {api_key}', 'X-Api-Key': api_key},
-            params={'api_key': api_key, 'discard_failed_decks': 'true'},
+            json={'Event': event_obj, 'Decks': decks},
+            headers={'Authorization': f'Bearer {api_key}'},
             timeout=30,
         )
     except Exception as ex:
