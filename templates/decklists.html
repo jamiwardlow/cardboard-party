@@ -53,7 +53,7 @@
 {% block scripts %}
 <script>
 const EVENT_ID = "{{ event.id }}";
-let rows = [], allowProxies = false, decklistsRequired = false,
+let rows = [], allowProxies = false, decklistsRequired = false, isComplete = false,
     sortKey = 'has_decklist', sortDir = 1, dvPlayerId = null;
 
 async function load() {
@@ -64,6 +64,8 @@ async function load() {
   }
   const d = await res.json();
   rows = d.players || []; allowProxies = !!d.allow_proxies; decklistsRequired = !!d.decklists_required;
+  isComplete = !!d.is_complete;
+  if (isComplete) { sortKey = 'rank'; sortDir = 1; }
   render();
 }
 
@@ -91,7 +93,7 @@ function render() {
     let av = a[sortKey], bv = b[sortKey];
     if (typeof av === 'string' || typeof bv === 'string') {
       av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase();
-    } else { av = av ?? 0; bv = bv ?? 0; }
+    } else { av = av ?? Infinity; bv = bv ?? Infinity; }
     const primary = (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
     if (primary !== 0) return primary;
     return (a.player_name || '').toLowerCase() < (b.player_name || '').toLowerCase() ? -1 : 1;
@@ -99,6 +101,7 @@ function render() {
 
   const arrow = k => sortKey === k ? (sortDir === 1 ? ' ▲' : ' ▼') : '';
   const head = `<tr>
+      ${isComplete ? `<th onclick="setSort('rank')">#${arrow('rank')}</th>` : ''}
       <th onclick="setSort('player_name')">Player${arrow('player_name')}</th>
       <th onclick="setSort('has_decklist')">Submitted${arrow('has_decklist')}</th>
       <th onclick="setSort('deck_name')">Deck name${arrow('deck_name')}</th>
@@ -114,6 +117,7 @@ function render() {
       ? `<a href="#" onclick="viewDeck('${r.player_id}');return false">${r.deck_name ? escapeHtml(r.deck_name) : 'View decklist'}</a>`
       : (decklistsRequired ? '<span class="dl-missing">Missing</span>' : '<span class="text-muted">—</span>');
     return `<tr${!r.has_decklist && decklistsRequired ? ' class="dl-row-missing"' : ''}>
+        ${isComplete ? `<td class="rank-cell">${r.rank ?? '—'}</td>` : ''}
         <td>${player}</td>
         <td>${submitted_cell}</td>
         <td>${r.has_decklist && r.deck_name ? escapeHtml(r.deck_name) : '—'}</td>

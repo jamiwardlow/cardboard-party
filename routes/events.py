@@ -2307,6 +2307,12 @@ def api_decklists_table(event_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
+    complete = _is_complete(e)
+    rank_map = {}
+    if complete:
+        standings = compute_standings(e['players'], e.get('rounds', []))
+        for i, s in enumerate(standings, 1):
+            rank_map[s['id']] = i
     rows = []
     for p in e['players']:
         if p.get('dropped'):
@@ -2325,9 +2331,11 @@ def api_decklists_table(event_id):
             'proxy_override': bool(dl.get('proxy_override')),
             'proxy_override_note': dl.get('proxy_override_note', ''),
             'status':      v.get('status'),
+            'rank':        rank_map.get(p['id']),
         })
     return jsonify({'event_name': e.get('name', 'Event'), 'players': rows,
                     'allow_proxies': bool(e.get('allow_proxies')),
+                    'is_complete': complete,
                     'decklists_required': bool(e.get('decklists_required',
                                                      e.get('requires_decklists', False)))})
 
