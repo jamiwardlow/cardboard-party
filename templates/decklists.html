@@ -181,7 +181,8 @@ async function saveDvName() {
   });
   if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save the deck name.'); return; }
   const r = rows.find(x => x.player_id === dvPlayerId); if (r) r.deck_name = name.trim();
-  render();   // update the Decklist column link (modal stays open)
+  render();
+  closeDv();
 }
 
 load();
