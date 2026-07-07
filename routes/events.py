@@ -457,6 +457,18 @@ def _log_discord(event_id: str, actor_name: str, action: str, detail: str = ''):
     add_event_log(event_id, {'at': _now_iso(), 'action': action, 'detail': detail,
                              'actor_id': '', 'actor_name': actor_name or 'A Discord user'})
 
+def _dm_registration_confirmation(google_id: str, event: dict, event_id: str, host_url: str):
+    """Fire a Discord DM confirmation in a background thread if the user has a linked Discord ID."""
+    did = get_user_profile(google_id).get('discord_id')
+    if not did:
+        return
+    event_url = host_url.rstrip('/') + f'/events/{event_id}'
+    threading.Thread(
+        target=discord_api.dm_registration_confirmation,
+        args=(did, event, event_url),
+        daemon=True,
+    ).start()
+
 def waitlist_player_via_discord(event_id: str, discord_id: str, discord_name: str,
                                 discord_username: str = ''):
     """Add a Discord user to a full event's waitlist (the Join Waitlist button on a
@@ -1751,6 +1763,7 @@ def api_register(event_id):
         refresh_event_announcement(get_event(event_id))
         existing['dropped'] = False
         _log_action(event_id, 'register', 'registered')
+        _dm_registration_confirmation(user['id'], e, event_id, request.host_url)
         return jsonify(existing), 200
     player = {
         'id':        _slugify(display_name) + '_' + str(len(e['players'])),
@@ -1767,6 +1780,7 @@ def api_register(event_id):
     if discord:
         save_user_profile(user['id'], {'discord': discord})
     _log_action(event_id, 'register', 'registered')
+    _dm_registration_confirmation(user['id'], e, event_id, request.host_url)
     return jsonify(player), 201
 
 @events_bp.route('/api/events/<event_id>/unregister', methods=['POST'])

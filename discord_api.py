@@ -385,6 +385,19 @@ def dm_event_invite(target_id: str, event: dict, event_url: str, inviter_name: s
     return dm_user(target_id, content, components, embeds)
 
 
+def dm_registration_confirmation(discord_id: str, event: dict, event_url: str):
+    """DM a player confirming their registration for an event. Best-effort."""
+    meta = ' · '.join(x for x in (event.get('event_type'), event.get('date'),
+                                   fmt_time(event.get('start_time')),
+                                   event.get('format')) if x)
+    desc = '✅ You\'re registered!' + (f'\n{meta}' if meta else '')
+    embed = _embed(desc, color=BRAND_GREEN, title=event.get('name', 'Event'), url=event_url)
+    components = [{'type': 1, 'components': [
+        {'type': 2, 'style': STYLE_LINK, 'label': 'View event', 'url': event_url},
+    ]}]
+    dm_user(discord_id, embeds=[embed], components=components)
+
+
 def _round_end_unix(event: dict):
     """Unix timestamp when the current round's timer ends, or None if no timer is
     configured/started. Used for Discord's live <t:…:R> relative time."""
