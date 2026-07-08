@@ -839,7 +839,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
                  font-size: 0.88rem; font-weight: 500; }
 .tc-meta input, .tc-meta select { padding: 0.4rem 0.6rem; background: var(--bg);
   color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: 0.9rem; font-family: var(--font-body); width: 100%; }
+  font-size: 0.9rem; font-family: var(--font-body); width: 100%; max-width: 100%; }
 .tc-meta input:focus, .tc-meta select:focus
   { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
 .tc-deck-list { display: flex; flex-direction: column; gap: 0.3rem; max-width: 540px; }
