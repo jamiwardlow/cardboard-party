@@ -664,15 +664,14 @@ function renderOrganizer() {
   if (!el) return;
   if (canManage()) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = '';
-  const name = state.owner_name || 'Unknown';
-  let html = `Organizer: <strong>${escapeHtml(name)}</strong>`
-    + (state.owner_discord ? ` · Discord <strong>${escapeHtml(state.owner_discord)}</strong>` : '');
-  const coOrgs = (state.co_organizers || []).filter(c => !c.pending);
-  if (coOrgs.length) {
-    html += ' · Co-organizer' + (coOrgs.length > 1 ? 's' : '') + ': '
-      + coOrgs.map(c => `<strong>${escapeHtml(c.name)}</strong>`).join(', ');
-  }
-  el.innerHTML = html;
+  const staffLine = (label, name, discord) =>
+    `<span>${label}: <strong>${escapeHtml(name)}</strong>`
+    + (discord ? ` · <strong>${escapeHtml(discord)}</strong>` : '')
+    + '</span>';
+  const lines = [staffLine('Organizer', state.owner_name || 'Unknown', state.owner_discord)];
+  for (const c of (state.co_organizers || []).filter(c => !c.pending))
+    lines.push(staffLine('Co-organizer', c.name, c.discord));
+  el.innerHTML = lines.join('<br>');
 }
 
 let coOrgPickedId = null, coOrgSearchTimer = null;

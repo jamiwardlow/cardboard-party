@@ -1569,10 +1569,11 @@ def api_get_event(event_id):
     co_org_names = []
     for cid in e.get('co_organizer_ids', []):
         if cid.startswith('pending:'):
-            co_org_names.append({'id': cid, 'name': cid[len('pending:'):], 'pending': True})
+            co_org_names.append({'id': cid, 'name': cid[len('pending:'):], 'discord': '', 'pending': True})
         else:
             p = get_user_profile(cid)
-            co_org_names.append({'id': cid, 'name': p.get('name', cid), 'pending': False})
+            co_org_names.append({'id': cid, 'name': p.get('name', cid),
+                                 'discord': p.get('discord', ''), 'pending': False})
     e['co_organizers'] = co_org_names
     # Expose only whether a code is needed; the code itself is a secret the
     # organiser shares out-of-band, so never send it to non-managers.
