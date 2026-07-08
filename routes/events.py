@@ -552,7 +552,8 @@ INVITE_RATE_WINDOW = 60 * 60       # ...within this many seconds (1 hour)
 INVITE_DEDUPE_WINDOW = 7 * 24 * 60 * 60   # don't re-invite a target to the same event within 7 days
 
 def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
-                              inviter_name: str, base_url: str = '', message: str = ''):
+                              inviter_name: str, base_url: str = '', message: str = '',
+                              inviter_username: str = ''):
     """DM `target_id` an invitation to register for an event, on behalf of
     `inviter_id`, with an optional personal `message`. Enforces the anti-spam
     guards (opt-out, already-registered, dedupe, sender rate limit) before
@@ -591,7 +592,8 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
     base = (base_url or '').rstrip('/')
     state, note = _registration_card_status(e)
     delivered = discord_api.dm_event_invite(
-        target_id, e, f'{base}/events/{event_id}', inviter_name, state, note, message)
+        target_id, e, f'{base}/events/{event_id}', inviter_name, state, note, message,
+        inviter_username=inviter_username)
     if not delivered:
         return None, ("I couldn't DM them — they may not share a server with the bot "
                       "or have DMs from server members turned off.")

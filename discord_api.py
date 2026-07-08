@@ -367,7 +367,8 @@ def event_card(event: dict, event_url: str, state: str, note: str = ''):
 
 
 def dm_event_invite(target_id: str, event: dict, event_url: str, inviter_name: str,
-                    state: str = 'open', note: str = '', message: str = '') -> bool:
+                    state: str = 'open', note: str = '', message: str = '',
+                    inviter_username: str = '') -> bool:
     """DM `target_id` an invitation to register for an event — the same card the
     /cparty announce flow posts (Register button + details link), prefixed with
     who invited them, plus a button to opt out of future invites. `message` is an
@@ -377,7 +378,8 @@ def dm_event_invite(target_id: str, event: dict, event_url: str, inviter_name: s
     components.append({'type': 1, 'components': [
         {'type': 2, 'style': STYLE_GREY, 'label': "Don't invite me", 'custom_id': 'cbp_invite_optout'}]})
     verb = 'join the waitlist for' if state == 'full' else 'register for'
-    content = f"🃏 **{inviter_name}** invited you to {verb} an event on Cardboard Party:"
+    inviter = f"**{inviter_name}**" + (f" (@{inviter_username})" if inviter_username else "")
+    content = f"🃏 {inviter} invited you to {verb} an event on Cardboard Party:"
     if message:
         # Quote the personal note so it reads as coming from the inviter (>>> spans
         # the rest of the message, so multi-line notes stay in the quote).

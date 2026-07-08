@@ -555,7 +555,8 @@ def _handle_modal(body):
         from routes.events import invite_player_via_discord
         _, target_id, eid = custom_id.split(':', 2)
         msg, err = invite_player_via_discord(
-            eid, discord_id, target_id, name, request.host_url, message)
+            eid, discord_id, target_id, name, request.host_url, message,
+            inviter_username=_interaction_username(body))
         return _reply(f'⚠️ {err}' if err else f'✅ {msg}')
 
     return _reply('That action is not available yet.')
