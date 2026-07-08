@@ -14,7 +14,8 @@ from urllib.parse import urlencode, urljoin, urlparse
 from flask import (Blueprint, redirect, request, session,
                    url_for, jsonify, current_app, render_template)
 from db import (get_admins, add_admin, remove_admin,
-                get_user_profile, save_user_profile, list_users)
+                get_user_profile, save_user_profile, list_users,
+                resolve_pending_co_organizer)
 from gcp_secrets import get_secret
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -156,8 +157,9 @@ def callback():
         'picture': user_info.get('picture'),
     }
 
-    # Resolve any pending admin entry added by email before first sign-in
+    # Resolve any pending admin or co-organizer entry added by email before first sign-in
     _resolve_pending_admin(session['user'])
+    resolve_pending_co_organizer(session['user']['email'], session['user']['id'])
 
     # Capture email + Google picture into the user directory, and refresh the
     # display name from Google on every login — Google is the source of truth
@@ -284,6 +286,7 @@ def discord_callback():
     }
     if session['user']['email']:
         _resolve_pending_admin(session['user'])
+        resolve_pending_co_organizer(session['user']['email'], session['user']['id'])
     saved = get_user_profile(account_id)
     session['user']['picture'] = (saved.get('avatar_url') or saved.get('google_picture')
                                   or saved.get('discord_picture') or '')

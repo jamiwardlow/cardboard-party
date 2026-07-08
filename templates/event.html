@@ -108,6 +108,7 @@
   <span id="reg-status" style="margin-top:0.5rem"></span>
   <div id="owner-actions" class="hidden action-row" style="margin-top:0.9rem">
     <a class="btn btn-sm" href="/events/{{ event.id }}/edit">Edit event</a>
+    <button class="btn btn-sm" onclick="openCoOrgModal()">Co-organizers</button>
     {% if event.requires_decklists %}<a class="btn btn-sm" id="btn-decklists" href="/events/{{ event.id }}/decklists">Decklists</a>{% endif %}
     <button class="btn btn-sm" id="btn-toggle-reg" onclick="toggleRegistration()"></button>
     <button class="btn btn-sm hidden" id="btn-release-standings" onclick="releaseDelivery('standings')">Release standings</button>
@@ -271,6 +272,24 @@ Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (r
     <div class="modal-actions">
       <button class="btn" onclick="closeEditModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditedPairings()">Save pairings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Co-organizers modal -->
+<div id="co-org-modal" class="modal-backdrop hidden" onclick="if(event.target===this)closeCoOrgModal()">
+  <div class="modal">
+    <h2>Co-organizers</h2>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem">Co-organizers have the same management powers as the primary organizer.</p>
+    <div id="co-org-list" style="margin-bottom:0.75rem"></div>
+    <div class="inline-form">
+      <input id="co-org-input" type="text" placeholder="Email address or Discord handle" style="flex:1;min-width:0"
+             onkeydown="if(event.key==='Enter')addCoOrganizer()">
+      <button class="btn btn-sm btn-primary" onclick="addCoOrganizer()">Add</button>
+    </div>
+    <p id="co-org-msg" style="font-size:0.85rem;margin-top:0.4rem;min-height:1.2em"></p>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCoOrgModal()">Close</button>
     </div>
   </div>
 </div>
@@ -642,8 +661,72 @@ function renderOrganizer() {
   if (canManage()) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = '';
   const name = state.owner_name || 'Unknown';
-  el.innerHTML = `Organizer: <strong>${escapeHtml(name)}</strong>`
+  let html = `Organizer: <strong>${escapeHtml(name)}</strong>`
     + (state.owner_discord ? ` · Discord <strong>${escapeHtml(state.owner_discord)}</strong>` : '');
+  const coOrgs = (state.co_organizers || []).filter(c => !c.pending);
+  if (coOrgs.length) {
+    html += ' · Co-organizer' + (coOrgs.length > 1 ? 's' : '') + ': '
+      + coOrgs.map(c => `<strong>${escapeHtml(c.name)}</strong>`).join(', ');
+  }
+  el.innerHTML = html;
+}
+
+function openCoOrgModal() {
+  document.getElementById('co-org-input').value = '';
+  document.getElementById('co-org-msg').textContent = '';
+  renderCoOrgList();
+  document.getElementById('co-org-modal').classList.remove('hidden');
+  document.getElementById('co-org-input').focus();
+}
+function closeCoOrgModal() {
+  document.getElementById('co-org-modal').classList.add('hidden');
+}
+function renderCoOrgList() {
+  const el = document.getElementById('co-org-list');
+  const list = state.co_organizers || [];
+  if (!list.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;margin:0 0 0.5rem">No co-organizers yet.</p>';
+    return;
+  }
+  el.innerHTML = '<ul style="list-style:none;padding:0;margin:0 0 0.5rem;display:flex;flex-direction:column;gap:0.4rem">'
+    + list.map(c =>
+        `<li style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
+          <span>${escapeHtml(c.name)}${c.pending ? ' <span style="color:var(--muted);font-size:0.8rem">(pending sign-in)</span>' : ''}</span>
+          <button class="btn btn-sm btn-danger" onclick="removeCoOrganizer(${JSON.stringify(c.id)})">Remove</button>
+        </li>`).join('')
+    + '</ul>';
+}
+async function addCoOrganizer() {
+  const input = document.getElementById('co-org-input');
+  const msg   = document.getElementById('co-org-msg');
+  const query = input.value.trim();
+  if (!query) return;
+  msg.style.color = 'var(--muted)'; msg.textContent = 'Adding…';
+  const res = await fetch(`/api/events/${EVENT_ID}/co-organizers`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ query }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { msg.style.color = 'var(--danger)'; msg.textContent = d.error || 'Could not add.'; return; }
+  state.co_organizers = (state.co_organizers || []).concat([d]);
+  input.value = '';
+  msg.style.color = 'var(--green)';
+  msg.textContent = `Added ${d.name}` + (d.pending ? ' — will activate when they next sign in.' : '.');
+  renderCoOrgList();
+}
+async function removeCoOrganizer(id) {
+  const msg = document.getElementById('co-org-msg');
+  msg.style.color = 'var(--muted)'; msg.textContent = 'Removing…';
+  const res = await fetch(`/api/events/${EVENT_ID}/co-organizers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    msg.style.color = 'var(--danger)'; msg.textContent = d.error || 'Could not remove.'; return;
+  }
+  state.co_organizers = (state.co_organizers || []).filter(c => c.id !== id);
+  msg.style.color = ''; msg.textContent = '';
+  renderCoOrgList();
 }
 
 // Status pill shown to everyone — mirrors the color coding on the Events page.

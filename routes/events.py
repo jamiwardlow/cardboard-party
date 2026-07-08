@@ -12,6 +12,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 set_player_dropped, set_player_field,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, delete_user_profile, list_users,
+                find_user_by_email, find_user_by_discord_handle,
                 record_invite, recent_invite_count, target_invited_since,
                 set_invite_optout, is_invite_opted_out,
                 add_event_log, list_event_log, promote_waitlist_entry)
@@ -795,11 +796,14 @@ def _normalize_payment_url(raw) -> tuple:
 # ── Permission helpers ─────────────────────────────────────────────────────────
 
 def _can_manage(event: dict) -> bool:
-    """True if the current user is a global admin or the event owner."""
+    """True if the current user is a global admin, the event owner, or a co-organizer."""
     user = get_current_user()
     if not user:
         return False
-    return user['id'] == event.get('owner_id') or is_admin(user['id'])
+    uid = user['id']
+    return (uid == event.get('owner_id')
+            or is_admin(uid)
+            or uid in event.get('co_organizer_ids', []))
 
 def _require_manage(event: dict):
     if not _can_manage(event):
@@ -1561,6 +1565,15 @@ def api_get_event(event_id):
     owner_profile = get_user_profile(e.get('owner_id', ''))
     # Surface the organizer's discord (if known) so players know how to reach them.
     e['owner_discord'] = owner_profile.get('discord', '')
+    # Resolve co-organizer IDs to display names for the event page.
+    co_org_names = []
+    for cid in e.get('co_organizer_ids', []):
+        if cid.startswith('pending:'):
+            co_org_names.append({'id': cid, 'name': cid[len('pending:'):], 'pending': True})
+        else:
+            p = get_user_profile(cid)
+            co_org_names.append({'id': cid, 'name': p.get('name', cid), 'pending': False})
+    e['co_organizers'] = co_org_names
     # Expose only whether a code is needed; the code itself is a secret the
     # organiser shares out-of-band, so never send it to non-managers.
     e['entry_code_required'] = bool(e.get('entry_code'))
@@ -2560,6 +2573,63 @@ def api_release_delivery(event_id):
         discord_api.announce_round(e, round_num, request.host_url)
         discord_api.dm_round_pairings(e, round_num, request.host_url)
     return jsonify({'ok': True, field: True})
+
+
+@events_bp.route('/api/events/<event_id>/co-organizers', methods=['POST'])
+@login_required
+def api_add_co_organizer(event_id):
+    """Add a co-organizer by email or Discord handle."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    query = (request.json or {}).get('query', '').strip()
+    if not query:
+        return jsonify({'error': 'Email or Discord handle required.'}), 400
+
+    # Resolve the query to a google_id.
+    profile = None
+    pending_key = None
+    if '@' in query:
+        profile = find_user_by_email(query)
+        if not profile:
+            pending_key = f'pending:{query.lower()}'
+    else:
+        profile = find_user_by_discord_handle(query)
+        if not profile:
+            return jsonify({'error': f'No account found for Discord handle @{query.lstrip("@")}. '
+                                     'They need to sign in to Cardboard Party at least once first.'}), 404
+
+    resolved_id = profile['google_id'] if profile else pending_key
+
+    # Don't add the primary owner or someone already on the list.
+    if resolved_id == e.get('owner_id'):
+        return jsonify({'error': 'That person is already the primary organizer.'}), 400
+    existing = e.get('co_organizer_ids', [])
+    if resolved_id in existing:
+        return jsonify({'error': 'Already a co-organizer.'}), 400
+
+    new_ids = existing + [resolved_id]
+    save_event(event_id, {'co_organizer_ids': new_ids})
+    name = profile.get('name', query) if profile else query
+    pending = pending_key is not None
+    return jsonify({'id': resolved_id, 'name': name, 'pending': pending}), 201
+
+
+@events_bp.route('/api/events/<event_id>/co-organizers/<path:co_org_id>', methods=['DELETE'])
+@login_required
+def api_remove_co_organizer(event_id, co_org_id):
+    """Remove a co-organizer by their stored ID (google_id or pending:<email>)."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    existing = e.get('co_organizer_ids', [])
+    if co_org_id not in existing:
+        return jsonify({'error': 'Not a co-organizer.'}), 404
+    new_ids = [x for x in existing if x != co_org_id]
+    save_event(event_id, {'co_organizer_ids': new_ids})
+    return jsonify({'ok': True})
 
 
 @events_bp.route('/api/events/<event_id>/discord-role', methods=['POST', 'DELETE'])

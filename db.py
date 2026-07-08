@@ -170,6 +170,38 @@ def list_users() -> list[dict]:
         users.append(data)
     return users
 
+def find_user_by_email(email: str) -> dict | None:
+    """Return the user profile whose stored email matches (case-insensitive), or None."""
+    email = email.strip().lower()
+    for doc in get_db().collection('users').stream():
+        data = doc.to_dict() or {}
+        if (data.get('email') or '').lower() == email:
+            data['google_id'] = doc.id
+            return data
+    return None
+
+def find_user_by_discord_handle(handle: str) -> dict | None:
+    """Return the user profile whose stored discord handle matches (case-insensitive), or None."""
+    handle = handle.lstrip('@').strip().lower()
+    for doc in get_db().collection('users').stream():
+        data = doc.to_dict() or {}
+        if (data.get('discord') or '').lower() == handle:
+            data['google_id'] = doc.id
+            return data
+    return None
+
+def resolve_pending_co_organizer(email: str, google_id: str):
+    """On sign-in, replace any pending:<email> co-organizer entries with the real google_id."""
+    pending_key = f'pending:{email.lower()}'
+    db = get_db()
+    docs = db.collection('events').where(
+        filter=FieldFilter('co_organizer_ids', 'array_contains', pending_key)
+    ).stream()
+    for doc in docs:
+        ids = doc.to_dict().get('co_organizer_ids', [])
+        new_ids = [google_id if x == pending_key else x for x in ids]
+        doc.reference.update({'co_organizer_ids': new_ids})
+
 
 # ── Event invites (Discord DMs) ──────────────────────────────────────────────
 # Each invite a Discord user sends is logged so we can rate-limit senders and
