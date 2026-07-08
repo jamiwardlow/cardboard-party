@@ -5,7 +5,7 @@
 <div class="page-header">
   <div>
     <div class="title-row"><h1>Submit to MTG Goldfish</h1></div>
-    <p class="subtitle"><a href="/events/{{ event.id }}">← {{ event.name }}</a></p>
+    <p class="subtitle"><a href="/events/{{ event.id }}/decklists">← {{ event.name }}</a></p>
   </div>
 </div>
 
@@ -87,7 +87,7 @@
 
 <div style="margin-top:1.5rem">
   <a href="https://www.mtggoldfish.com/tournaments/new" target="_blank" rel="noopener" class="btn btn-primary">Open MTG Goldfish form ↗</a>
-  <a href="/events/{{ event.id }}" class="btn" style="margin-left:0.5rem">Back to event</a>
+  <a href="/events/{{ event.id }}/decklists" class="btn" style="margin-left:0.5rem">Back to event</a>
 </div>
 {% endblock %}
 
