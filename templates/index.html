@@ -21,7 +21,7 @@
   <div id="section-organized" class="hidden">
     <h2 class="section-toggle" role="button" tabindex="0" aria-expanded="true"
         onclick="toggleMySection(this, 'list-organized')">
-      My organized events <span class="round-caret" aria-hidden="true">▾</span>
+      My staffed events <span class="round-caret" aria-hidden="true">▾</span>
     </h2>
     <div id="list-organized" class="card-grid section-body"></div>
   </div>
@@ -152,7 +152,8 @@ async function init() {
   if (me.signed_in) {
     document.getElementById('my-sections').classList.remove('hidden');
 
-    const organized  = events.filter(e => e.owner_id === me.user.id);
+    const organized  = events.filter(e =>
+      e.owner_id === me.user.id || (e.co_organizer_ids || []).includes(me.user.id));
     // Any event you're a (non-dropped) player in counts as registered — including
     // ones you also organize, so adding yourself shows up here as expected.
     const registered = events.filter(e =>

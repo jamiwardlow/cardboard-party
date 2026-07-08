@@ -1405,7 +1405,7 @@ def users_page():
 # slim players/rounds (below), not the whole event document — the full rounds
 # (every match) and player snapshots are large and unused by the listing, so
 # trimming them cuts payload and serialization as the event count grows.
-_LIST_FIELDS = ('id', 'name', 'owner_id', 'game', 'event_type', 'format', 'date',
+_LIST_FIELDS = ('id', 'name', 'owner_id', 'co_organizer_ids', 'game', 'event_type', 'format', 'date',
                 'start_time', 'location', 'lat', 'lng', 'description', 'entry_cost',
                 'registration', 'registration_cap', 'status', 'num_rounds', 'tags',
                 'test_mode')
