@@ -308,8 +308,10 @@ def me():
         return jsonify({'signed_in': False})
     # Whether they already have a Discord handle on file, so the registration
     # form can skip asking for it again.
+    from db import is_admin
     profile = get_user_profile(user['id'])
     return jsonify({'signed_in': True, 'user': user,
+                    'is_admin': is_admin(user['id']),
                     'has_discord': bool((profile.get('discord') or '').strip()),
                     'discord_linked': bool(profile.get('discord_id')),
                     'discord_enabled': discord_login_enabled()})

@@ -192,12 +192,9 @@ let isAdmin = false;       // a global admin (can merge/delete other profiles)
 // The owner edits their own profile; a global admin gets merge/delete tools on
 // anyone else's. The Discord handle isn't free-text (it comes from linking), so
 // there's no handle editing here.
-Promise.all([
-  fetch('/auth/me').then(r => r.json()),
-  fetch('/api/admins').then(r => r.ok),   // 200 only for admins
-]).then(([me, admin]) => {
+fetch('/auth/me').then(r => r.json()).then(me => {
   isSelf = !!(me.signed_in && me.user.id === PROFILE_GOOGLE_ID);
-  isAdmin = !!admin;
+  isAdmin = !!(me.signed_in && me.is_admin);
   if (isSelf) document.getElementById('profile-owner-actions').classList.remove('hidden');
   if (isAdmin && !isSelf) document.getElementById('admin-profile-tools').classList.remove('hidden');
 });
