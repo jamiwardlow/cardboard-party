@@ -282,14 +282,14 @@ Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (r
     <h2>Co-organizers</h2>
     <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem">Co-organizers have the same management powers as the primary organizer.</p>
     <div id="co-org-list" style="margin-bottom:0.75rem"></div>
-    <div style="display:flex;gap:0.5rem;align-items:flex-start">
+    <div style="display:flex;gap:0.5rem;align-items:stretch">
       <div class="autocomplete" style="flex:1;min-width:0">
         <input id="co-org-input" type="text" placeholder="Name, email, or Discord handle"
                autocomplete="off" oninput="onCoOrgInput()" onblur="setTimeout(hideCoOrgSuggestions,150)"
                onkeydown="if(event.key==='Enter')addCoOrganizer()" style="width:100%">
         <ul id="co-org-suggestions" class="autocomplete-list hidden"></ul>
       </div>
-      <button class="btn btn-sm btn-primary" onclick="addCoOrganizer()">Add</button>
+      <button class="btn btn-primary" onclick="addCoOrganizer()">Add</button>
     </div>
     <p id="co-org-msg" style="font-size:0.85rem;margin-top:0.4rem;min-height:1.2em"></p>
     <div class="modal-actions">
@@ -700,7 +700,7 @@ function renderCoOrgList() {
     + list.map(c =>
         `<li style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
           <span>${escapeHtml(c.name)}${c.pending ? ' <span style="color:var(--muted);font-size:0.8rem">(pending sign-in)</span>' : ''}</span>
-          <button class="btn btn-sm btn-danger" onclick="removeCoOrganizer(${JSON.stringify(c.id)})">Remove</button>
+          <button class="btn btn-sm btn-danger" onclick='removeCoOrganizer(${JSON.stringify(c.id)})'>Remove</button>
         </li>`).join('')
     + '</ul>';
 }
