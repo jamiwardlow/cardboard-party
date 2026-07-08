@@ -413,7 +413,6 @@ function _maybeAutoRegister() {
   if (new URLSearchParams(window.location.search).get('register') !== '1') return;
   history.replaceState(null, '', window.location.pathname);  // clean URL to prevent re-trigger
   if (!me.signed_in) return;
-  if (canManage()) return;
   if (myPlayer && !myPlayer.dropped) return;
   if (selfRegBlockedReason()) return;
   if (state.is_full) { joinWaitlist(); return; }
