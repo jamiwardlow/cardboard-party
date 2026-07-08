@@ -312,6 +312,7 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
             save_user_profile(google_id, {'discord_id': discord_id})
         refresh_event_announcement(e)
         _log_discord(event_id, existing.get('name', ''), 'register', 'registered via Discord')
+        _dm_discord_reg_confirmation(discord_id, e, event_id)
         return {'player': existing, 'event_name': e.get('name', 'the event')}, None
     # Record the verified Discord @handle (username) so the organiser and other
     # players can see who registered — falling back to it when a matched account
@@ -346,6 +347,7 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
         save_user_profile(google_id, {'discord_id': discord_id})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
     _log_discord(event_id, name, 'register', 'registered via Discord')
+    _dm_discord_reg_confirmation(discord_id, e, event_id)
     return {'player': player, 'event_name': e.get('name', 'the event')}, None
 
 
@@ -466,6 +468,16 @@ def _dm_registration_confirmation(google_id: str, event: dict, event_id: str, ho
     threading.Thread(
         target=discord_api.dm_registration_confirmation,
         args=(did, event, event_url),
+        daemon=True,
+    ).start()
+
+
+def _dm_discord_reg_confirmation(discord_id: str, event: dict, event_id: str):
+    """Fire a Discord DM confirmation for a Discord-button registration. discord_id is already known."""
+    event_url = request.host_url.rstrip('/') + f'/events/{event_id}'
+    threading.Thread(
+        target=discord_api.dm_registration_confirmation,
+        args=(discord_id, event, event_url),
         daemon=True,
     ).start()
 
