@@ -1021,6 +1021,26 @@ def index():
     return render_template('index.html', user=get_current_user())
 
 
+_decklists_nav_cache = {'v': None, 'at': 0}
+
+def has_public_decklists() -> bool:
+    """Return True if the public decklist browser has anything to show.
+    Result is cached for 5 minutes so the check doesn't scan events on every request."""
+    now = time.time()
+    if now - _decklists_nav_cache['at'] < 300:
+        return _decklists_nav_cache['v']
+    found = False
+    for e in list_events():
+        if not e.get('requires_decklists') or not _event_complete(e):
+            continue
+        if any((p.get('decklist') or {}).get('text', '').strip() for p in e.get('players', [])):
+            found = True
+            break
+    _decklists_nav_cache['v'] = found
+    _decklists_nav_cache['at'] = now
+    return found
+
+
 @events_bp.route('/decklists')
 def public_decklists_page():
     return render_template('decklists_browse.html', user=get_current_user())

@@ -87,7 +87,9 @@ MAPS_API_KEY = get_secret('MAPS_API_KEY')
 
 @app.context_processor
 def inject_globals():
-    return {'asset_v': _ASSET_VERSION, 'maps_api_key': MAPS_API_KEY}
+    from routes.events import has_public_decklists
+    return {'asset_v': _ASSET_VERSION, 'maps_api_key': MAPS_API_KEY,
+            'has_public_decklists': has_public_decklists()}
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)

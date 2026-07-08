@@ -18,7 +18,7 @@
   <header class="site-header">
     <nav class="nav-inner">
       <a class="site-logo" href="/">Cardboard Party</a>
-      <a class="nav-decklists" href="/decklists">Decklists</a>
+      {% if has_public_decklists %}<a class="nav-decklists" href="/decklists">Decklists</a>{% endif %}
       <div class="nav-links" id="nav-admin-link" style="display:none">
         <a href="/admin">Organisers</a>
         <a href="/admin/users">Users</a>
@@ -44,8 +44,7 @@
   <footer class="site-footer">
     <a href="/about">About Cardboard Party</a>
     <span class="footer-sep">·</span>
-    <a href="/decklists">Decklists</a>
-    <span class="footer-sep">·</span>
+    {% if has_public_decklists %}<a href="/decklists">Decklists</a><span class="footer-sep">·</span>{% endif %}
     <a href="/discord-bot">Discord bot</a>
     <span class="footer-sep">·</span>
     <a href="/terms">Terms</a>
