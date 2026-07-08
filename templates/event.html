@@ -282,9 +282,13 @@ Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (r
     <h2>Co-organizers</h2>
     <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.75rem">Co-organizers have the same management powers as the primary organizer.</p>
     <div id="co-org-list" style="margin-bottom:0.75rem"></div>
-    <div class="inline-form">
-      <input id="co-org-input" type="text" placeholder="Email address or Discord handle" style="flex:1;min-width:0"
-             onkeydown="if(event.key==='Enter')addCoOrganizer()">
+    <div style="display:flex;gap:0.5rem;align-items:flex-start">
+      <div class="autocomplete" style="flex:1;min-width:0">
+        <input id="co-org-input" type="text" placeholder="Name, email, or Discord handle"
+               autocomplete="off" oninput="onCoOrgInput()" onblur="setTimeout(hideCoOrgSuggestions,150)"
+               onkeydown="if(event.key==='Enter')addCoOrganizer()" style="width:100%">
+        <ul id="co-org-suggestions" class="autocomplete-list hidden"></ul>
+      </div>
       <button class="btn btn-sm btn-primary" onclick="addCoOrganizer()">Add</button>
     </div>
     <p id="co-org-msg" style="font-size:0.85rem;margin-top:0.4rem;min-height:1.2em"></p>
@@ -671,7 +675,10 @@ function renderOrganizer() {
   el.innerHTML = html;
 }
 
+let coOrgPickedId = null, coOrgSearchTimer = null;
+
 function openCoOrgModal() {
+  coOrgPickedId = null;
   document.getElementById('co-org-input').value = '';
   document.getElementById('co-org-msg').textContent = '';
   renderCoOrgList();
@@ -680,6 +687,7 @@ function openCoOrgModal() {
 }
 function closeCoOrgModal() {
   document.getElementById('co-org-modal').classList.add('hidden');
+  hideCoOrgSuggestions();
 }
 function renderCoOrgList() {
   const el = document.getElementById('co-org-list');
@@ -696,20 +704,52 @@ function renderCoOrgList() {
         </li>`).join('')
     + '</ul>';
 }
+function onCoOrgInput() {
+  coOrgPickedId = null;
+  const q = document.getElementById('co-org-input').value.trim();
+  clearTimeout(coOrgSearchTimer);
+  if (q.length < 2) { hideCoOrgSuggestions(); return; }
+  coOrgSearchTimer = setTimeout(() => searchCoOrgs(q), 200);
+}
+async function searchCoOrgs(q) {
+  const res = await fetch(`/api/events/${EVENT_ID}/co-organizer-search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) { hideCoOrgSuggestions(); return; }
+  const matches = await res.json();
+  const ul = document.getElementById('co-org-suggestions');
+  if (!matches.length) { hideCoOrgSuggestions(); return; }
+  ul.innerHTML = matches.map((m, i) =>
+    `<li data-i="${i}">
+      <span class="ac-name">${escapeHtml(m.name)}</span>
+      ${m.discord ? `<span class="ac-discord">${escapeHtml(m.discord)}</span>` : ''}
+    </li>`).join('');
+  ul.querySelectorAll('li').forEach((li, i) => li.addEventListener('mousedown', ev => {
+    ev.preventDefault();
+    const m = matches[i];
+    document.getElementById('co-org-input').value = m.name;
+    coOrgPickedId = m.google_id;
+    hideCoOrgSuggestions();
+  }));
+  ul.classList.remove('hidden');
+}
+function hideCoOrgSuggestions() {
+  document.getElementById('co-org-suggestions').classList.add('hidden');
+}
 async function addCoOrganizer() {
   const input = document.getElementById('co-org-input');
   const msg   = document.getElementById('co-org-msg');
   const query = input.value.trim();
   if (!query) return;
+  hideCoOrgSuggestions();
   msg.style.color = 'var(--muted)'; msg.textContent = 'Adding…';
+  const body = coOrgPickedId ? { google_id: coOrgPickedId } : { query };
   const res = await fetch(`/api/events/${EVENT_ID}/co-organizers`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(body),
   });
   const d = await res.json().catch(() => ({}));
   if (!res.ok) { msg.style.color = 'var(--danger)'; msg.textContent = d.error || 'Could not add.'; return; }
   state.co_organizers = (state.co_organizers || []).concat([d]);
-  input.value = '';
+  input.value = ''; coOrgPickedId = null;
   msg.style.color = 'var(--green)';
   msg.textContent = `Added ${d.name}` + (d.pending ? ' — will activate when they next sign in.' : '.');
   renderCoOrgList();

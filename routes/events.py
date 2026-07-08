@@ -2575,45 +2575,77 @@ def api_release_delivery(event_id):
     return jsonify({'ok': True, field: True})
 
 
-@events_bp.route('/api/events/<event_id>/co-organizers', methods=['POST'])
+@events_bp.route('/api/events/<event_id>/co-organizer-search', methods=['GET'])
 @login_required
-def api_add_co_organizer(event_id):
-    """Add a co-organizer by email or Discord handle."""
+def api_co_org_search(event_id):
+    """Manager typeahead over the user directory for adding a co-organizer.
+    Excludes the owner and anyone already on the co-organizer list."""
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    query = (request.json or {}).get('query', '').strip()
-    if not query:
-        return jsonify({'error': 'Email or Discord handle required.'}), 400
+    q = request.args.get('q', '').strip().lower()
+    if len(q) < 2:
+        return jsonify([])
+    excluded = {e.get('owner_id')} | set(e.get('co_organizer_ids', []))
+    matches = []
+    for u in list_users():
+        gid = u.get('google_id')
+        if not gid or gid in excluded:
+            continue
+        name, discord = u.get('name', ''), u.get('discord', '')
+        if q in name.lower() or (discord and q in discord.lower()):
+            matches.append({'google_id': gid, 'name': name, 'discord': discord})
+            if len(matches) >= 8:
+                break
+    return jsonify(matches)
 
-    # Resolve the query to a google_id.
+
+@events_bp.route('/api/events/<event_id>/co-organizers', methods=['POST'])
+@login_required
+def api_add_co_organizer(event_id):
+    """Add a co-organizer by google_id (autocomplete pick), email, or Discord handle."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    data = request.json or {}
+
     profile = None
     pending_key = None
-    if '@' in query:
-        profile = find_user_by_email(query)
+
+    if data.get('google_id'):
+        # Direct pick from autocomplete — trust the ID, just verify it exists.
+        gid = data['google_id'].strip()
+        profile = get_user_profile(gid)
         if not profile:
-            pending_key = f'pending:{query.lower()}'
+            return jsonify({'error': 'User not found.'}), 404
+        profile['google_id'] = gid
     else:
-        profile = find_user_by_discord_handle(query)
-        if not profile:
-            return jsonify({'error': f'No account found for Discord handle @{query.lstrip("@")}. '
-                                     'They need to sign in to Cardboard Party at least once first.'}), 404
+        query = data.get('query', '').strip()
+        if not query:
+            return jsonify({'error': 'Email or Discord handle required.'}), 400
+        if '@' in query:
+            profile = find_user_by_email(query)
+            if not profile:
+                pending_key = f'pending:{query.lower()}'
+        else:
+            profile = find_user_by_discord_handle(query)
+            if not profile:
+                return jsonify({'error': f'No account found for @{query.lstrip("@")}. '
+                                         'They need to sign in to Cardboard Party at least once first.'}), 404
 
     resolved_id = profile['google_id'] if profile else pending_key
 
-    # Don't add the primary owner or someone already on the list.
     if resolved_id == e.get('owner_id'):
         return jsonify({'error': 'That person is already the primary organizer.'}), 400
     existing = e.get('co_organizer_ids', [])
     if resolved_id in existing:
         return jsonify({'error': 'Already a co-organizer.'}), 400
 
-    new_ids = existing + [resolved_id]
-    save_event(event_id, {'co_organizer_ids': new_ids})
-    name = profile.get('name', query) if profile else query
-    pending = pending_key is not None
-    return jsonify({'id': resolved_id, 'name': name, 'pending': pending}), 201
+    save_event(event_id, {'co_organizer_ids': existing + [resolved_id]})
+    name = profile.get('name', data.get('query', resolved_id)) if profile else data.get('query', resolved_id)
+    return jsonify({'id': resolved_id, 'name': name, 'pending': pending_key is not None}), 201
 
 
 @events_bp.route('/api/events/<event_id>/co-organizers/<path:co_org_id>', methods=['DELETE'])
