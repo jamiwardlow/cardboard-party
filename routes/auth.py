@@ -14,7 +14,8 @@ from urllib.parse import urlencode, urljoin, urlparse
 from flask import (Blueprint, redirect, request, session,
                    url_for, jsonify, current_app, render_template)
 from db import (get_admins, add_admin, remove_admin,
-                get_user_profile, save_user_profile, list_users,
+                get_user_profile, save_user_profile,
+                find_user_by_discord_id, find_user_by_email,
                 resolve_pending_co_organizer)
 from gcp_secrets import get_secret
 
@@ -196,15 +197,14 @@ def _resolve_account_for_discord(discord_id: str, email: str):
     ID already stored on a profile (e.g. from prior bot use), else by a verified
     matching email. Returns the account id (the users-doc id, which is a Google
     sub for Google accounts) or None to create a fresh Discord account."""
-    did = str(discord_id)
-    email_l = (email or '').strip().lower()
-    by_email = None
-    for u in list_users():
-        if u.get('discord_id') == did:
-            return u['google_id']            # list_users sets google_id = doc id
-        if email_l and not by_email and (u.get('email') or '').strip().lower() == email_l:
-            by_email = u['google_id']
-    return by_email
+    by_discord = find_user_by_discord_id(str(discord_id))
+    if by_discord:
+        return by_discord['google_id']
+    if email:
+        by_email = find_user_by_email(email.strip())
+        if by_email:
+            return by_email['google_id']
+    return None
 
 
 @auth_bp.route('/discord/callback')
@@ -259,8 +259,8 @@ def discord_callback():
         if not cur or cur['id'] != link_account:
             return render_template('login_error.html', next=''), 400
         did = str(discord_id)
-        other = next((u['google_id'] for u in list_users()
-                      if u.get('discord_id') == did and u['google_id'] != link_account), None)
+        found = find_user_by_discord_id(did)
+        other = found['google_id'] if (found and found['google_id'] != link_account) else None
         # If this Discord already backs a *different real* account, refuse — we
         # can't safely fold two claimed accounts together.
         if other and not other.startswith('discord:'):

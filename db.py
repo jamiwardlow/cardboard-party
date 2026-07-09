@@ -94,7 +94,7 @@ _ADMIN_DOC = 'config/admins'
 # in-process with a short TTL. Writes invalidate it locally; other instances pick
 # up a change within the TTL. A restart/redeploy always starts fresh.
 _admins_cache = {'data': None, 'ts': 0.0}
-_ADMINS_TTL = 30.0
+_ADMINS_TTL = 5.0
 
 def _invalidate_admins_cache():
     _admins_cache['data'] = None
@@ -189,6 +189,18 @@ def find_user_by_discord_handle(handle: str) -> dict | None:
             data['google_id'] = doc.id
             return data
     return None
+
+def find_user_by_discord_id(discord_id: str) -> dict | None:
+    """Return the user profile whose stored discord_id matches, or None.
+    Uses a targeted Firestore query rather than a full collection scan."""
+    docs = list(get_db().collection('users').where(
+        filter=FieldFilter('discord_id', '==', str(discord_id))
+    ).limit(1).stream())
+    if not docs:
+        return None
+    data = docs[0].to_dict() or {}
+    data['google_id'] = docs[0].id
+    return data
 
 def resolve_pending_co_organizer(email: str, google_id: str):
     """On sign-in, replace any pending:<email> co-organizer entries with the real google_id."""
