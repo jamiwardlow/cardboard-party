@@ -332,7 +332,7 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
         save_user_profile(google_id, {'discord_id': str(discord_id),
                                       'name': name, 'discord': discord_handle})
     player = {
-        'id':         _slugify(name) + '_' + str(len(e['players'])),
+        'id':         _slugify(name) + '_' + uuid.uuid4().hex[:8],
         'name':       name,
         'google_id':  google_id,
         'discord_id': discord_id,
@@ -1814,7 +1814,7 @@ def api_register(event_id):
         _dm_registration_confirmation(user['id'], e, event_id, request.host_url)
         return jsonify(existing), 200
     player = {
-        'id':        _slugify(display_name) + '_' + str(len(e['players'])),
+        'id':        _slugify(display_name) + '_' + uuid.uuid4().hex[:8],
         'name':      display_name,
         'google_id': user['id'],
         'discord':   discord,
@@ -1935,12 +1935,12 @@ def api_promote_waitlist(event_id, wid):
 
     def build_player(rec, index):
         player = {
-            'id':         _slugify(rec.get('name') or 'player') + '_' + str(index),
+            'id':         _slugify(rec.get('name') or 'player') + '_' + uuid.uuid4().hex[:8],
             'name':       rec.get('name') or 'Player',
             'google_id':  rec.get('google_id'),
             'discord':    rec.get('discord', ''),
             'dropped':    False,
-            'checked_in': not e.get('require_check_in'),
+            'checked_in': not e.get('require_check_in') or bool(e.get('rounds')),
         }
         if rec.get('discord_id'):   # keep the Discord link so they can report via DM/channel
             player['discord_id'] = rec['discord_id']
@@ -2014,7 +2014,7 @@ def api_join_guest(event_id):
         return jsonify({'error': 'Name required'}), 400
     token = uuid.uuid4().hex
     player = {
-        'id':          _slugify(name) + '_' + str(len(e['players'])),
+        'id':          _slugify(name) + '_' + uuid.uuid4().hex[:8],
         'name':        name,
         'google_id':   None,
         'discord':     data.get('discord', '').strip(),
@@ -2097,14 +2097,14 @@ def api_add_player(event_id):
         _log_action(event_id, 'waitlist_join', f"{record['name']} added to the waitlist (event full)")
         return jsonify({'waitlisted': True, 'name': record['name']}), 201
     player = {
-        'id':        _slugify(name) + '_' + str(len(e['players'])),
+        'id':        _slugify(name) + '_' + uuid.uuid4().hex[:8],
         'name':      name,
         'google_id': google_id,
         'discord':   discord,
         'dropped':   False,
         # Check-in events need an explicit check-in (show the "Check in" button), so
-        # only auto-mark present when check-in isn't required.
-        'checked_in': not e.get('require_check_in'),
+        # only auto-mark present when check-in isn't required or rounds have already started.
+        'checked_in': not e.get('require_check_in') or bool(e.get('rounds')),
     }
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})

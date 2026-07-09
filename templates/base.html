@@ -70,9 +70,7 @@
       }
 
       // Show Organisers link if admin
-      fetch('/api/admins').then(r => {
-        if (r.ok) document.getElementById('nav-admin-link').style.display = '';
-      });
+      if (me.is_admin) document.getElementById('nav-admin-link').style.display = '';
     });
   </script>
   {% block scripts %}{% endblock %}

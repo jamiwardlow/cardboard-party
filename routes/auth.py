@@ -131,23 +131,34 @@ def callback():
         return 'Login failed: no code received.', 400
 
     redirect_uri = url_for('auth.callback', _external=True)
-    token_resp = requests.post(GOOGLE_TOKEN_URL, data={
-        'code':          code,
-        'client_id':     CLIENT_ID,
-        'client_secret': CLIENT_SECRET,
-        'redirect_uri':  redirect_uri,
-        'grant_type':    'authorization_code',
-    })
-    token_data = token_resp.json()
+    try:
+        token_resp = requests.post(GOOGLE_TOKEN_URL, data={
+            'code':          code,
+            'client_id':     CLIENT_ID,
+            'client_secret': CLIENT_SECRET,
+            'redirect_uri':  redirect_uri,
+            'grant_type':    'authorization_code',
+        }, timeout=10)
+        token_data = token_resp.json()
+    except Exception:
+        return render_template('login_error.html',
+                               heading='Sign-in failed',
+                               message='Could not reach Google. Please try again.'), 503
     access_token = token_data.get('access_token')
     if not access_token:
         return 'Login failed: could not get access token.', 400
 
-    user_resp = requests.get(
-        GOOGLE_USERINFO_URL,
-        headers={'Authorization': f'Bearer {access_token}'}
-    )
-    user_info = user_resp.json()
+    try:
+        user_resp = requests.get(
+            GOOGLE_USERINFO_URL,
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=10
+        )
+        user_info = user_resp.json()
+    except Exception:
+        return render_template('login_error.html',
+                               heading='Sign-in failed',
+                               message='Could not fetch your Google profile. Please try again.'), 503
 
     session.permanent = True   # persist login across browser/app restarts
     session['user'] = {
@@ -207,19 +218,29 @@ def discord_callback():
     if not code:
         return 'Login failed: no code received.', 400
 
-    token_data = requests.post(DISCORD_TOKEN_URL, data={
-        'client_id':     DISCORD_CLIENT_ID,
-        'client_secret': DISCORD_CLIENT_SECRET,
-        'grant_type':    'authorization_code',
-        'code':          code,
-        'redirect_uri':  url_for('auth.discord_callback', _external=True),
-    }, headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=10).json()
+    try:
+        token_data = requests.post(DISCORD_TOKEN_URL, data={
+            'client_id':     DISCORD_CLIENT_ID,
+            'client_secret': DISCORD_CLIENT_SECRET,
+            'grant_type':    'authorization_code',
+            'code':          code,
+            'redirect_uri':  url_for('auth.discord_callback', _external=True),
+        }, headers={'Content-Type': 'application/x-www-form-urlencoded'}, timeout=10).json()
+    except Exception:
+        return render_template('login_error.html',
+                               heading='Sign-in failed',
+                               message='Could not reach Discord. Please try again.'), 503
     access_token = token_data.get('access_token')
     if not access_token:
         return 'Login failed: could not get access token.', 400
 
-    du = requests.get(DISCORD_USER_URL,
-                      headers={'Authorization': f'Bearer {access_token}'}, timeout=10).json()
+    try:
+        du = requests.get(DISCORD_USER_URL,
+                          headers={'Authorization': f'Bearer {access_token}'}, timeout=10).json()
+    except Exception:
+        return render_template('login_error.html',
+                               heading='Sign-in failed',
+                               message='Could not fetch your Discord profile. Please try again.'), 503
     discord_id = du.get('id')
     if not discord_id:
         return 'Login failed: could not read Discord profile.', 400

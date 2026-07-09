@@ -476,11 +476,12 @@ function duplicateEvent() {
 async function resolveGuest() {
   guestToken = null; guestPlayerId = null;
   const url = new URL(window.location.href);
-  let token = url.searchParams.get('t');
+  // Read from hash fragment (#t=) so the token is never sent to the server in
+  // HTTP requests or referrer headers. Fall back to localStorage for repeat visits.
+  let token = url.hash.startsWith('#t=') ? decodeURIComponent(url.hash.slice(3)) : null;
   if (token) {
     localStorage.setItem(GUEST_KEY, token);
-    url.searchParams.delete('t');                       // keep the URL clean
-    history.replaceState({}, '', url);
+    history.replaceState({}, '', url.pathname + url.search);   // keep the URL clean
   } else {
     token = localStorage.getItem(GUEST_KEY);
   }
@@ -699,7 +700,7 @@ function renderCoOrgList() {
     + list.map(c =>
         `<li style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem">
           <span>${escapeHtml(c.name)}${c.pending ? ' <span style="color:var(--muted);font-size:0.8rem">(pending sign-in)</span>' : ''}</span>
-          <button class="btn btn-sm btn-danger" onclick='removeCoOrganizer(${JSON.stringify(c.id)})'>Remove</button>
+          <button class="btn btn-sm btn-danger" data-coid="${escapeHtml(c.id)}" onclick="removeCoOrganizer(this.dataset.coid)">Remove</button>
         </li>`).join('')
     + '</ul>';
 }
@@ -1493,7 +1494,7 @@ async function submitRegister() {
 }
 
 function copyGuestLink(btn) {
-  const link = `${window.location.origin}/events/${EVENT_ID}?t=${guestToken}`;
+  const link = `${window.location.origin}/events/${EVENT_ID}#t=${guestToken}`;
   const done = () => {
     const orig = btn.textContent;
     btn.textContent = 'Link copied!'; btn.disabled = true;
