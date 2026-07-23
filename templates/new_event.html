@@ -175,13 +175,13 @@
       <input id="e-decklist-visibility-note" type="text" maxlength="500"
              placeholder="e.g. Decklists will be made public after the event"
              value="{{ source.decklist_visibility_note | default('') | e if source else '' }}">
-      <span class="field-help">Tell players when decklists will become public.</span>
+      <span class="field-help" style="margin-bottom:0.5rem">Tell players when decklists will become public.</span>
     </label>
     <label>Decklist submission deadline
       <input id="e-decklist-deadline" type="date" value="{{ source.decklist_deadline | default('') | e }}">
       <span class="field-help">After this date, players can't submit or edit decklists.</span>
     </label>
-    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
+    <label class="checkbox-row no-divider" style="margin-top:0.5rem;margin-bottom:0.25rem">
       <input type="checkbox" id="e-validate-decklists"{% if source and source.validation_format and source.validation_format != 'none' %} checked{% endif %}>
       <span>Validate decklists automatically
         <span class="field-help">Checks card legality and deck construction rules on submission.</span>

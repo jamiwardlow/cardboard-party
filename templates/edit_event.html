@@ -69,7 +69,8 @@
     </select>
   </label>
   <label>Format
-    <input id="ee-format" type="text" value="{{ event.format | default('') | e }}" oninput="onFormatChange()">
+    <select id="ee-format-select" onchange="onFormatSelectChange()"></select>
+    <input id="ee-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
   </label>
 
   {%- set event_tags = event.tags | default([]) -%}
@@ -142,13 +143,13 @@
       <input id="ee-decklist-visibility-note" type="text" maxlength="500"
              placeholder="e.g. Decklists will be made public after the event"
              value="{{ event.decklist_visibility_note | default('') | e }}">
-      <span class="field-help">Tell players when decklists will become public.</span>
+      <span class="field-help" style="margin-bottom:0.5rem">Tell players when decklists will become public.</span>
     </label>
     <label>Decklist submission deadline
       <input id="ee-decklist-deadline" type="date" value="{{ event.decklist_deadline | default('') | e }}">
       <span class="field-help">After this date, players can't submit or edit decklists.</span>
     </label>
-    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
+    <label class="checkbox-row no-divider" style="margin-top:0.5rem;margin-bottom:0.25rem">
       <input type="checkbox" id="ee-validate-decklists"{% if event.validation_format and event.validation_format != 'none' %} checked{% endif %}>
       <span>Validate decklists automatically
         <span class="field-help">Checks card legality and deck construction rules on submission.</span>
@@ -307,6 +308,7 @@
 {% block scripts %}
 <script>
 const EVENT_ID = {{ event.id | tojson }};
+const EE_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 'Commander', 'Pauper', 'Limited', 'Draft', 'Sealed', 'Premodern', 'Canlander', 'Custom'];
 const DECKLIST_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 'Pauper', 'Premodern', 'Canlander', 'Commander'];
 let eeAdvanced = {{ event.advanced | tojson }};
 const ACTIVE_COUNT = {{ active_count }};
@@ -327,6 +329,20 @@ document.getElementById('ee-table-end').value = {{ event.table_end | default(0) 
 document.getElementById('ee-table-excluded').value = formatTableList({{ event.tables_excluded | default([]) | tojson }});
 document.getElementById('ee-table-labels').value = formatTableLabels({{ event.table_labels | default({}) | tojson }});
 refreshEditTableWarning();
+
+(function() {
+  const sel = document.getElementById('ee-format-select');
+  sel.innerHTML = EE_FORMATS.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+  const srcFmt = {{ (event.format or '') | tojson }};
+  if (EE_FORMATS.includes(srcFmt)) {
+    sel.value = srcFmt;
+  } else if (srcFmt) {
+    sel.value = 'Custom';
+    const custom = document.getElementById('ee-format-custom');
+    custom.value = srcFmt;
+    custom.classList.remove('hidden');
+  }
+})();
 
 function upgradeToAdvanced() {
   eeAdvanced = true;
@@ -349,8 +365,18 @@ function onClosedDecklistsChange() {
   document.getElementById('ee-decklist-visibility-wrap').style.display = on ? '' : 'none';
 }
 
+function getEeFormat() {
+  const sel = document.getElementById('ee-format-select');
+  return sel.value === 'Custom' ? document.getElementById('ee-format-custom').value.trim() : sel.value;
+}
+
+function onFormatSelectChange() {
+  document.getElementById('ee-format-custom').classList.toggle('hidden', document.getElementById('ee-format-select').value !== 'Custom');
+  onFormatChange();
+}
+
 function onFormatChange() {
-  const fmt = document.getElementById('ee-format').value.trim().toLowerCase();
+  const fmt = getEeFormat().toLowerCase();
   const show = eeAdvanced && DECKLIST_FORMATS.some(f => f.toLowerCase() === fmt);
   document.getElementById('ee-decklist-opts').classList.toggle('hidden', !show);
   document.getElementById('ee-print-legality-opts').classList.toggle('hidden', fmt !== 'premodern');
@@ -417,7 +443,7 @@ async function saveEventDetails() {
     advanced:         eeAdvanced,
     name,
     event_type:       document.getElementById('ee-type').value,
-    format:           document.getElementById('ee-format').value,
+    format:           getEeFormat(),
     description:      document.getElementById('ee-description').value,
     entry_cost:       document.getElementById('ee-cost').value,
     payment_url:      document.getElementById('ee-payment').value,
@@ -434,12 +460,12 @@ async function saveEventDetails() {
     structure:        document.getElementById('ee-structure').value,
     planned_cut_size: document.getElementById('ee-structure').value === 'swiss_top_cut'
                         ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
-    requires_decklists: DECKLIST_FORMATS.some(f => f.toLowerCase() === document.getElementById('ee-format').value.trim().toLowerCase()),
+    requires_decklists: DECKLIST_FORMATS.some(f => f.toLowerCase() === getEeFormat().toLowerCase()),
     decklists_required:       document.getElementById('ee-decklists-required').checked,
     closed_decklists:         document.getElementById('ee-closed-decklists').checked,
     decklist_visibility_note: document.getElementById('ee-decklist-visibility-note').value,
     decklist_deadline:        document.getElementById('ee-decklist-deadline').value,
-    validation_format:  document.getElementById('ee-validate-decklists').checked ? document.getElementById('ee-format').value.trim().toLowerCase() : 'none',
+    validation_format:  document.getElementById('ee-validate-decklists').checked ? getEeFormat().toLowerCase() : 'none',
     allow_proxies:     document.getElementById('ee-allow-proxies').checked,
     allow_gold_border: document.getElementById('ee-allow-gold').checked,
     allow_ce:          document.getElementById('ee-allow-ce').checked,
