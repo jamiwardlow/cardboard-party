@@ -130,6 +130,16 @@
     <input type="checkbox" id="ee-decklists-required"{% if event.decklists_required | default(event.requires_decklists) %} checked{% endif %}>
     <span>Decklists are required</span>
   </label>
+  <label class="checkbox-row no-divider{% if not adv %} ee-adv{% endif %}" style="margin-bottom: 0.75rem">
+    <input type="checkbox" id="ee-closed-decklists"{% if event.closed_decklists %} checked{% endif %} onchange="onClosedDecklistsChange()">
+    <span>Closed decklists</span>
+  </label>
+  <label id="ee-decklist-visibility-wrap"{% if not adv %} class="ee-adv"{% endif %}{% if not event.closed_decklists %} style="display:none"{% endif %}>Decklist visibility
+    <input id="ee-decklist-visibility-note" type="text" maxlength="500"
+           placeholder="e.g. Decklists will be made public after the event"
+           value="{{ event.decklist_visibility_note | default('') | e }}">
+    <span class="field-help">Tell players when decklists will become public.</span>
+  </label>
   <label{% if not adv %} class="ee-adv"{% endif %}>Decklist deadline
     <input id="ee-decklist-deadline" type="date" value="{{ event.decklist_deadline | default('') | e }}">
     <span class="field-help">After this date, players can't submit or edit decklists.</span>
@@ -328,6 +338,11 @@ function onStructureChange() {
   document.getElementById('ee-topcut-wrap').classList.toggle('hidden', !isTopCut);
 }
 
+function onClosedDecklistsChange() {
+  const on = document.getElementById('ee-closed-decklists').checked;
+  document.getElementById('ee-decklist-visibility-wrap').style.display = on ? '' : 'none';
+}
+
 function checkedTags(containerId) {
   return [...document.querySelectorAll(`#${containerId} input:checked`)].map(c => c.value);
 }
@@ -406,9 +421,11 @@ async function saveEventDetails() {
     structure:        document.getElementById('ee-structure').value,
     planned_cut_size: document.getElementById('ee-structure').value === 'swiss_top_cut'
                         ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
-    requires_decklists: document.getElementById('ee-decklists').checked,
-    decklists_required: document.getElementById('ee-decklists-required').checked,
-    decklist_deadline:  document.getElementById('ee-decklist-deadline').value,
+    requires_decklists:       document.getElementById('ee-decklists').checked,
+    decklists_required:       document.getElementById('ee-decklists-required').checked,
+    closed_decklists:         document.getElementById('ee-closed-decklists').checked,
+    decklist_visibility_note: document.getElementById('ee-decklist-visibility-note').value,
+    decklist_deadline:        document.getElementById('ee-decklist-deadline').value,
     validation_format:  document.getElementById('ee-validation-format').value,
     allow_proxies:     document.getElementById('ee-allow-proxies').checked,
     allow_gold_border: document.getElementById('ee-allow-gold').checked,

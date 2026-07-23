@@ -1035,6 +1035,8 @@ def has_public_decklists() -> bool:
     for e in list_events():
         if not e.get('requires_decklists') or not _event_complete(e):
             continue
+        if e.get('closed_decklists') and not e.get('decklists_released'):
+            continue
         if any((p.get('decklist') or {}).get('text', '').strip() for p in e.get('players', [])):
             found = True
             break
@@ -1054,6 +1056,8 @@ def api_public_decklists():
     decks = []
     for e in list_events():
         if not e.get('requires_decklists') or not _event_complete(e):
+            continue
+        if e.get('closed_decklists') and not e.get('decklists_released'):
             continue
         event_rounds = e.get('rounds', [])
         standings = compute_standings(e['players'], event_rounds)
@@ -1104,6 +1108,8 @@ def api_public_player_decklist(event_id, player_id):
     """Public: full decklist text for one player in a completed event."""
     e = get_event(event_id)
     if not e or not e.get('requires_decklists') or not _event_complete(e):
+        return jsonify({'error': 'Not found'}), 404
+    if e.get('closed_decklists') and not e.get('decklists_released'):
         return jsonify({'error': 'Not found'}), 404
     p = next((x for x in e['players'] if x['id'] == player_id), None)
     if not p:
@@ -1186,15 +1192,19 @@ def edit_event_page(event_id):
                            active_count=active_count)
 
 @events_bp.route('/events/<event_id>/decklists')
-@login_required
 def decklists_page(event_id):
-    """Organiser-only table view of registered players' decklists (Epic 4)."""
+    """Decklists table. Open to anyone when decklists are public (open or released);
+    organizer-only when closed and not yet released."""
     event = get_event(event_id)
     if not event:
         return 'Event not found', 404
-    if not _can_manage(event):
-        return 'Organizers only.', 403
-    return render_template('decklists.html', user=get_current_user(), event=event)
+    user = get_current_user()
+    can_manage = _can_manage(event)
+    closed = bool(event.get('closed_decklists'))
+    released = bool(event.get('decklists_released'))
+    page_locked = not can_manage and closed and not released
+    return render_template('decklists.html', user=user, event=event,
+                           can_manage=can_manage, page_locked=page_locked)
 
 
 @events_bp.route('/events/<event_id>/submit-tcdecks')
@@ -1489,6 +1499,9 @@ def api_create_event():
         'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
         'requires_decklists': bool(data.get('requires_decklists', False)),
         'decklists_required': bool(data.get('decklists_required', False)),
+        'closed_decklists': bool(data.get('closed_decklists', False)),
+        'decklist_visibility_note': str(data.get('decklist_visibility_note') or '')[:500],
+        'decklists_released': False,
         'decklist_deadline': (data.get('decklist_deadline') or '').strip(),  # '' = no cutoff
         'validation_format': data.get('validation_format') if data.get('validation_format') in VALIDATION_FORMATS else 'none',
         # Print-legality policy (Premodern/Old School): which physical printings are
@@ -1642,7 +1655,8 @@ def api_update_event(event_id):
     _require_manage(e)
     data = request.json or {}
     allowed = {'name', 'advanced', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
-               'requires_decklists', 'decklists_required', 'entry_code', 'intentional_draws_frowned',
+               'requires_decklists', 'decklists_required', 'closed_decklists', 'decklist_visibility_note',
+               'entry_code', 'intentional_draws_frowned',
                'round_timer_minutes', 'auto_start_timer',
                'delay_pairings', 'delay_standings', 'require_check_in',
                'brand_text',
@@ -1681,6 +1695,10 @@ def api_update_event(event_id):
         updates['requires_decklists'] = bool(updates['requires_decklists'])
     if 'decklists_required' in updates:
         updates['decklists_required'] = bool(updates['decklists_required'])
+    if 'closed_decklists' in updates:
+        updates['closed_decklists'] = bool(updates['closed_decklists'])
+    if 'decklist_visibility_note' in updates:
+        updates['decklist_visibility_note'] = str(updates['decklist_visibility_note'] or '')[:500]
     for f in ('allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_ie'):
         if f in updates:
             updates[f] = bool(updates[f])
@@ -2447,13 +2465,20 @@ def api_organizer_import_moxfield(event_id, player_id):
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/decklist', methods=['GET', 'POST'])
-@login_required
 def api_player_decklist(event_id, player_id):
-    """Organiser-only: read (GET) or set (POST) a specific player's decklist."""
+    """Read (GET) or set (POST) a specific player's decklist. GET is open when
+    decklists are public; POST always requires organizer access."""
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
-    _require_manage(e)
+    can_manage = _can_manage(e)
+    if request.method == 'POST':
+        if not can_manage:
+            abort(403)
+    else:
+        if not can_manage:
+            if e.get('closed_decklists') and not e.get('decklists_released'):
+                return jsonify({'error': 'Decklists not yet public'}), 403
     p = next((x for x in e['players'] if x['id'] == player_id), None)
     if not p:
         return jsonify({'error': 'Player not found'}), 404
@@ -2528,14 +2553,15 @@ def api_proxy_override(event_id, player_id):
 
 
 @events_bp.route('/api/events/<event_id>/decklists', methods=['GET'])
-@login_required
 def api_decklists_table(event_id):
-    """Organiser-only: a per-player decklist summary for the Decklists table view —
-    deck name, maindeck/sideboard/proxy counts, and validation status."""
+    """Per-player decklist summary. Open to anyone when decklists are public."""
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
-    _require_manage(e)
+    can_manage = _can_manage(e)
+    if not can_manage:
+        if e.get('closed_decklists') and not e.get('decklists_released'):
+            return jsonify({'error': 'Decklists not yet public'}), 403
     complete = _event_complete(e)
     rank_map = {}
     if complete:
@@ -2596,6 +2622,21 @@ def api_release_delivery(event_id):
         discord_api.announce_round(e, round_num, request.host_url)
         discord_api.dm_round_pairings(e, round_num, request.host_url)
     return jsonify({'ok': True, field: True})
+
+
+@events_bp.route('/api/events/<event_id>/release-decklists', methods=['POST'])
+@login_required
+def api_release_decklists(event_id):
+    """Make closed decklists public. Once released, the Decklists page is accessible
+    to everyone and decklists appear on the aggregate /decklists page."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    save_event(event_id, {'decklists_released': True})
+    _decklists_nav_cache['at'] = 0  # bust the nav-link cache
+    _log_action(event_id, 'decklists', 'made decklists public')
+    return jsonify({'ok': True})
 
 
 @events_bp.route('/api/events/<event_id>/co-organizer-search', methods=['GET'])

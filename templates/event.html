@@ -101,7 +101,7 @@
 
 {% set has_print = event.allow_proxies or event.allow_gold_border or event.allow_ce or event.allow_ie %}
 {% set has_drop = event.drop_policy_text or event.refund_policy_text or event.refund_window_end or event.unenroll_end or event.self_service_drop_enabled == False %}
-{% set has_comms = event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days or has_print or has_drop %}
+{% set has_comms = event.schedule or event.rules or event.prizes or event.contact or event.prize_deadline_days or has_print or has_drop or (event.closed_decklists and event.requires_decklists) %}
 {% set has_extra = event.tags or event.requires_decklists or event.description or event.entry_cost or event.payment_url %}
 {% set has_brand = event.brand_image_url or event.brand_text %}
 <div class="event-info">
@@ -130,7 +130,7 @@
   {% if has_extra %}
   <div class="event-extra flow-block" data-section="description">
     {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
-    {% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required</p>{% endif %}
+    {% if event.requires_decklists %}{% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required{% if not event.closed_decklists %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% elif not event.closed_decklists %}<p class="event-note"><a href="/events/{{ event.id }}/decklists">View decklists</a></p>{% endif %}{% endif %}
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
     <p class="event-cost">
@@ -159,6 +159,9 @@
 Allowed printings: {{ printings|join(' · ') }}{% if event.allow_proxies and event.proxy_note %}
 
 Proxy policy: {{ event.proxy_note }}{% endif %}</div></details>{% endif %}
+  {% if event.closed_decklists and event.requires_decklists %}<details {{ comms_open }}><summary>Decklist visibility</summary><div class="comms-body">{% if event.decklist_visibility_note %}{{ event.decklist_visibility_note }}
+
+{% endif %}<a href="/events/{{ event.id }}/decklists">Submit your decklist →</a></div></details>{% endif %}
   {% if has_drop %}<details {{ comms_open }}><summary>Drop &amp; refund policy</summary><div class="comms-body">
 {%- if event.self_service_drop_enabled == False %}Players can’t drop themselves here — contact the organizer to drop.
 {%- elif event.unenroll_end %}Players may drop themselves until {{ event.unenroll_end }}. After that, contact the organizer.

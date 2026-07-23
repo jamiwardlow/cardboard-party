@@ -9,11 +9,21 @@
   </div>
 </div>
 
+{% if page_locked %}
+<p class="empty" style="margin-top:2rem">Decklists will be made public once the organizer releases them.</p>
+<p style="margin-top:0.5rem"><a href="/events/{{ event.id }}">← Back to {{ event.name }}</a></p>
+{% else %}
+
 <div class="action-row" style="margin-bottom:1rem">
+  {% if can_manage %}
   <button class="btn btn-sm" onclick="openMtgDecksModal()">Submit to MTGDecks</button>
   <a class="btn btn-sm" href="/events/{{ event.id }}/submit-tcdecks">Submit to TCDecks</a>
   <a class="btn btn-sm" href="/events/{{ event.id }}/submit-mtgtop8">Submit to MTG Top 8</a>
   <a class="btn btn-sm" href="/events/{{ event.id }}/submit-mtggoldfish">Submit to MTG Goldfish</a>
+  {% if event.closed_decklists and not event.decklists_released %}
+  <button class="btn btn-sm btn-primary" id="btn-release-decklists" onclick="releaseDecklists()">Release decklists</button>
+  {% endif %}
+  {% endif %}
 </div>
 
 <!-- Submit to MTGDecks modal -->
@@ -30,37 +40,42 @@
 
 <div id="decklists-wrap"><p class="loading">Loading…</p></div>
 
-<!-- View a player's decklist: editable deck name, proxy override, and the list -->
+<!-- View a player's decklist -->
 <div id="dv-modal" class="modal-backdrop hidden">
   <div class="modal">
     <h2 id="dv-title">Decklist</h2>
     <label>Deck name
-      <input id="dv-name" type="text" maxlength="120" placeholder="e.g. Mono-Red Burn">
+      <input id="dv-name" type="text" maxlength="120" placeholder="e.g. Mono-Red Burn"{% if not can_manage %} readonly{% endif %}>
     </label>
     <div class="dv-meta">
       <p id="dv-note" class="field-help"></p>
       <div id="dv-result" class="decklist-result"></div>
-      <div id="dv-proxy"></div>
+      {% if can_manage %}<div id="dv-proxy"></div>{% endif %}
     </div>
+    {% if can_manage %}
     <div class="mox-row" style="margin-top:0.5rem">
       <input id="dv-mox-url" type="url" placeholder="…or paste a Moxfield deck URL to import">
       <button class="btn btn-sm" onclick="importMoxfieldDv(this)">Import</button>
     </div>
+    {% endif %}
     <label style="display:flex;flex-direction:column;gap:0.35rem;font-size:0.88rem;font-weight:500">Decklist
-      <textarea id="dv-text" class="decklist-view" style="min-height:16rem;resize:vertical;cursor:text;width:100%;box-sizing:border-box" placeholder="Paste decklist here…"></textarea>
+      <textarea id="dv-text" class="decklist-view" style="min-height:16rem;resize:vertical;width:100%;box-sizing:border-box" placeholder="Paste decklist here…"{% if not can_manage %} readonly{% endif %}></textarea>
     </label>
     <div id="dv-save-result" style="font-size:0.85rem;margin-top:0.3rem"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeDv()">Close</button>
-      <button class="btn btn-primary" onclick="saveDvText()">Save decklist</button>
+      {% if can_manage %}<button class="btn btn-primary" onclick="saveDvText()">Save decklist</button>{% endif %}
     </div>
   </div>
 </div>
+
+{% endif %}{# not page_locked #}
 {% endblock %}
 
 {% block scripts %}
 <script>
 const EVENT_ID = "{{ event.id }}";
+const IS_ORGANIZER = {{ can_manage | tojson }};
 let rows = [], allowProxies = false, decklistsRequired = false, isComplete = false,
     sortKey = 'has_decklist', sortDir = 1, dvPlayerId = null;
 
@@ -122,7 +137,9 @@ function render() {
       : escapeHtml(r.player_name);
     const submitted_cell = r.has_decklist
       ? `<a href="#" onclick="viewDeck('${r.player_id}');return false">${r.deck_name ? escapeHtml(r.deck_name) : 'View decklist'}</a>`
-      : `<a href="#" onclick="viewDeck('${r.player_id}');return false" style="color:var(${decklistsRequired ? '--danger' : '--muted'})">Add decklist</a>`;
+      : IS_ORGANIZER
+        ? `<a href="#" onclick="viewDeck('${r.player_id}');return false" style="color:var(${decklistsRequired ? '--danger' : '--muted'})">Add decklist</a>`
+        : `<span style="color:var(--muted)">—</span>`;
     return `<tr${!r.has_decklist && decklistsRequired ? ' class="dl-row-missing"' : ''}>
         ${isComplete ? `<td class="rank-cell">${r.rank ?? '—'}</td>` : ''}
         <td>${player}</td>
@@ -159,13 +176,13 @@ async function viewDeck(pid) {
   document.getElementById('dv-text').value = d.text || '';
   document.getElementById('dv-save-result').textContent = '';
   const dvp = document.getElementById('dv-proxy');
-  if (allowProxies) {
+  if (dvp && allowProxies) {
     dvp.style.display = '';
     dvp.innerHTML = d.proxy_override
       ? `<p class="dl-note">⚠️ Proxy validation overridden — ${escapeHtml(d.proxy_override_note)} `
         + `<button class="btn btn-sm" onclick="clearProxyOverride('${pid}')">Clear</button></p>`
       : `<button class="btn btn-sm" onclick="setProxyOverride('${pid}')">Override proxy check</button>`;
-  } else { dvp.style.display = 'none'; }
+  } else if (dvp) { dvp.style.display = 'none'; }
   document.getElementById('dv-modal').classList.remove('hidden');
 }
 async function saveDvText() {
@@ -235,7 +252,22 @@ async function sendProxyOverride(pid, override, note) {
 }
 
 
+{% if not page_locked %}
 load();
+
+async function releaseDecklists() {
+  const btn = document.getElementById('btn-release-decklists');
+  if (!confirm('Make decklists public? This cannot be undone.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Releasing…'; }
+  const res = await fetch(`/api/events/${EVENT_ID}/release-decklists`, { method: 'POST' });
+  if (res.ok) {
+    window.location.reload();
+  } else {
+    const d = await res.json().catch(() => ({}));
+    alert(d.error || 'Could not release decklists.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Release decklists'; }
+  }
+}
 
 function openMtgDecksModal() {
   const withDeck = rows.filter(r => r.has_decklist).length;
@@ -294,5 +326,6 @@ async function submitToMtgDecks() {
     submitBtn.disabled = false;
   }
 }
+{% endif %}{# not page_locked #}
 </script>
 {% endblock %}

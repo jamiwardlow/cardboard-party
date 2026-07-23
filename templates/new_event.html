@@ -168,6 +168,16 @@
       <input type="checkbox" id="e-decklists-required"{% if source and (source.decklists_required | default(source.requires_decklists)) %} checked{% endif %}>
       <span>Decklists are required</span>
     </label>
+    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
+      <input type="checkbox" id="e-closed-decklists"{% if source and source.closed_decklists %} checked{% endif %} onchange="onClosedDecklistsChange()">
+      <span>Closed decklists</span>
+    </label>
+    <label id="e-decklist-visibility-wrap"{% if not source or not source.closed_decklists %} class="hidden"{% endif %}>Decklist visibility
+      <input id="e-decklist-visibility-note" type="text" maxlength="500"
+             placeholder="e.g. Decklists will be made public after the event"
+             value="{{ source.decklist_visibility_note | default('') | e if source else '' }}">
+      <span class="field-help">Tell players when decklists will become public.</span>
+    </label>
     <label>Decklist deadline
       <input id="e-decklist-deadline" type="date" value="{{ source.decklist_deadline | default('') | e }}">
       <span class="field-help">After this date, players can't submit or edit decklists.</span>
@@ -383,6 +393,11 @@ function onDecklistsChange() {
   document.getElementById('e-decklist-opts').classList.toggle('hidden', !on);
 }
 
+function onClosedDecklistsChange() {
+  const on = document.getElementById('e-closed-decklists').checked;
+  document.getElementById('e-decklist-visibility-wrap').classList.toggle('hidden', !on);
+}
+
 function onTablesChange() {
   toggleTableOpts('e');
   onTableConfigChange();
@@ -482,9 +497,11 @@ async function submitCreateEvent() {
     round_timer_minutes: parseInt(document.getElementById('e-round-timer').value) || 0,
   };
   {% if mode == 'advanced' %}
-  body.requires_decklists  = document.getElementById('e-decklists').checked;
-  body.decklists_required  = document.getElementById('e-decklists-required').checked;
-  body.decklist_deadline   = document.getElementById('e-decklist-deadline').value;
+  body.requires_decklists       = document.getElementById('e-decklists').checked;
+  body.decklists_required       = document.getElementById('e-decklists-required').checked;
+  body.closed_decklists         = document.getElementById('e-closed-decklists').checked;
+  body.decklist_visibility_note = document.getElementById('e-decklist-visibility-note').value;
+  body.decklist_deadline        = document.getElementById('e-decklist-deadline').value;
   body.validation_format   = document.getElementById('e-validation-format').value;
   body.allow_proxies       = document.getElementById('e-allow-proxies').checked;
   body.allow_gold_border   = document.getElementById('e-allow-gold').checked;
