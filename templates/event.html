@@ -130,7 +130,7 @@
   {% if has_extra %}
   <div class="event-extra flow-block" data-section="description">
     {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
-    {% if event.requires_decklists %}{% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required{% if not event.closed_decklists %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% elif not event.closed_decklists %}<p class="event-note"><a href="/events/{{ event.id }}/decklists">View decklists</a></p>{% endif %}{% endif %}
+    {% if event.requires_decklists %}{% set dl_public = not event.closed_decklists or event.decklists_released %}{% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% elif dl_public %}<p class="event-note"><a href="/events/{{ event.id }}/decklists">View decklists</a></p>{% endif %}{% endif %}
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
     <p class="event-cost">
@@ -161,7 +161,7 @@ Allowed printings: {{ printings|join(' · ') }}{% if event.allow_proxies and eve
 Proxy policy: {{ event.proxy_note }}{% endif %}</div></details>{% endif %}
   {% if event.closed_decklists and event.requires_decklists %}<details {{ comms_open }}><summary>Decklist visibility</summary><div class="comms-body">{% if event.decklist_visibility_note %}{{ event.decklist_visibility_note }}
 
-{% endif %}<a id="decklist-visibility-link" href="#" onclick="openMyDecklist(); return false;" style="display:none"></a></div></details>{% endif %}
+{% endif %}{% if event.decklists_released %}<a href="/events/{{ event.id }}/decklists">View decklists →</a>{% else %}<a id="decklist-visibility-link" href="#" onclick="openMyDecklist(); return false;" style="display:none"></a>{% endif %}</div></details>{% endif %}
   {% if has_drop %}<details {{ comms_open }}><summary>Drop &amp; refund policy</summary><div class="comms-body">
 {%- if event.self_service_drop_enabled == False %}Players can’t drop themselves here — contact the organizer to drop.
 {%- elif event.unenroll_end %}Players may drop themselves until {{ event.unenroll_end }}. After that, contact the organizer.
