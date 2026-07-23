@@ -1309,8 +1309,12 @@ async function saveMyDecklist(close) {
     const headers = {'Content-Type': 'application/json'};
     if (!decklistOrgPlayerId) Object.assign(headers, _guestHeaders());
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ text, name }) });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Could not save the decklist.'); return; }
-    const d = await res.json();
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (d.validation) renderDecklistValidation(d.validation);
+      else alertDialog(d.error || 'Could not save the decklist.');
+      return;
+    }
     if (decklistOrgPlayerId) {
       const p = state.players.find(x => x.id === decklistOrgPlayerId);
       if (p) { p.has_decklist = d.has_decklist; p.decklist_status = d.validation ? d.validation.status : null; }

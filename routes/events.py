@@ -2427,6 +2427,8 @@ def api_my_decklist(event_id):
     name = str((request.json or {}).get('name', '')).strip()[:120]
     validation = validate_decklist(text, e.get('validation_format', 'none'),
                                    _print_policy(e)) if text.strip() else None
+    if validation and validation.get('status') == 'errors':
+        return jsonify({'error': 'Fix the errors before saving.', 'validation': validation}), 422
     dl = {'text': text, 'name': name, 'updated_at': _now_iso(),
           'validation': validation} if text.strip() else None
     had = bool((p.get('decklist') or {}).get('text', '').strip())
@@ -2504,6 +2506,8 @@ def api_player_decklist(event_id, player_id):
     had  = bool((p.get('decklist') or {}).get('text', '').strip())
     validation = validate_decklist(text, e.get('validation_format', 'none'),
                                    _print_policy(e)) if text.strip() else None
+    if validation and validation.get('status') == 'errors':
+        return jsonify({'error': 'Fix the errors before saving.', 'validation': validation}), 422
     dl = {'text': text, 'name': name, 'updated_at': _now_iso(),
           'validation': validation} if text.strip() else None
     if set_player_field(event_id, player_id, 'decklist', dl) is None:

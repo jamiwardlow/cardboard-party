@@ -208,7 +208,18 @@ async function saveDvText() {
     body: JSON.stringify({ text, name }),
   });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) { resultEl.style.color = 'var(--danger)'; resultEl.textContent = d.error || 'Could not save.'; return; }
+  if (!res.ok) {
+    if (d.validation) {
+      const issues = d.validation.issues || [];
+      document.getElementById('dv-result').innerHTML = issues.length
+        ? '<ul class="dl-issues">' + issues.map(i =>
+            `<li class="dl-${i.severity}">${escapeHtml(i.message)}</li>`).join('') + '</ul>'
+        : '';
+    }
+    resultEl.style.color = 'var(--danger)';
+    resultEl.textContent = d.error || 'Could not save.';
+    return;
+  }
   const r = rows.find(x => x.player_id === dvPlayerId);
   if (r) {
     r.has_decklist = d.has_decklist;
