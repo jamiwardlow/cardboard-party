@@ -1033,9 +1033,12 @@ def has_public_decklists() -> bool:
         return _decklists_nav_cache['v']
     found = False
     for e in list_events():
-        if not e.get('requires_decklists') or not _event_complete(e):
+        if not e.get('requires_decklists'):
             continue
-        if e.get('closed_decklists') and not e.get('decklists_released'):
+        closed, released = bool(e.get('closed_decklists')), bool(e.get('decklists_released'))
+        if closed and not released:
+            continue
+        if not closed and not _event_complete(e):
             continue
         if any((p.get('decklist') or {}).get('text', '').strip() for p in e.get('players', [])):
             found = True
@@ -1055,9 +1058,12 @@ def api_public_decklists():
     """Public: flat list of all deck summaries from completed events with decklists."""
     decks = []
     for e in list_events():
-        if not e.get('requires_decklists') or not _event_complete(e):
+        if not e.get('requires_decklists'):
             continue
-        if e.get('closed_decklists') and not e.get('decklists_released'):
+        closed, released = bool(e.get('closed_decklists')), bool(e.get('decklists_released'))
+        if closed and not released:
+            continue
+        if not closed and not _event_complete(e):
             continue
         event_rounds = e.get('rounds', [])
         standings = compute_standings(e['players'], event_rounds)
@@ -1107,9 +1113,12 @@ def api_public_decklists():
 def api_public_player_decklist(event_id, player_id):
     """Public: full decklist text for one player in a completed event."""
     e = get_event(event_id)
-    if not e or not e.get('requires_decklists') or not _event_complete(e):
+    if not e or not e.get('requires_decklists'):
         return jsonify({'error': 'Not found'}), 404
-    if e.get('closed_decklists') and not e.get('decklists_released'):
+    closed, released = bool(e.get('closed_decklists')), bool(e.get('decklists_released'))
+    if closed and not released:
+        return jsonify({'error': 'Not found'}), 404
+    if not closed and not _event_complete(e):
         return jsonify({'error': 'Not found'}), 404
     p = next((x for x in e['players'] if x['id'] == player_id), None)
     if not p:

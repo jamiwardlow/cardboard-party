@@ -140,7 +140,7 @@
            value="{{ event.decklist_visibility_note | default('') | e }}">
     <span class="field-help">Tell players when decklists will become public.</span>
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Decklist deadline
+  <label{% if not adv %} class="ee-adv"{% endif %}>Decklist submission deadline
     <input id="ee-decklist-deadline" type="date" value="{{ event.decklist_deadline | default('') | e }}">
     <span class="field-help">After this date, players can't submit or edit decklists.</span>
   </label>

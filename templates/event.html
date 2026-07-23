@@ -161,7 +161,7 @@ Allowed printings: {{ printings|join(' · ') }}{% if event.allow_proxies and eve
 Proxy policy: {{ event.proxy_note }}{% endif %}</div></details>{% endif %}
   {% if event.closed_decklists and event.requires_decklists %}<details {{ comms_open }}><summary>Decklist visibility</summary><div class="comms-body">{% if event.decklist_visibility_note %}{{ event.decklist_visibility_note }}
 
-{% endif %}<a href="/events/{{ event.id }}/decklists">Submit your decklist →</a></div></details>{% endif %}
+{% endif %}<a id="decklist-visibility-link" href="#" onclick="openMyDecklist(); return false;" style="display:none"></a></div></details>{% endif %}
   {% if has_drop %}<details {{ comms_open }}><summary>Drop &amp; refund policy</summary><div class="comms-body">
 {%- if event.self_service_drop_enabled == False %}Players can’t drop themselves here — contact the organizer to drop.
 {%- elif event.unenroll_end %}Players may drop themselves until {{ event.unenroll_end }}. After that, contact the organizer.
@@ -1065,11 +1065,14 @@ function renderBanners() {
       document.getElementById('withdraw-btn').style.display = 'none';
       document.getElementById('guest-link-btn').style.display = isGuest ? '' : 'none';
       const dbtn = document.getElementById('btn-decklist');
+      const visLink = document.getElementById('decklist-visibility-link');
       if (state.requires_decklists && myPlayer.has_decklist) {
         dbtn.textContent = 'View decklist';
         dbtn.style.display = '';
+        if (visLink) { visLink.textContent = 'View your decklist →'; visLink.style.display = ''; }
       } else {
         dbtn.style.display = 'none';
+        if (visLink) visLink.style.display = 'none';
       }
       return;
     }
@@ -1153,11 +1156,20 @@ function _decklistLocked() {
 // The participant's own Submit/Edit/View button in the player banner.
 function renderDecklistButton() {
   const btn = document.getElementById('btn-decklist');
-  if (!state.requires_decklists || !myPlayer) { btn.style.display = 'none'; return; }
+  const visLink = document.getElementById('decklist-visibility-link');
+  if (!state.requires_decklists || !myPlayer) {
+    btn.style.display = 'none';
+    if (visLink) visLink.style.display = 'none';
+    return;
+  }
   const locked = _decklistLocked();
   btn.textContent = locked ? 'View decklist'
                   : (myPlayer.has_decklist ? 'Edit decklist' : 'Submit decklist');
   btn.style.display = '';
+  if (visLink) {
+    visLink.textContent = myPlayer.has_decklist ? 'Edit your decklist →' : 'Submit your decklist →';
+    visLink.style.display = '';
+  }
 }
 
 const VALIDATION_LABELS = { premodern: 'Premodern' };

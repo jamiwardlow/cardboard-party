@@ -69,6 +69,19 @@
   </div>
 </div>
 
+<!-- Release decklists confirmation modal -->
+{% if can_manage and event.closed_decklists and not event.decklists_released %}
+<div id="release-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <p class="confirm-modal-msg">Make decklists public? This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeReleaseModal()">Cancel</button>
+      <button class="btn btn-primary" id="release-confirm-btn" onclick="doRelease()">Release decklists</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endif %}{# not page_locked #}
 {% endblock %}
 
@@ -255,17 +268,23 @@ async function sendProxyOverride(pid, override, note) {
 {% if not page_locked %}
 load();
 
-async function releaseDecklists() {
-  const btn = document.getElementById('btn-release-decklists');
-  if (!confirm('Make decklists public? This cannot be undone.')) return;
-  if (btn) { btn.disabled = true; btn.textContent = 'Releasing…'; }
+function releaseDecklists() {
+  document.getElementById('release-modal').classList.remove('hidden');
+}
+function closeReleaseModal() {
+  document.getElementById('release-modal').classList.add('hidden');
+}
+async function doRelease() {
+  const confirmBtn = document.getElementById('release-confirm-btn');
+  confirmBtn.disabled = true; confirmBtn.textContent = 'Releasing…';
   const res = await fetch(`/api/events/${EVENT_ID}/release-decklists`, { method: 'POST' });
   if (res.ok) {
     window.location.reload();
   } else {
     const d = await res.json().catch(() => ({}));
-    alert(d.error || 'Could not release decklists.');
-    if (btn) { btn.disabled = false; btn.textContent = 'Release decklists'; }
+    closeReleaseModal();
+    confirmBtn.disabled = false; confirmBtn.textContent = 'Release decklists';
+    document.getElementById('btn-release-decklists').textContent = 'Release decklists';
   }
 }
 
