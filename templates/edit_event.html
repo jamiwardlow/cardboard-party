@@ -15,7 +15,7 @@
   {% if not adv %}
   <div id="ee-upgrade-row" style="margin-bottom:0.5rem">
     <button type="button" class="btn btn-sm" onclick="upgradeToAdvanced()">Switch to Advanced</button>
-    <span class="field-help" style="margin-left:0.6rem">Require decklists, delay pairings, and more.</span>
+    <span class="field-help" style="margin-left:0.6rem">Decklist settings, delay pairings, and more.</span>
   </div>
   {% endif %}
 
@@ -69,7 +69,7 @@
     </select>
   </label>
   <label>Format
-    <input id="ee-format" type="text" value="{{ event.format | default('') | e }}">
+    <input id="ee-format" type="text" value="{{ event.format | default('') | e }}" oninput="onFormatChange()">
   </label>
 
   {%- set event_tags = event.tags | default([]) -%}
@@ -122,60 +122,64 @@
   <label{% if not adv %} class="ee-adv"{% endif %}>Contact
     <textarea id="ee-contact" rows="2" placeholder="Optional — how to reach the organiser with questions">{{ event.contact | default('') | e }}</textarea>
   </label>
-  <label class="checkbox-row section-toggle{% if not adv %} ee-adv{% endif %}">
-    <input type="checkbox" id="ee-decklists"{% if event.requires_decklists %} checked{% endif %}>
-    <span>Submit decklists</span>
-  </label>
-  <label class="checkbox-row no-divider{% if not adv %} ee-adv{% endif %}" style="margin-bottom: 0.75rem">
-    <input type="checkbox" id="ee-decklists-required"{% if event.decklists_required | default(event.requires_decklists) %} checked{% endif %}>
-    <span>Decklists are required</span>
-  </label>
-  <label class="checkbox-row no-divider{% if not adv %} ee-adv{% endif %}" style="margin-bottom: 0.75rem">
-    <input type="checkbox" id="ee-closed-decklists"{% if event.closed_decklists %} checked{% endif %} onchange="onClosedDecklistsChange()">
-    <span>Closed decklists</span>
-  </label>
-  <label id="ee-decklist-visibility-wrap"{% if not adv %} class="ee-adv"{% endif %}{% if not event.closed_decklists %} style="display:none"{% endif %}>Decklist visibility
-    <input id="ee-decklist-visibility-note" type="text" maxlength="500"
-           placeholder="e.g. Decklists will be made public after the event"
-           value="{{ event.decklist_visibility_note | default('') | e }}">
-    <span class="field-help">Tell players when decklists will become public.</span>
-  </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Decklist submission deadline
-    <input id="ee-decklist-deadline" type="date" value="{{ event.decklist_deadline | default('') | e }}">
-    <span class="field-help">After this date, players can't submit or edit decklists.</span>
-  </label>
-  <label{% if not adv %} class="ee-adv"{% endif %} style="margin-top:0.9rem">Decklist validation
-    <select id="ee-validation-format">
-      <option value="none" {% if (event.validation_format or 'none') == 'none' %}selected{% endif %}>No automatic validation</option>
-      <option value="premodern" {% if event.validation_format == 'premodern' %}selected{% endif %}>Premodern</option>
-    </select>
-    <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
-  </label>
-  <div class="field-group print-legality{% if not adv %} ee-adv{% endif %}" style="border-top: none; padding-top: 0">
-    <span class="field-label">Allowed card printings</span>
-    <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
-    <label class="checkbox-row"><input type="checkbox" id="ee-allow-proxies"{% if event.allow_proxies %} checked{% endif %} onchange="onProxyToggle('ee')"> <span>Proxies allowed</span></label>
-    <div id="ee-proxy-opts"{% if not event.allow_proxies %} class="hidden"{% endif %} style="margin:0.15rem 0 0.4rem 1.6rem">
-      <label>Proxy limit
-        <select id="ee-proxy-policy" onchange="onProxyToggle('ee')">
-          <option value="unlimited" {% if (event.proxy_policy or 'unlimited') == 'unlimited' %}selected{% endif %}>No limit</option>
-          <option value="limited" {% if event.proxy_policy == 'limited' %}selected{% endif %}>Up to a set number</option>
-          <option value="custom" {% if event.proxy_policy == 'custom' %}selected{% endif %}>Custom policy</option>
-        </select>
-      </label>
-      <label id="ee-proxy-limit-wrap"{% if event.proxy_policy != 'limited' %} class="hidden"{% endif %}>Max proxies per deck
-        <input id="ee-proxy-limit" type="number" min="0" max="999" placeholder="e.g. 10"
-               value="{{ event.proxy_limit | default('') }}">
-      </label>
-      <label>Proxy policy details
-        <input id="ee-proxy-note" type="text" maxlength="500"
-               placeholder="Optional — e.g. must be clearly marked"
-               value="{{ event.proxy_note | default('') | e }}">
-      </label>
+  {%- set event_fmt_lower = (event.format or '')|lower -%}
+  {%- set dl_fmts = ['standard','pioneer','modern','legacy','vintage','pauper','premodern','canlander','commander'] -%}
+  {%- set dl_visible = adv and event_fmt_lower in dl_fmts -%}
+  {%- set pre_visible = adv and event_fmt_lower == 'premodern' -%}
+  <div id="ee-decklist-opts"{% if not dl_visible %} class="hidden"{% endif %}>
+    <div class="field-group group-divider" style="margin-bottom:0.5rem">
+      <span class="field-label">Decklist settings</span>
     </div>
-    <label class="checkbox-row"><input type="checkbox" id="ee-allow-gold"{% if event.allow_gold_border %} checked{% endif %}> <span>Gold-border cards allowed</span></label>
-    <label class="checkbox-row"><input type="checkbox" id="ee-allow-ce"{% if event.allow_ce %} checked{% endif %}> <span>Collector's Edition (CE) allowed</span></label>
-    <label class="checkbox-row"><input type="checkbox" id="ee-allow-ie"{% if event.allow_ie %} checked{% endif %}> <span>International Edition (IE) allowed</span></label>
+    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
+      <input type="checkbox" id="ee-decklists-required"{% if event.decklists_required | default(event.requires_decklists) %} checked{% endif %}>
+      <span>Decklists are required</span>
+    </label>
+    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
+      <input type="checkbox" id="ee-closed-decklists"{% if event.closed_decklists %} checked{% endif %} onchange="onClosedDecklistsChange()">
+      <span>Closed decklists</span>
+    </label>
+    <label id="ee-decklist-visibility-wrap"{% if not event.closed_decklists %} style="display:none"{% endif %}>Decklist visibility
+      <input id="ee-decklist-visibility-note" type="text" maxlength="500"
+             placeholder="e.g. Decklists will be made public after the event"
+             value="{{ event.decklist_visibility_note | default('') | e }}">
+      <span class="field-help">Tell players when decklists will become public.</span>
+    </label>
+    <label>Decklist submission deadline
+      <input id="ee-decklist-deadline" type="date" value="{{ event.decklist_deadline | default('') | e }}">
+      <span class="field-help">After this date, players can't submit or edit decklists.</span>
+    </label>
+    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
+      <input type="checkbox" id="ee-validate-decklists"{% if event.validation_format and event.validation_format != 'none' %} checked{% endif %}>
+      <span>Validate decklists automatically
+        <span class="field-help">Checks card legality and deck construction rules on submission.</span>
+      </span>
+    </label>
+    <div id="ee-print-legality-opts" class="field-group print-legality{% if not pre_visible %} hidden{% endif %}">
+      <span class="field-label">Allowed card printings</span>
+      <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-proxies"{% if event.allow_proxies %} checked{% endif %} onchange="onProxyToggle('ee')"> <span>Proxies allowed</span></label>
+      <div id="ee-proxy-opts"{% if not event.allow_proxies %} class="hidden"{% endif %} style="margin:0.15rem 0 0.4rem 1.6rem">
+        <label>Proxy limit
+          <select id="ee-proxy-policy" onchange="onProxyToggle('ee')">
+            <option value="unlimited" {% if (event.proxy_policy or 'unlimited') == 'unlimited' %}selected{% endif %}>No limit</option>
+            <option value="limited" {% if event.proxy_policy == 'limited' %}selected{% endif %}>Up to a set number</option>
+            <option value="custom" {% if event.proxy_policy == 'custom' %}selected{% endif %}>Custom policy</option>
+          </select>
+        </label>
+        <label id="ee-proxy-limit-wrap"{% if event.proxy_policy != 'limited' %} class="hidden"{% endif %}>Max proxies per deck
+          <input id="ee-proxy-limit" type="number" min="0" max="999" placeholder="e.g. 10"
+                 value="{{ event.proxy_limit | default('') }}">
+        </label>
+        <label>Proxy policy details
+          <input id="ee-proxy-note" type="text" maxlength="500"
+                 placeholder="Optional — e.g. must be clearly marked"
+                 value="{{ event.proxy_note | default('') | e }}">
+        </label>
+      </div>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-gold"{% if event.allow_gold_border %} checked{% endif %}> <span>Gold-border cards allowed</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-ce"{% if event.allow_ce %} checked{% endif %}> <span>Collector's Edition (CE) allowed</span></label>
+      <label class="checkbox-row"><input type="checkbox" id="ee-allow-ie"{% if event.allow_ie %} checked{% endif %}> <span>International Edition (IE) allowed</span></label>
+    </div>
   </div>
   <label class="cap-field">Registration cap
     <input id="ee-cap" type="number" min="2" max="256" placeholder="No cap"
@@ -303,6 +307,7 @@
 {% block scripts %}
 <script>
 const EVENT_ID = {{ event.id | tojson }};
+const DECKLIST_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 'Pauper', 'Premodern', 'Canlander', 'Commander'];
 let eeAdvanced = {{ event.advanced | tojson }};
 const ACTIVE_COUNT = {{ active_count }};
 
@@ -331,6 +336,7 @@ function upgradeToAdvanced() {
   onStructureChange();
   toggleTableOpts('ee');
   onProxyToggle('ee');
+  onFormatChange();
 }
 
 function onStructureChange() {
@@ -341,6 +347,13 @@ function onStructureChange() {
 function onClosedDecklistsChange() {
   const on = document.getElementById('ee-closed-decklists').checked;
   document.getElementById('ee-decklist-visibility-wrap').style.display = on ? '' : 'none';
+}
+
+function onFormatChange() {
+  const fmt = document.getElementById('ee-format').value.trim().toLowerCase();
+  const show = eeAdvanced && DECKLIST_FORMATS.some(f => f.toLowerCase() === fmt);
+  document.getElementById('ee-decklist-opts').classList.toggle('hidden', !show);
+  document.getElementById('ee-print-legality-opts').classList.toggle('hidden', fmt !== 'premodern');
 }
 
 function checkedTags(containerId) {
@@ -421,12 +434,12 @@ async function saveEventDetails() {
     structure:        document.getElementById('ee-structure').value,
     planned_cut_size: document.getElementById('ee-structure').value === 'swiss_top_cut'
                         ? (parseInt(document.getElementById('ee-topcut').value) || 0) : 0,
-    requires_decklists:       document.getElementById('ee-decklists').checked,
+    requires_decklists: DECKLIST_FORMATS.some(f => f.toLowerCase() === document.getElementById('ee-format').value.trim().toLowerCase()),
     decklists_required:       document.getElementById('ee-decklists-required').checked,
     closed_decklists:         document.getElementById('ee-closed-decklists').checked,
     decklist_visibility_note: document.getElementById('ee-decklist-visibility-note').value,
     decklist_deadline:        document.getElementById('ee-decklist-deadline').value,
-    validation_format:  document.getElementById('ee-validation-format').value,
+    validation_format:  document.getElementById('ee-validate-decklists').checked ? document.getElementById('ee-format').value.trim().toLowerCase() : 'none',
     allow_proxies:     document.getElementById('ee-allow-proxies').checked,
     allow_gold_border: document.getElementById('ee-allow-gold').checked,
     allow_ce:          document.getElementById('ee-allow-ce').checked,

@@ -15,7 +15,7 @@
   </a>
   <a class="mode-card" href="/events/new{% if source %}?mode=advanced&amp;duplicate={{ source.id | e }}{% else %}?mode=advanced{% endif %}">
     <strong>Advanced</strong>
-    <span>Submit decklists, delay pairings, and more.</span>
+    <span>Decklist settings, delay pairings, and more.</span>
   </a>
 </div>
 {% else %}
@@ -159,11 +159,10 @@
   <label>Contact
     <textarea id="e-contact" rows="2" placeholder="Optional — how to reach the organiser with questions">{{ source.contact | default('') | e }}</textarea>
   </label>
-  <label class="checkbox-row section-toggle">
-    <input type="checkbox" id="e-decklists"{% if source and source.requires_decklists %} checked{% endif %} onchange="onDecklistsChange()">
-    <span>Submit decklists</span>
-  </label>
-  <div id="e-decklist-opts"{% if not source or not source.requires_decklists %} class="hidden"{% endif %}>
+  <div id="e-decklist-opts" class="hidden">
+    <div class="field-group group-divider" style="margin-bottom:0.5rem">
+      <span class="field-label">Decklist settings</span>
+    </div>
     <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
       <input type="checkbox" id="e-decklists-required"{% if source and (source.decklists_required | default(source.requires_decklists)) %} checked{% endif %}>
       <span>Decklists are required</span>
@@ -182,14 +181,13 @@
       <input id="e-decklist-deadline" type="date" value="{{ source.decklist_deadline | default('') | e }}">
       <span class="field-help">After this date, players can't submit or edit decklists.</span>
     </label>
-    <label style="margin-top:0.9rem">Decklist validation
-      <select id="e-validation-format">
-        <option value="none"{% if not source or (source.validation_format | default('none')) == 'none' %} selected{% endif %}>No automatic validation</option>
-        <option value="premodern"{% if source and source.validation_format == 'premodern' %} selected{% endif %}>Premodern</option>
-      </select>
-      <span class="field-help">Premodern checks card legality, deck sizes, and the 4-copy limit on submission.</span>
+    <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
+      <input type="checkbox" id="e-validate-decklists"{% if source and source.validation_format and source.validation_format != 'none' %} checked{% endif %}>
+      <span>Validate decklists automatically
+        <span class="field-help">Checks card legality and deck construction rules on submission.</span>
+      </span>
     </label>
-    <div class="field-group print-legality">
+    <div id="e-print-legality-opts" class="field-group print-legality hidden">
       <span class="field-label">Allowed card printings</span>
       <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
       <label class="checkbox-row"><input type="checkbox" id="e-allow-proxies"{% if source and source.allow_proxies %} checked{% endif %} onchange="onProxyToggle('e')"> <span>Proxies allowed</span></label>
@@ -357,6 +355,7 @@ const GAME_FORMATS = {
   'Magic: The Gathering': ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage',
     'Commander', 'Pauper', 'Limited', 'Draft', 'Sealed', 'Premodern', 'Canlander', 'Custom'],
 };
+const DECKLIST_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 'Pauper', 'Premodern', 'Canlander', 'Commander'];
 const IS_ADVANCED = {{ (mode == 'advanced') | tojson }};
 const IS_DUPLICATE = {{ (source is not none) | tojson }};
 
@@ -379,18 +378,15 @@ function populateFormats() {
 }
 
 function onFormatSelectChange() {
-  const isCustom = document.getElementById('e-format-select').value === 'Custom';
-  document.getElementById('e-format-custom').classList.toggle('hidden', !isCustom);
+  const format = document.getElementById('e-format-select').value;
+  document.getElementById('e-format-custom').classList.toggle('hidden', format !== 'Custom');
+  document.getElementById('e-decklist-opts').classList.toggle('hidden', !DECKLIST_FORMATS.includes(format));
+  document.getElementById('e-print-legality-opts').classList.toggle('hidden', format !== 'Premodern');
 }
 
 function onStructureChange() {
   const isTopCut = document.getElementById('e-structure').value === 'swiss_top_cut';
   document.getElementById('e-topcut-wrap').classList.toggle('hidden', !isTopCut);
-}
-
-function onDecklistsChange() {
-  const on = document.getElementById('e-decklists').checked;
-  document.getElementById('e-decklist-opts').classList.toggle('hidden', !on);
 }
 
 function onClosedDecklistsChange() {
@@ -497,12 +493,12 @@ async function submitCreateEvent() {
     round_timer_minutes: parseInt(document.getElementById('e-round-timer').value) || 0,
   };
   {% if mode == 'advanced' %}
-  body.requires_decklists       = document.getElementById('e-decklists').checked;
+  body.requires_decklists       = DECKLIST_FORMATS.includes(format);
   body.decklists_required       = document.getElementById('e-decklists-required').checked;
   body.closed_decklists         = document.getElementById('e-closed-decklists').checked;
   body.decklist_visibility_note = document.getElementById('e-decklist-visibility-note').value;
   body.decklist_deadline        = document.getElementById('e-decklist-deadline').value;
-  body.validation_format   = document.getElementById('e-validation-format').value;
+  body.validation_format   = document.getElementById('e-validate-decklists').checked ? format.toLowerCase() : 'none';
   body.allow_proxies       = document.getElementById('e-allow-proxies').checked;
   body.allow_gold_border   = document.getElementById('e-allow-gold').checked;
   body.allow_ce            = document.getElementById('e-allow-ce').checked;
@@ -604,7 +600,6 @@ document.addEventListener('DOMContentLoaded', () => {
   onFormatSelectChange();
   {% endif %}
   onStructureChange();
-  onDecklistsChange();
   {% if source %}
   document.getElementById('e-table-start').value = {{ source.table_start | default(1) }};
   document.getElementById('e-table-end').value = {{ source.table_end | default(0) or '' | tojson }};

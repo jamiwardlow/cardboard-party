@@ -19,9 +19,33 @@ MAINDECK_MIN = 60
 SIDEBOARD_MAX = 15
 COPY_LIMIT = 4
 
-# Deck-validation formats (the values double as Scryfall `legalities` keys).
-# 'none' = no automatic validation. Designed to add legacy/commander/etc. later.
-VALIDATION_FORMATS = {'none': 'No automatic validation', 'premodern': 'Premodern'}
+# Deck-validation formats. Keys match Scryfall `legalities` keys where available.
+# 'none' = no automatic validation.
+VALIDATION_FORMATS = {
+    'none':      'No automatic validation',
+    'standard':  'Standard',
+    'pioneer':   'Pioneer',
+    'modern':    'Modern',
+    'legacy':    'Legacy',
+    'vintage':   'Vintage',
+    'pauper':    'Pauper',
+    'premodern': 'Premodern',
+    'canlander': 'Canlander',
+    'commander': 'Commander',
+}
+
+# Format-specific deck construction rules.
+_FORMAT_RULES = {
+    'standard':  {'min_main': 60,  'max_side': 15, 'copy_limit': 4},
+    'pioneer':   {'min_main': 60,  'max_side': 15, 'copy_limit': 4},
+    'modern':    {'min_main': 60,  'max_side': 15, 'copy_limit': 4},
+    'legacy':    {'min_main': 60,  'max_side': 15, 'copy_limit': 4},
+    'vintage':   {'min_main': 60,  'max_side': 15, 'copy_limit': 4},
+    'pauper':    {'min_main': 60,  'max_side': 15, 'copy_limit': 4},
+    'premodern': {'min_main': 60,  'max_side': 15, 'copy_limit': 4},
+    'canlander': {'min_main': 100, 'max_side': 10, 'copy_limit': 1},
+    'commander': {'min_main': 100, 'max_side': 10, 'copy_limit': 1},
+}
 
 _MAIN_HEADERS = {'deck', 'maindeck', 'main', 'mainboard'}
 _SIDE_HEADERS = {'sideboard', 'sb', 'sideboardcards'}
@@ -266,12 +290,16 @@ def validate_decklist(text: str, fmt: str = 'none', policy: dict = None) -> dict
                       note="Couldn't reach the card database, so the list wasn't validated.")
         return result
 
+    rules = _FORMAT_RULES.get(fmt, {})
+    min_main = rules.get('min_main', MAINDECK_MIN)
+    max_side = rules.get('max_side', SIDEBOARD_MAX)
+    copy_limit = rules.get('copy_limit', COPY_LIMIT)
     label = VALIDATION_FORMATS[fmt]
-    if main_count < MAINDECK_MIN:
+    if main_count < min_main:
         add('error', f'Maindeck has {main_count} card{"" if main_count == 1 else "s"}; '
-                     f'needs at least {MAINDECK_MIN}.')
-    if side_count > SIDEBOARD_MAX:
-        add('error', f'Sideboard has {side_count} cards; the maximum is {SIDEBOARD_MAX}.')
+                     f'needs at least {min_main}.')
+    if side_count > max_side:
+        add('error', f'Sideboard has {side_count} cards; the maximum is {max_side}.')
     for n in not_found[:15]:
         sug = _scryfall_suggest(n)
         add('error', f'Unrecognized card: "{n}"' + (f' — did you mean "{sug}"?' if sug else '.'))
@@ -283,13 +311,18 @@ def validate_decklist(text: str, fmt: str = 'none', policy: dict = None) -> dict
         card = by_name.get(n.lower())
         if not card:
             continue                                   # already flagged as unrecognized
-        if 'basic' not in card.get('type_line', '').lower() and totals[n.lower()] > COPY_LIMIT:
-            add('error', f'{totals[n.lower()]} copies of "{card["name"]}" — the limit is {COPY_LIMIT}.')
+        if 'basic' not in card.get('type_line', '').lower() and totals[n.lower()] > copy_limit:
+            if copy_limit == 1:
+                add('error', f'Multiple copies of "{card["name"]}" — only 1 copy is allowed (singleton format).')
+            else:
+                add('error', f'{totals[n.lower()]} copies of "{card["name"]}" — the limit is {copy_limit}.')
         legal = (card.get('legalities') or {}).get(fmt)
         if legal == 'banned':
             add('error', f'"{card["name"]}" is banned in {label}.')
         elif legal == 'not_legal':
             add('error', f'"{card["name"]}" is not legal in {label}.')
+        elif legal == 'restricted' and totals[n.lower()] > 1:
+            add('error', f'"{card["name"]}" is restricted in {label} — only 1 copy allowed.')
 
     has_error = any(i['severity'] == 'error' for i in issues)
     result['issues'] = issues
