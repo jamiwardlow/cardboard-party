@@ -130,7 +130,7 @@
   {% if has_extra %}
   <div class="event-extra flow-block" data-section="description">
     {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
-    {% if event.requires_decklists %}{% set dl_public = not event.closed_decklists or event.decklists_released %}{% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% elif dl_public %}<p class="event-note"><a href="/events/{{ event.id }}/decklists">View decklists</a></p>{% endif %}{% endif %}
+    {% if event.requires_decklists %}{% set dl_public = not event.closed_decklists or event.decklists_released %}{% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% else %}<p class="event-note">📋 Decklists optional{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% endif %}{% endif %}
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
     <p class="event-cost">
