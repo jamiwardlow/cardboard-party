@@ -16,7 +16,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 record_invite, recent_invite_count, target_invited_since,
                 set_invite_optout, is_invite_opted_out,
                 add_event_log, list_event_log, promote_waitlist_entry)
-from swiss import (pair_round, compute_standings, default_num_rounds, BYE_PLAYER_ID,
+from swiss import (pair_round, pair_draft_r1, compute_standings, default_num_rounds, BYE_PLAYER_ID,
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players,
                    assign_tables)
 from routes.auth import get_current_user, login_required, discord_login_enabled
@@ -26,6 +26,7 @@ from decklist import parse_decklist, validate_decklist, import_moxfield, VALIDAT
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
 import os
+import random
 import re
 import requests
 import threading
@@ -43,7 +44,7 @@ COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
 # validated against an allow-list rather than trusting whatever the client sends.
 TOURNAMENT_TAGS = ['Weekly Play', 'Prerelease', 'Regional Championship Qualifier',
                    'Spotlight Series']
-STRUCTURES = ['swiss', 'swiss_top_cut', 'custom']
+STRUCTURES = ['swiss', 'swiss_top_cut', 'single_elim', 'custom']
 
 
 def _clean_tags(raw) -> list:
@@ -2341,11 +2342,28 @@ def api_pair_round(event_id):
         players_to_pair = [p for p in e['players'] if p.get('checked_in')]
         if len([p for p in players_to_pair if not p.get('dropped')]) < 2:
             return jsonify({'error': 'Need at least 2 checked-in players to pair'}), 400
-    new_round = pair_round(players_to_pair, e['rounds'])
+    fmt_lower = (e.get('format') or '').lower()
+    is_draft_r1 = fmt_lower == 'draft' and not e['rounds']
+
+    if is_draft_r1:
+        # Assign random seats to active players, then pair by seat (1v5, 2v6, …).
+        active = [p for p in players_to_pair if not p.get('dropped')]
+        random.shuffle(active)
+        seat_by_id = {p['id']: i + 1 for i, p in enumerate(active)}
+        for p in e['players']:
+            if p['id'] in seat_by_id:
+                p['seat'] = seat_by_id[p['id']]
+        is_single_elim = e.get('structure') == 'single_elim'
+        new_round = pair_draft_r1(players_to_pair, bracket=is_single_elim)
+    else:
+        new_round = pair_round(players_to_pair, e['rounds'])
+
     assign_tables(new_round, e['players'], e)
     e['rounds'].append(new_round)
     updates = {'rounds': e['rounds'], 'status': 'active', 'registration': 'closed',
                **_new_round_updates(e)}
+    if is_draft_r1:
+        updates['players'] = e['players']   # persist seat assignments
     save_event(event_id, updates)
     e.update(updates)   # reflect status/registration + any auto-started timer in-memory
     refresh_event_announcement(e)

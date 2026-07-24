@@ -86,7 +86,14 @@
 
   {% if mode == 'simple' %}
   <label>Format
-    <input id="e-format" type="text" value="{{ source.format | default('Limited: Draft') | e }}">
+    <select id="e-format-select" onchange="onSimpleFormatChange()"></select>
+    <input id="e-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
+  </label>
+  <label id="e-simple-structure-row" class="hidden">Structure
+    <select id="e-simple-structure">
+      <option value="swiss"{% if source and source.structure == 'swiss' %} selected{% endif %}>Swiss</option>
+      <option value="single_elim"{% if source and source.structure == 'single_elim' %} selected{% endif %}>Single-elimination</option>
+    </select>
   </label>
   {% else %}
   <label>Format
@@ -161,7 +168,7 @@
   </label>
   <div id="e-decklist-opts" class="hidden">
     <div class="field-group group-divider" style="margin-bottom:0.5rem">
-      <span class="field-label">Decklist settings</span>
+      <span class="field-label" style="font-size:1.05rem">Decklist settings</span>
     </div>
     <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
       <input type="checkbox" id="e-decklists-required"{% if source and (source.decklists_required | default(source.requires_decklists)) %} checked{% endif %}>
@@ -187,7 +194,7 @@
         <span class="field-help">Checks card legality and deck construction rules on submission.</span>
       </span>
     </label>
-    <div id="e-print-legality-opts" class="field-group print-legality hidden">
+    <div id="e-print-legality-opts" class="field-group print-legality hidden" style="border-top:none;padding-top:0">
       <span class="field-label">Allowed card printings</span>
       <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
       <label class="checkbox-row"><input type="checkbox" id="e-allow-proxies"{% if source and source.allow_proxies %} checked{% endif %} onchange="onProxyToggle('e')"> <span>Proxies allowed</span></label>
@@ -241,7 +248,7 @@
     <input id="e-reg-end" type="date" value="{{ source.registration_end | default('') | e if source else '' }}">
   </label>
   <div class="field-group group-divider">
-    <span class="field-label">Drop &amp; refund policy</span>
+    <span class="field-label" style="font-size:1.05rem">Drop &amp; refund policy</span>
     <label class="checkbox-row no-divider">
       <input type="checkbox" id="e-self-drop"{% if not source or source.self_service_drop_enabled is not false %} checked{% endif %}>
       <span>Allow players to drop themselves</span>
@@ -359,6 +366,33 @@ const DECKLIST_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 
 const IS_ADVANCED = {{ (mode == 'advanced') | tojson }};
 const IS_DUPLICATE = {{ (source is not none) | tojson }};
 
+{% if mode == 'simple' %}
+function onSimpleFormatChange() {
+  const fmt = document.getElementById('e-format-select').value;
+  document.getElementById('e-format-custom').classList.toggle('hidden', fmt !== 'Custom');
+  const isDraft = fmt === 'Draft';
+  document.getElementById('e-simple-structure-row').classList.toggle('hidden', !isDraft);
+  if (isDraft && !document.getElementById('e-cap').value) {
+    document.getElementById('e-cap').value = '8';
+  }
+}
+
+(function() {
+  const sel = document.getElementById('e-format-select');
+  const fmts = GAME_FORMATS['Magic: The Gathering'] || [];
+  sel.innerHTML = fmts.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+  const srcFmt = {{ ((source.format if source else None) or 'Draft') | tojson }};
+  if (fmts.includes(srcFmt)) {
+    sel.value = srcFmt;
+  } else if (srcFmt) {
+    sel.value = 'Custom';
+    document.getElementById('e-format-custom').value = srcFmt;
+    document.getElementById('e-format-custom').classList.remove('hidden');
+  }
+  onSimpleFormatChange();
+})();
+{% endif %}
+
 {% if mode == 'advanced' %}
 function previewBrandImage() {
   const file = document.getElementById('e-brand-file').files[0];
@@ -428,7 +462,10 @@ function validateCreate() {
     errors.push('Registration close date is before the open date.'); mark('e-reg-start'); mark('e-reg-end');
   }
   {% else %}
-  if (!document.getElementById('e-format').value.trim()) { errors.push('Format is required.'); mark('e-format'); }
+  if (document.getElementById('e-format-select').value === 'Custom' &&
+      !document.getElementById('e-format-custom').value.trim()) {
+    errors.push('Enter a name for the custom format.'); mark('e-format-custom');
+  }
   {% endif %}
 
   const box = document.getElementById('create-errors');
@@ -464,7 +501,13 @@ async function submitCreateEvent() {
   if (structure === 'swiss_top_cut')
     plannedCut = parseInt(document.getElementById('e-topcut').value) || 0;
   {% else %}
-  format = document.getElementById('e-format').value;
+  const simpleSel = document.getElementById('e-format-select').value;
+  format = simpleSel === 'Custom'
+    ? document.getElementById('e-format-custom').value.trim()
+    : simpleSel;
+  if (format === 'Draft') {
+    structure = document.getElementById('e-simple-structure').value;
+  }
   {% endif %}
 
   const place = placeFields('e-location');

@@ -129,7 +129,7 @@
   {%- set pre_visible = adv and event_fmt_lower == 'premodern' -%}
   <div id="ee-decklist-opts"{% if not dl_visible %} class="hidden"{% endif %}>
     <div class="field-group group-divider" style="margin-bottom:0.5rem">
-      <span class="field-label">Decklist settings</span>
+      <span class="field-label" style="font-size:1.05rem">Decklist settings</span>
     </div>
     <label class="checkbox-row no-divider" style="margin-bottom: 0.75rem">
       <input type="checkbox" id="ee-decklists-required"{% if event.decklists_required | default(event.requires_decklists) %} checked{% endif %}>
@@ -155,7 +155,7 @@
         <span class="field-help">Checks card legality and deck construction rules on submission.</span>
       </span>
     </label>
-    <div id="ee-print-legality-opts" class="field-group print-legality{% if not pre_visible %} hidden{% endif %}">
+    <div id="ee-print-legality-opts" class="field-group print-legality{% if not pre_visible %} hidden{% endif %}" style="border-top:none;padding-top:0">
       <span class="field-label">Allowed card printings</span>
       <span class="field-help">Players tag matching cards in their decklist (e.g. <code>[Proxy]</code>).</span>
       <label class="checkbox-row"><input type="checkbox" id="ee-allow-proxies"{% if event.allow_proxies %} checked{% endif %} onchange="onProxyToggle('ee')"> <span>Proxies allowed</span></label>
@@ -205,7 +205,7 @@
     <input id="ee-reg-end" type="date" value="{{ event.registration_end | default('') | e }}">
   </label>
   <div class="{% if not adv %}ee-adv {% endif %}field-group group-divider">
-    <span class="field-label">Drop &amp; refund policy</span>
+    <span class="field-label" style="font-size:1.05rem">Drop &amp; refund policy</span>
     <label class="checkbox-row no-divider">
       <input type="checkbox" id="ee-self-drop"{% if event.self_service_drop_enabled is not false %} checked{% endif %}>
       <span>Allow players to drop themselves</span>

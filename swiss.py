@@ -355,6 +355,39 @@ def id_safe_players(players: list[dict], rounds: list[list[dict]],
     return safe
 
 
+# ── Draft pod first-round pairing ───────────────────────────────────────────────
+
+def pair_draft_r1(players: list[dict], bracket: bool = False) -> list[dict]:
+    """First-round pairing for a Draft event.
+
+    Players must already have a 'seat' integer (1..n).  Pairs seat k vs seat
+    (half + k), giving top-half-of-pod vs bottom-half: 1v5, 2v6, 3v7, 4v8 for
+    an 8-player pod.  If bracket is True, matches are tagged stage='bracket' for
+    single-elimination advancement.  An odd player at the end gets a bye.
+    """
+    active = sorted([p for p in players if not p.get('dropped')],
+                    key=lambda p: p.get('seat', 0))
+    n = len(active)
+    half = n // 2
+    pairings = []
+    for i in range(half):
+        m = _make_pairing(active[i], active[i + half])
+        if bracket:
+            m['stage'] = 'bracket'
+        pairings.append(m)
+    if n % 2 == 1:
+        bye_p = active[-1]
+        pairings.append({
+            'player1_id': bye_p['id'],
+            'player2_id': BYE_PLAYER_ID,
+            'winner_id':  bye_p['id'],
+            'result':     '2-0-0',
+            'is_bye':     True,
+            'table':      None,
+        })
+    return pairings
+
+
 # ── Single-elimination playoff bracket ──────────────────────────────────────────
 #
 # After Swiss, the organiser may "cut to top N" (4, 8, or 16): the top N players
