@@ -341,6 +341,7 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
         'dropped':    False,
         'checked_in': False,
     }
+    _assign_draft_seat(player, e)
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     # Remember the Discord ID on a matched (handle-linked) account so future links
@@ -928,6 +929,17 @@ def _can_report_match(event: dict, match: dict, data: dict) -> bool:
 
 def _slugify(name: str) -> str:
     return re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
+
+
+def _assign_draft_seat(player: dict, event: dict) -> None:
+    """Stamp the next available seat number onto player if this is a Draft event."""
+    if (event.get('format') or '').lower() != 'draft':
+        return
+    used = {p['seat'] for p in event['players'] if isinstance(p.get('seat'), int)}
+    seat = 1
+    while seat in used:
+        seat += 1
+    player['seat'] = seat
 
 _RESULT_RE = re.compile(r'^(\d+)-(\d+)$')
 
@@ -1849,6 +1861,7 @@ def api_register(event_id):
         'dropped':   False,
         'checked_in': False,
     }
+    _assign_draft_seat(player, e)
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
@@ -2050,6 +2063,7 @@ def api_join_guest(event_id):
         'checked_in':  False,
         'guest_token': token,
     }
+    _assign_draft_seat(player, e)
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
@@ -2134,6 +2148,7 @@ def api_add_player(event_id):
         # only auto-mark present when check-in isn't required or rounds have already started.
         'checked_in': not e.get('require_check_in') or bool(e.get('rounds')),
     }
+    _assign_draft_seat(player, e)
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
@@ -2375,13 +2390,24 @@ def api_pair_round(event_id):
     is_draft_r1 = fmt_lower == 'draft' and not e['rounds']
 
     if is_draft_r1:
-        # Assign random seats to active players, then pair by seat (1v5, 2v6, …).
+        # Seats are normally assigned at registration. Fill any gaps for players
+        # who joined before this feature was added.
         active = [p for p in players_to_pair if not p.get('dropped')]
-        random.shuffle(active)
-        seat_by_id = {p['id']: i + 1 for i, p in enumerate(active)}
-        for p in e['players']:
-            if p['id'] in seat_by_id:
-                p['seat'] = seat_by_id[p['id']]
+        unseated = [p for p in active if not isinstance(p.get('seat'), int)]
+        if unseated:
+            random.shuffle(unseated)
+            used = {p['seat'] for p in active if isinstance(p.get('seat'), int)}
+            seat = 1
+            for p in unseated:
+                while seat in used:
+                    seat += 1
+                for ep in e['players']:
+                    if ep['id'] == p['id']:
+                        ep['seat'] = seat
+                        break
+                p['seat'] = seat
+                used.add(seat)
+                seat += 1
         is_single_elim = e.get('structure') == 'single_elim'
         new_round = pair_draft_r1(players_to_pair, bracket=is_single_elim)
     else:
