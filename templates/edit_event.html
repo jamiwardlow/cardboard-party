@@ -88,6 +88,7 @@
       <option value="" {% if not event.structure %}selected{% endif %}>— Select —</option>
       <option value="swiss" {% if event.structure == 'swiss' %}selected{% endif %}>Swiss only</option>
       <option value="swiss_top_cut" {% if event.structure == 'swiss_top_cut' %}selected{% endif %}>Swiss + Top Cut</option>
+      <option value="single_elim" {% if event.structure == 'single_elim' %}selected{% endif %}>Single-elimination</option>
       <option value="custom" {% if event.structure == 'custom' %}selected{% endif %}>Custom</option>
     </select>
   </label>
@@ -343,6 +344,7 @@ refreshEditTableWarning();
     custom.classList.remove('hidden');
   }
 })();
+_syncStructureToFormat(getEeFormat().toLowerCase());
 
 function upgradeToAdvanced() {
   eeAdvanced = true;
@@ -358,6 +360,21 @@ function upgradeToAdvanced() {
 function onStructureChange() {
   const isTopCut = document.getElementById('ee-structure').value === 'swiss_top_cut';
   document.getElementById('ee-topcut-wrap').classList.toggle('hidden', !isTopCut);
+}
+
+function _syncStructureToFormat(fmtLower) {
+  const isDraft = fmtLower === 'draft';
+  const sel = document.getElementById('ee-structure');
+  const cur = sel.value;
+  const opts = isDraft
+    ? [{v: '', l: '— Select —'}, {v: 'swiss', l: 'Swiss'}, {v: 'single_elim', l: 'Single-elimination'}]
+    : [{v: '', l: '— Select —'}, {v: 'swiss', l: 'Swiss only'}, {v: 'swiss_top_cut', l: 'Swiss + Top Cut'}, {v: 'custom', l: 'Custom'}];
+  sel.innerHTML = opts.map(o => `<option value="${escapeHtml(o.v)}">${escapeHtml(o.l)}</option>`).join('');
+  if (opts.some(o => o.v === cur)) sel.value = cur;
+  if (isDraft && !document.getElementById('ee-cap').value) {
+    document.getElementById('ee-cap').value = '8';
+  }
+  onStructureChange();
 }
 
 function onClosedDecklistsChange() {
@@ -380,6 +397,7 @@ function onFormatChange() {
   const show = eeAdvanced && DECKLIST_FORMATS.some(f => f.toLowerCase() === fmt);
   document.getElementById('ee-decklist-opts').classList.toggle('hidden', !show);
   document.getElementById('ee-print-legality-opts').classList.toggle('hidden', fmt !== 'premodern');
+  if (eeAdvanced) _syncStructureToFormat(fmt);
 }
 
 function checkedTags(containerId) {

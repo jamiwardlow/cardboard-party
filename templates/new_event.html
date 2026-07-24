@@ -89,12 +89,6 @@
     <select id="e-format-select" onchange="onSimpleFormatChange()"></select>
     <input id="e-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
   </label>
-  <label id="e-simple-structure-row" class="hidden">Structure
-    <select id="e-simple-structure">
-      <option value="swiss"{% if source and source.structure == 'swiss' %} selected{% endif %}>Swiss</option>
-      <option value="single_elim"{% if source and source.structure == 'single_elim' %} selected{% endif %}>Single-elimination</option>
-    </select>
-  </label>
   {% else %}
   <label>Format
     <select id="e-format-select" onchange="onFormatSelectChange()"></select>
@@ -370,9 +364,7 @@ const IS_DUPLICATE = {{ (source is not none) | tojson }};
 function onSimpleFormatChange() {
   const fmt = document.getElementById('e-format-select').value;
   document.getElementById('e-format-custom').classList.toggle('hidden', fmt !== 'Custom');
-  const isDraft = fmt === 'Draft';
-  document.getElementById('e-simple-structure-row').classList.toggle('hidden', !isDraft);
-  if (isDraft && !document.getElementById('e-cap').value) {
+  if (fmt === 'Draft' && !document.getElementById('e-cap').value) {
     document.getElementById('e-cap').value = '8';
   }
 }
@@ -416,6 +408,22 @@ function onFormatSelectChange() {
   document.getElementById('e-format-custom').classList.toggle('hidden', format !== 'Custom');
   document.getElementById('e-decklist-opts').classList.toggle('hidden', !DECKLIST_FORMATS.includes(format));
   document.getElementById('e-print-legality-opts').classList.toggle('hidden', format !== 'Premodern');
+  _syncStructureToFormat(format);
+}
+
+function _syncStructureToFormat(format) {
+  const isDraft = format === 'Draft';
+  const sel = document.getElementById('e-structure');
+  const cur = sel.value;
+  const opts = isDraft
+    ? [{v: '', l: '— Select —'}, {v: 'swiss', l: 'Swiss'}, {v: 'single_elim', l: 'Single-elimination'}]
+    : [{v: '', l: '— Select —'}, {v: 'swiss', l: 'Swiss only'}, {v: 'swiss_top_cut', l: 'Swiss + Top Cut'}, {v: 'custom', l: 'Custom'}];
+  sel.innerHTML = opts.map(o => `<option value="${escapeHtml(o.v)}">${escapeHtml(o.l)}</option>`).join('');
+  if (opts.some(o => o.v === cur)) sel.value = cur;
+  if (isDraft && !document.getElementById('e-cap').value) {
+    document.getElementById('e-cap').value = '8';
+  }
+  onStructureChange();
 }
 
 function onStructureChange() {
@@ -505,9 +513,6 @@ async function submitCreateEvent() {
   format = simpleSel === 'Custom'
     ? document.getElementById('e-format-custom').value.trim()
     : simpleSel;
-  if (format === 'Draft') {
-    structure = document.getElementById('e-simple-structure').value;
-  }
   {% endif %}
 
   const place = placeFields('e-location');
@@ -641,6 +646,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (srcFmt && fmts.includes(srcFmt)) { fmtSel.value = srcFmt; }
   else if (srcFmt) { fmtSel.value = 'Custom'; document.getElementById('e-format-custom').value = srcFmt; }
   onFormatSelectChange();
+  document.getElementById('e-structure').value = {{ (source.structure or '') | tojson }};
+  onStructureChange();
   {% endif %}
   onStructureChange();
   {% if source %}
