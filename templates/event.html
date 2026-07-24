@@ -1972,6 +1972,8 @@ function renderPlayers() {
     // where a handle would be flags who won't get the bot's notifications.
     const discord = p.discord
       ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
+    const isDraft = (state.format || '').toLowerCase() === 'draft';
+    const seatBadge = isDraft && p.seat ? `<span class="seat-badge">Seat ${p.seat}</span>` : '';
     const profileLink = p.google_id
       ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(p.name)}</a>`
       : `<span class="player-name">${escapeHtml(p.name)}</span>`;
@@ -1986,7 +1988,7 @@ function renderPlayers() {
       ? `<button class="btn btn-sm edit-name-btn" title="Edit display name" onclick="renamePlayer('${p.id}')">✎</button>`
       : '';
     return `<li class="${p.dropped ? 'dropped' : ''}">
-      ${profileLink}${selfEditBtn}${discord}${checkEl}${detailsBtn}
+      ${profileLink}${selfEditBtn}${discord}${seatBadge}${checkEl}${detailsBtn}
     </li>`;
   }).join('')) || '<li class="empty">No players match your search.</li>';
 }
@@ -2013,6 +2015,10 @@ function openPlayerDetails(playerId) {
       acts.push(`<button class="btn" onclick="pdRun('decklist')">${flagged ? '⚠️ View decklist' : '📋 View decklist'}</button>`);
     }
   }
+  if ((state.format || '').toLowerCase() === 'draft' && !p.dropped) {
+    const seatLabel = p.seat ? `Set seat (currently ${p.seat})` : 'Set seat';
+    acts.push(`<button class="btn" onclick="pdRun('seat')">${seatLabel}</button>`);
+  }
   if (state.tables_enabled && !p.dropped) {
     const label = p.fixed_table ? `🪑 Fixed seat: Table ${p.fixed_table}` : '🪑 Set fixed seat';
     acts.push(`<button class="btn" onclick="pdRun('fixed')">${label}</button>`);
@@ -2036,7 +2042,7 @@ function pdRun(action) {
   const id = pdPlayerId;
   closePlayerDetails();
   const fns = { rename: renamePlayer, decklist: openPlayerDecklist, fixed: setFixedTable,
-                remove: removePlayer, undrop: undropPlayer, drop: dropPlayer };
+                seat: setSeat, remove: removePlayer, undrop: undropPlayer, drop: dropPlayer };
   if (fns[action]) fns[action](id);
 }
 
@@ -2075,6 +2081,26 @@ async function setFixedTable(playerId) {
   });
   if (res.ok) await init();
   else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to set fixed table.'); }
+}
+
+async function setSeat(playerId) {
+  const p = state.players.find(x => x.id === playerId);
+  const current = p && p.seat ? String(p.seat) : '';
+  const ans = await promptDialog('Seat number for this player (blank to clear):', current,
+                                 { okLabel: 'Save', placeholder: 'Seat number' });
+  if (ans === null) return;
+  const trimmed = ans.trim();
+  if (trimmed === current) return;
+  const seat = trimmed === '' ? null : parseInt(trimmed, 10);
+  if (seat !== null && (!Number.isInteger(seat) || seat < 1)) {
+    alertDialog('Enter a seat number, or leave blank to clear.'); return;
+  }
+  const res = await fetch(`/api/events/${EVENT_ID}/players/${encodeURIComponent(playerId)}/seat`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ seat }),
+  });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to set seat.'); }
 }
 
 // Organiser edits a single match's table. Prompts, then sends; a duplicate table

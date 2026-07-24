@@ -2280,6 +2280,35 @@ def api_set_fixed_table(event_id, player_id):
                 else f"cleared {player['name']}'s fixed table", target=player['name'])
     return jsonify({'ok': True, 'fixed_table': table})
 
+@events_bp.route('/api/events/<event_id>/players/<player_id>/seat', methods=['POST'])
+@login_required
+def api_set_seat(event_id, player_id):
+    """Organiser sets (or clears) a player's draft pod seat number."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    player = next((p for p in e['players'] if p['id'] == player_id), None)
+    if not player:
+        return jsonify({'error': 'Player not found'}), 404
+    raw = (request.json or {}).get('seat')
+    seat = None
+    if raw not in (None, '', 0, '0'):
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Seat must be a number'}), 400
+        if not (1 <= n <= 256):
+            return jsonify({'error': 'Seat must be between 1 and 256'}), 400
+        seat = n
+    if seat is None:
+        player.pop('seat', None)
+    else:
+        player['seat'] = seat
+    save_event(event_id, {'players': e['players']})
+    return jsonify({'ok': True, 'seat': seat})
+
+
 @events_bp.route('/api/events/<event_id>/players/<player_id>/checkin', methods=['POST'])
 @login_required
 def api_check_in(event_id, player_id):

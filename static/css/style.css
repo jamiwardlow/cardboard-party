@@ -534,6 +534,9 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .player-list li:last-child { border-bottom: none; }
 .player-name    { flex: 1; color: var(--text); }
 .player-discord { font-size: 0.78rem; color: var(--muted); }
+.seat-badge { font-size: 0.72rem; font-weight: 600; font-family: var(--font-mono);
+              color: var(--accent); background: var(--accent-soft); border-radius: 99px;
+              padding: 0.05rem 0.5rem; margin-left: 0.25rem; }
 .dropped .player-name { text-decoration: line-through; color: var(--muted); }
 #standings-table tr.dropped td { color: var(--muted); }
 #standings-table tr.dropped td:first-child { color: var(--muted); }
