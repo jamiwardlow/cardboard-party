@@ -8,7 +8,7 @@ re-run.
     GOOGLE_CLOUD_PROJECT=cardboard-party         python backfill_discord_profiles.py
 """
 
-from routes.events import backfill_discord_profiles
+from discord_actions import backfill_discord_profiles
 
 if __name__ == '__main__':
     print(backfill_discord_profiles())
