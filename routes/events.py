@@ -1573,8 +1573,8 @@ def api_create_event():
         'contact':      str(data.get('contact') or '')[:_COMMS_MAX],
         'event_type':   data.get('event_type', 'One-day'),
         'format':       data.get('format', 'Limited: Draft'),
-        'description':  data.get('description', ''),
-        'entry_cost':   data.get('entry_cost', ''),
+        'description':  str(data.get('description') or '')[:_COMMS_MAX],
+        'entry_cost':   str(data.get('entry_cost') or '')[:_COMMS_MAX],
         'payment_url':  payment_url,
         'date':         data.get('date', str(datetime.date.today())),
         'start_time':   (data.get('start_time') or '').strip()[:5],
@@ -1702,7 +1702,7 @@ def api_update_event(event_id):
         updates['advanced'] = bool(updates['advanced']) or bool(e.get('advanced'))
     if 'self_service_drop_enabled' in updates:
         updates['self_service_drop_enabled'] = bool(updates['self_service_drop_enabled'])
-    for f in ('drop_policy_text', 'refund_policy_text'):
+    for f in ('description', 'entry_cost', 'drop_policy_text', 'refund_policy_text'):
         if f in updates:
             updates[f] = str(updates[f] or '')[:_COMMS_MAX]
     if 'refund_window_end' in updates:

@@ -14,6 +14,12 @@ import uuid
 from google.cloud import storage as gcs
 from PIL import Image, ImageOps
 
+# Reject images that would decompress to more than 100 MP (2× this limit).
+# PIL's default (~89 MP) only logs a warning for the 0–89 MP range; setting a
+# stricter limit here converts that range into a hard DecompressionBombError,
+# which upload_avatar/upload_brand_image catch as a ValueError.
+Image.MAX_IMAGE_PIXELS = 50_000_000
+
 # Per-environment bucket (staging sets AVATARS_BUCKET to its own bucket); defaults
 # to the production bucket so prod config is unchanged.
 BUCKET_NAME = os.environ.get('AVATARS_BUCKET', 'cardboard-party-avatars')

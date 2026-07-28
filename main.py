@@ -19,6 +19,18 @@ app.secret_key = get_secret('FLASK_SECRET_KEY') or 'dev-only-insecure-key'
 # SameSite=Lax also blunts CSRF against the cookie-authenticated /api endpoints,
 # while still allowing the top-level OAuth callback navigation to send the cookie.
 _is_prod = os.environ.get('FLASK_ENV') == 'production'
+
+
+def _validate_production_config(secret_key: str, is_prod: bool) -> None:
+    """Raise RuntimeError if a production deployment uses the insecure dev key."""
+    if is_prod and (not secret_key or secret_key == 'dev-only-insecure-key'):
+        raise RuntimeError(
+            'FLASK_SECRET_KEY must be set in Secret Manager for production deployments. '
+            'The app is refusing to start with the insecure placeholder key.'
+        )
+
+
+_validate_production_config(app.secret_key, _is_prod)
 app.config.update(
     SESSION_COOKIE_SECURE=_is_prod,
     SESSION_COOKIE_HTTPONLY=True,
@@ -72,6 +84,9 @@ def _no_store_dynamic(resp):
     Static assets are served by App Engine's /static handler (not Flask) and keep
     their own cache-busted caching, so they're unaffected."""
     resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['X-Frame-Options'] = 'DENY'
+    resp.headers['X-Content-Type-Options'] = 'nosniff'
+    resp.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     return resp
 
 # Cache-busting token for static assets (CSS/JS). App Engine serves /static with
