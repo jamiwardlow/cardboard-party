@@ -30,90 +30,21 @@ import requests
 import threading
 import time
 import uuid
-from urllib.parse import urlparse
 from event_state import (_now_iso, _slugify, _assign_draft_seat, _is_full,
                          _self_registration_blocked, _validate_result)
 from discord_actions import refresh_event_announcement, announce_event_to_channel
+from routes.event_fields import (clean_event_fields, TOURNAMENT_TAGS, STRUCTURES,
+                                  COMMS_FIELDS, _COMMS_MAX, _MAX_TABLE,
+                                  REGISTRATION_TYPES, PROXY_POLICIES,
+                                  _clean_tags, _clean_comms, _clean_table_list,
+                                  _clean_table_labels, _bounded_table, _coord,
+                                  _normalize_payment_url)
 
 events_bp = Blueprint('events', __name__)
 
 # Per-environment slash-command name (see routes/discord.py); 'cparty' in prod,
 # 'cpstaging' on staging. Used in user-facing text and the /discord-bot page.
 COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
-
-# Advanced-creation vocabularies. Kept server-side so the stored values are
-# validated against an allow-list rather than trusting whatever the client sends.
-TOURNAMENT_TAGS = ['Weekly Play', 'Prerelease', 'Regional Championship Qualifier',
-                   'Spotlight Series']
-STRUCTURES = ['swiss', 'swiss_top_cut', 'single_elim', 'custom']
-
-
-def _clean_tags(raw) -> list:
-    """Keep only recognised tags, preserving the canonical order."""
-    chosen = set(raw or [])
-    return [t for t in TOURNAMENT_TAGS if t in chosen]
-
-# Plain-text (not rich-text) player-communication fields. Stored verbatim and
-# rendered with white-space:pre-wrap + autoescape, so they're safe by default —
-# no HTML, no sanitizer needed. Capped to keep documents reasonable.
-COMMS_FIELDS = ('rules', 'schedule', 'prizes', 'contact')
-_COMMS_MAX = 5000
-
-def _clean_comms(data: dict) -> dict:
-    out = {}
-    for f in COMMS_FIELDS:
-        if f in data:
-            out[f] = str(data.get(f) or '')[:_COMMS_MAX]
-    return out
-
-# ── Table assignments ────────────────────────────────────────────────────────
-# Tables live on the event: a numeric range [table_start..table_end] minus any
-# reserved/unavailable numbers (tables_excluded), with optional labels
-# (table_labels, e.g. "Feature Match"). The client sends already-parsed
-# structures; these normalise and bound-check them.
-_MAX_TABLE = 999
-
-def _clean_table_list(raw) -> list:
-    """Sorted, de-duplicated, bounded list of table numbers (reserved/unavailable)."""
-    out = set()
-    for v in (raw or []):
-        try:
-            n = int(v)
-        except (TypeError, ValueError):
-            continue
-        if 1 <= n <= _MAX_TABLE:
-            out.add(n)
-    return sorted(out)
-
-def _clean_table_labels(raw) -> dict:
-    """{str(table_number): label} map, numeric keys validated, labels trimmed/capped."""
-    out = {}
-    if isinstance(raw, dict):
-        for k, v in raw.items():
-            try:
-                n = int(k)
-            except (TypeError, ValueError):
-                continue
-            label = str(v or '').strip()[:40]
-            if 1 <= n <= _MAX_TABLE and label:
-                out[str(n)] = label
-    return out
-
-def _bounded_table(v, lo):
-    """An int table number within [lo, _MAX_TABLE], else the floor `lo`."""
-    return v if isinstance(v, int) and lo <= v <= _MAX_TABLE else lo
-
-def _coord(v, lo: float, hi: float):
-    """A float latitude/longitude within [lo, hi], else None (no/invalid coordinate).
-    Captured from a Google Places selection; used for the 'events near me' filter."""
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return f if lo <= f <= hi else None
-
-REGISTRATION_TYPES = ('open', 'invite_only')
-PROXY_POLICIES = ('unlimited', 'limited', 'custom')   # event proxy policy modes
 
 def _active_waitlist(event: dict) -> list[dict]:
     """Still-waiting waitlist records, oldest first (first come, first served)."""
@@ -149,22 +80,6 @@ def _dm_registration_confirmation(google_id: str, event: dict, event_id: str, ho
         daemon=True,
     ).start()
 
-
-def _normalize_payment_url(raw) -> tuple:
-    """Validate/normalize a payment link so it's safe to render as a clickable
-    <a href>. Returns (url, error): an empty string for no link, an http(s)
-    URL (a missing scheme is assumed https), or (None, msg) if it's not a
-    valid web URL — which blocks javascript:/data: and other unsafe schemes.
-    """
-    url = (raw or '').strip()
-    if not url:
-        return '', None
-    if not urlparse(url).scheme:
-        url = 'https://' + url
-    parsed = urlparse(url)
-    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
-        return None, 'Payment link must be a valid http(s) URL'
-    return url, None
 
 
 # ── Permission helpers ─────────────────────────────────────────────────────────
@@ -834,103 +749,26 @@ def api_list_events():
 def api_create_event():
     user = get_current_user()
     data = request.json or {}
-    if not (data.get('name') or '').strip():
-        return jsonify({'error': 'Event name is required'}), 400
-    payment_url, err = _normalize_payment_url(data.get('payment_url'))
-    if err:
-        return jsonify({'error': err}), 400
+    cleaned, errors = clean_event_fields(data)
+    if errors:
+        return jsonify({'error': next(iter(errors.values()))}), 400
     event = {
-        'name':         data.get('name', 'New Event'),
-        'game':         (data.get('game') or '').strip(),     # '' for Simple (no game yet)
-        'test_mode':    bool(data.get('test_mode', False)),    # hidden from public discovery
-        'tags':         _clean_tags(data.get('tags')),
-        'structure':    data.get('structure') if data.get('structure') in STRUCTURES else '',
-        # Intended top-cut size (4/8/16) for a Swiss + Top Cut event. This pre-fills
-        # the in-event "Cut to Top N" action; the actual cut still executes later.
-        'planned_cut_size': data.get('planned_cut_size') if data.get('planned_cut_size') in (4, 8, 16) else 0,
-        'requires_decklists': bool(data.get('requires_decklists', False)),
-        'decklists_required': bool(data.get('decklists_required', False)),
-        'closed_decklists': bool(data.get('closed_decklists', False)),
-        'decklist_visibility_note': str(data.get('decklist_visibility_note') or '')[:500],
+        **cleaned,
+        'owner_id':           user['id'],
+        'owner_name':         user['name'],
+        'players':            [],
+        'rounds':             [],
+        'cut_size':           0,
+        'cut_seeds':          {},
+        'status':             'setup',
+        'registration':       'open',
         'decklists_released': False,
-        'decklist_deadline': (data.get('decklist_deadline') or '').strip(),  # '' = no cutoff
-        'validation_format': data.get('validation_format') if data.get('validation_format') in VALIDATION_FORMATS else 'none',
-        # Print-legality policy (Premodern/Old School): which physical printings are
-        # allowed. Default off — the organiser opts each in.
-        'allow_proxies':     bool(data.get('allow_proxies', False)),
-        'allow_gold_border': bool(data.get('allow_gold_border', False)),
-        'allow_ce':          bool(data.get('allow_ce', False)),   # Collector's Edition
-        'allow_ie':          bool(data.get('allow_ie', False)),   # International Edition
-        # Proxy policy (only meaningful when allow_proxies): unlimited | limited | custom.
-        'proxy_policy': data.get('proxy_policy') if data.get('proxy_policy') in PROXY_POLICIES else 'unlimited',
-        'proxy_limit':  data.get('proxy_limit') if isinstance(data.get('proxy_limit'), int) and data.get('proxy_limit') >= 0 else 0,
-        'proxy_note':   str(data.get('proxy_note') or '').strip()[:500],
-        # Table assignments: a venue's physical-table range + reserved/labeled tables.
-        'tables_enabled':  bool(data.get('tables_enabled', False)),
-        'table_start':     _bounded_table(data.get('table_start'), 1),
-        'table_end':       _bounded_table(data.get('table_end'), 0),   # 0 = unset
-        'tables_excluded': _clean_table_list(data.get('tables_excluded')),
-        'table_labels':    _clean_table_labels(data.get('table_labels')),
-        'round_timer_minutes': data.get('round_timer_minutes') if isinstance(data.get('round_timer_minutes'), int) and data.get('round_timer_minutes') >= 0 else 0,
-        # Opt-in (Advanced): start the round timer automatically when pairings go
-        # live — immediately if posted right away, or on release when delayed.
-        'auto_start_timer': bool(data.get('auto_start_timer', False)),
-        'round_started_at': '',   # ISO time the current round's timer started
-        # Delayed delivery: hide newly-paired pairings / fresh standings from
-        # players until the organiser releases them (prevents stream spoilers).
-        'delay_pairings':  bool(data.get('delay_pairings', False)),
-        'delay_standings': bool(data.get('delay_standings', False)),
+        'round_started_at':   '',
         'pairings_released':  True,
         'standings_released': True,
-        # Waitlist records (people who joined after the cap filled). Status is one
-        # of: waitlisted | promoted | removed | removed_by_self. Kept for history.
-        'waitlist': [],
-        # When True, only checked-in players are paired (attendance gate).
-        'require_check_in': bool(data.get('require_check_in', False)),
-        'brand_text':       str(data.get('brand_text') or '')[:300],
-        'brand_image_url':  '',       # set via the brand-image upload endpoint
-        'brand_image_object': '',     # GCS object name (for replacing/deleting)
-        'entry_code':   str(data.get('entry_code') or '').strip()[:64],  # '' = none required
-        'advanced':     bool(data.get('advanced', False)),   # created via the Advanced flow
-        # When True, the "0-0-3 Intentional draw" result option is hidden/rejected
-        # (Advanced events only). Default False = intentional draws allowed.
-        'intentional_draws_frowned': bool(data.get('intentional_draws_frowned', False)),
-        'prize_deadline_days': data.get('prize_deadline_days') if isinstance(data.get('prize_deadline_days'), int) and data.get('prize_deadline_days') >= 0 else 0,
-        'rules':        str(data.get('rules') or '')[:_COMMS_MAX],
-        'schedule':     str(data.get('schedule') or '')[:_COMMS_MAX],
-        'prizes':       str(data.get('prizes') or '')[:_COMMS_MAX],
-        'contact':      str(data.get('contact') or '')[:_COMMS_MAX],
-        'event_type':   data.get('event_type', 'One-day'),
-        'format':       data.get('format', 'Limited: Draft'),
-        'description':  str(data.get('description') or '')[:_COMMS_MAX],
-        'entry_cost':   str(data.get('entry_cost') or '')[:_COMMS_MAX],
-        'payment_url':  payment_url,
-        'date':         data.get('date', str(datetime.date.today())),
-        'start_time':   (data.get('start_time') or '').strip()[:5],
-        'location':     str(data.get('location') or '').strip()[:200],
-        'lat':          _coord(data.get('lat'), -90, 90),     # from a Places selection
-        'lng':          _coord(data.get('lng'), -180, 180),
-        'place_id':     str(data.get('place_id') or '').strip()[:300],
-        'owner_id':     user['id'],
-        'owner_name':   user['name'],
-        'players':      [],
-        'rounds':       [],
-        'num_rounds':   data.get('num_rounds', 0),
-        'cut_size':     0,            # 0 = no playoff cut; else 4/8/16
-        'cut_seeds':    {},           # player_id -> seed, set when the cut starts
-        'status':       'setup',
-        'registration': 'open',
-        'registration_type':  data.get('registration_type') if data.get('registration_type') in REGISTRATION_TYPES else 'open',
-        'registration_start': (data.get('registration_start') or '').strip(),
-        'registration_end':   (data.get('registration_end') or '').strip(),
-        'unenroll_end':       (data.get('unenroll_end') or '').strip(),   # = the drop deadline
-        'registration_cap': data.get('registration_cap', 0),  # 0 = no cap
-        # Drop / refund policy. self-service drops on by default (matches prior
-        # behaviour); refund text/window are display-only (no payment processing).
-        'self_service_drop_enabled': bool(data.get('self_service_drop_enabled', True)),
-        'drop_policy_text':   str(data.get('drop_policy_text') or '')[:_COMMS_MAX],
-        'refund_policy_text': str(data.get('refund_policy_text') or '')[:_COMMS_MAX],
-        'refund_window_end':  (data.get('refund_window_end') or '').strip(),
+        'waitlist':           [],
+        'brand_image_url':    '',
+        'brand_image_object': '',
     }
     eid = create_event(event)
     event['id'] = eid
@@ -1005,107 +843,12 @@ def api_update_event(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
     data = request.json or {}
-    allowed = {'name', 'advanced', 'game', 'test_mode', 'tags', 'structure', 'planned_cut_size',
-               'requires_decklists', 'decklists_required', 'closed_decklists', 'decklist_visibility_note',
-               'entry_code', 'intentional_draws_frowned',
-               'round_timer_minutes', 'auto_start_timer',
-               'delay_pairings', 'delay_standings', 'require_check_in',
-               'brand_text',
-               'prize_deadline_days', 'rules', 'schedule', 'prizes', 'contact',
-               'event_type', 'format', 'description', 'entry_cost',
-               'payment_url', 'date', 'start_time', 'location', 'lat', 'lng', 'place_id', 'num_rounds',
-               'status', 'registration', 'registration_cap',
-               'registration_type', 'registration_start', 'registration_end', 'unenroll_end',
-               'self_service_drop_enabled', 'drop_policy_text', 'refund_policy_text', 'refund_window_end',
-               'decklist_deadline', 'validation_format',
-               'allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_ie',
-               'proxy_policy', 'proxy_limit', 'proxy_note',
-               'tables_enabled', 'table_start', 'table_end', 'tables_excluded', 'table_labels'}
-    updates = {k: v for k, v in data.items() if k in allowed}
-    if 'name' in updates and not str(updates['name']).strip():
-        return jsonify({'error': 'Event name is required'}), 400
-    if 'test_mode' in updates:
-        updates['test_mode'] = bool(updates['test_mode'])
+    updates, errors = clean_event_fields(data, partial=True)
+    if errors:
+        return jsonify({'error': next(iter(errors.values()))}), 400
     if 'advanced' in updates:
         # One-way: an event can be upgraded Simple→Advanced but never downgraded.
-        updates['advanced'] = bool(updates['advanced']) or bool(e.get('advanced'))
-    if 'self_service_drop_enabled' in updates:
-        updates['self_service_drop_enabled'] = bool(updates['self_service_drop_enabled'])
-    for f in ('description', 'entry_cost', 'drop_policy_text', 'refund_policy_text'):
-        if f in updates:
-            updates[f] = str(updates[f] or '')[:_COMMS_MAX]
-    if 'refund_window_end' in updates:
-        updates['refund_window_end'] = str(updates['refund_window_end'] or '').strip()
-    if 'entry_code' in updates:
-        updates['entry_code'] = str(updates['entry_code'] or '').strip()[:64]
-    if 'intentional_draws_frowned' in updates:
-        updates['intentional_draws_frowned'] = bool(updates['intentional_draws_frowned'])
-    if 'registration_type' in updates and updates['registration_type'] not in REGISTRATION_TYPES:
-        updates['registration_type'] = 'open'
-    if 'requires_decklists' in updates:
-        updates['requires_decklists'] = bool(updates['requires_decklists'])
-    if 'decklists_required' in updates:
-        updates['decklists_required'] = bool(updates['decklists_required'])
-    if 'closed_decklists' in updates:
-        updates['closed_decklists'] = bool(updates['closed_decklists'])
-    if 'decklist_visibility_note' in updates:
-        updates['decklist_visibility_note'] = str(updates['decklist_visibility_note'] or '')[:500]
-    for f in ('allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_ie'):
-        if f in updates:
-            updates[f] = bool(updates[f])
-    if 'proxy_policy' in updates and updates['proxy_policy'] not in PROXY_POLICIES:
-        updates['proxy_policy'] = 'unlimited'
-    if 'proxy_limit' in updates:
-        v = updates['proxy_limit']
-        updates['proxy_limit'] = v if isinstance(v, int) and v >= 0 else 0
-    if 'proxy_note' in updates:
-        updates['proxy_note'] = str(updates['proxy_note'] or '').strip()[:500]
-    if 'round_timer_minutes' in updates:
-        v = updates['round_timer_minutes']
-        updates['round_timer_minutes'] = v if isinstance(v, int) and v >= 0 else 0
-    for f in ('delay_pairings', 'delay_standings', 'require_check_in', 'auto_start_timer'):
-        if f in updates:
-            updates[f] = bool(updates[f])
-    if 'brand_text' in updates:
-        updates['brand_text'] = str(updates['brand_text'] or '')[:300]
-    if 'start_time' in updates:
-        updates['start_time'] = str(updates['start_time'] or '').strip()[:5]
-    if 'location' in updates:
-        updates['location'] = str(updates['location'] or '').strip()[:200]
-    if 'lat' in updates:
-        updates['lat'] = _coord(updates['lat'], -90, 90)
-    if 'lng' in updates:
-        updates['lng'] = _coord(updates['lng'], -180, 180)
-    if 'place_id' in updates:
-        updates['place_id'] = str(updates['place_id'] or '').strip()[:300]
-    if 'decklist_deadline' in updates:
-        updates['decklist_deadline'] = str(updates['decklist_deadline'] or '').strip()
-    if 'validation_format' in updates and updates['validation_format'] not in VALIDATION_FORMATS:
-        updates['validation_format'] = 'none'
-    if 'tables_enabled' in updates:
-        updates['tables_enabled'] = bool(updates['tables_enabled'])
-    if 'table_start' in updates:
-        updates['table_start'] = _bounded_table(updates['table_start'], 1)
-    if 'table_end' in updates:
-        updates['table_end'] = _bounded_table(updates['table_end'], 0)
-    if 'tables_excluded' in updates:
-        updates['tables_excluded'] = _clean_table_list(updates['tables_excluded'])
-    if 'table_labels' in updates:
-        updates['table_labels'] = _clean_table_labels(updates['table_labels'])
-    if 'prize_deadline_days' in updates:
-        v = updates['prize_deadline_days']
-        updates['prize_deadline_days'] = v if isinstance(v, int) and v >= 0 else 0
-    updates.update(_clean_comms(updates))   # cap the long-text fields
-    if 'tags' in updates:
-        updates['tags'] = _clean_tags(updates['tags'])
-    if 'structure' in updates and updates['structure'] not in STRUCTURES:
-        updates['structure'] = ''
-    if 'planned_cut_size' in updates and updates['planned_cut_size'] not in (4, 8, 16):
-        updates['planned_cut_size'] = 0
-    if 'payment_url' in updates:
-        updates['payment_url'], err = _normalize_payment_url(updates['payment_url'])
-        if err:
-            return jsonify({'error': err}), 400
+        updates['advanced'] = updates['advanced'] or bool(e.get('advanced'))
     old_format = e.get('validation_format', 'none')
     old_policy = {k: e.get(k) for k in _PRINT_POLICY_KEYS}
     save_event(event_id, updates)
