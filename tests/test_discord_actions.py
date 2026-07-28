@@ -325,7 +325,7 @@ class TestDiscordRegisterableEvents:
 
     def _call(self, events, **kw):
         from discord_actions import discord_registerable_events
-        with patch('discord_actions.list_events', return_value=events), \
+        with patch('event_queries.list_events', return_value=events), \
              patch('discord_actions.list_users', return_value=[]):
             return discord_registerable_events(**kw)
 

@@ -31,7 +31,9 @@ import threading
 import time
 import uuid
 from event_state import (_now_iso, _slugify, _assign_draft_seat, _is_full,
-                         _self_registration_blocked, _validate_result)
+                         _self_registration_blocked, _validate_result,
+                         _is_bracket_round, _swiss_complete, _event_complete)
+import event_queries
 from discord_actions import refresh_event_announcement, announce_event_to_channel
 from routes.event_fields import (clean_event_fields, TOURNAMENT_TAGS, STRUCTURES,
                                   COMMS_FIELDS, _COMMS_MAX, _MAX_TABLE,
@@ -242,35 +244,6 @@ def _deliver_pairings(event: dict, round_num: int, base_url: str):
     discord_api.announce_round(event, round_num, base_url)
     discord_api.dm_round_pairings(event, round_num, base_url)
 
-def _is_bracket_round(rnd: list) -> bool:
-    """A round belongs to the single-elimination playoff if its matches are tagged."""
-    return bool(rnd) and rnd[0].get('stage') == 'bracket'
-
-def _swiss_complete(event: dict) -> bool:
-    """True once every Swiss round has been paired and fully scored (a playoff
-    can only start after this)."""
-    swiss = [r for r in event['rounds'] if not _is_bracket_round(r)]
-    num_rounds = event.get('num_rounds') or default_num_rounds(len(event['players']))
-    if len(swiss) < num_rounds:
-        return False
-    last = swiss[-1] if swiss else []
-    return all(m.get('is_bye') or m.get('winner_id') or m.get('result') in DRAW_RESULTS
-               for m in last)
-
-def _event_complete(event: dict) -> bool:
-    """True once the event is finished — a decided playoff final, an explicit
-    'finished' status, or all Swiss rounds paired AND fully scored. Mirrors the
-    event page's stage logic so the Events-page card doesn't call an event with an
-    unscored final round 'Completed'."""
-    rounds = event.get('rounds') or []
-    if not rounds:
-        return False
-    last = rounds[-1]
-    if _is_bracket_round(last):
-        return len(last) == 1 and bool(last[0].get('winner_id'))
-    if event.get('status') == 'finished':
-        return True
-    return _swiss_complete(event)
 
 
 # ── Pages ──────────────────────────────────────────────────────────────────────
@@ -288,18 +261,10 @@ def has_public_decklists() -> bool:
     now = time.time()
     if now - _decklists_nav_cache['at'] < 300:
         return _decklists_nav_cache['v']
-    found = False
-    for e in list_events():
-        if not e.get('requires_decklists'):
-            continue
-        closed, released = bool(e.get('closed_decklists')), bool(e.get('decklists_released'))
-        if closed and not released:
-            continue
-        if not closed and not _event_complete(e):
-            continue
-        if any((p.get('decklist') or {}).get('text', '').strip() for p in e.get('players', [])):
-            found = True
-            break
+    found = any(
+        any((p.get('decklist') or {}).get('text', '').strip() for p in e.get('players', []))
+        for e in event_queries.public_decklist_events()
+    )
     _decklists_nav_cache['v'] = found
     _decklists_nav_cache['at'] = now
     return found
@@ -314,14 +279,7 @@ def public_decklists_page():
 def api_public_decklists():
     """Public: flat list of all deck summaries from completed events with decklists."""
     decks = []
-    for e in list_events():
-        if not e.get('requires_decklists'):
-            continue
-        closed, released = bool(e.get('closed_decklists')), bool(e.get('decklists_released'))
-        if closed and not released:
-            continue
-        if not closed and not _event_complete(e):
-            continue
+    for e in event_queries.public_decklist_events():
         event_rounds = e.get('rounds', [])
         standings = compute_standings(e['players'], event_rounds)
         player_map = {p['id']: p for p in e['players']}
@@ -2291,11 +2249,11 @@ def api_remove_admin(admin_id):
 
 @events_bp.route('/players/<google_id>')
 def player_profile(google_id):
-    all_events = list_events()
+    all_events = event_queries.events_for_player(google_id)
     profile = None
     event_history = []
 
-    for e in sorted(all_events, key=lambda x: x.get('date', ''), reverse=True):
+    for e in all_events:
         player = next((p for p in e.get('players', [])
                        if p.get('google_id') == google_id), None)
         if not player:

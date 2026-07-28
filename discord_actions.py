@@ -11,6 +11,7 @@ import time
 import uuid
 
 import discord_api
+import event_queries
 from db import (get_event, save_event, list_events, list_users,
                 get_user_profile, save_user_profile, set_player_dropped,
                 add_event_log, record_invite, recent_invite_count,
@@ -85,25 +86,13 @@ def refresh_event_announcement(event: dict) -> None:
 def discord_registerable_events(limit: int = 25, owner_discord_id: str = None,
                                 include_full: bool = False):
     """Events a Discord user can currently self-register for — open, not test,
-    not invite-only/closed/expired, and with no entry code (codes aren't handled
-    in the Discord flow yet). Full events are excluded by default; pass
-    `include_full=True` for the announce/invite pickers, where a full event is
-    still valid (its card offers the waitlist). Soonest first; capped for the
-    select menu. `owner_discord_id` restricts to that Discord user's own events."""
+    not invite-only/closed/expired, and with no entry code. Full events are excluded
+    by default; pass `include_full=True` for announce/invite pickers. Soonest first.
+    `owner_discord_id` restricts to that Discord user's own events."""
     owner_gid = _google_id_for_discord(owner_discord_id) if owner_discord_id else None
-    out = []
-    for e in list_events():
-        if owner_discord_id and e.get('owner_id') != owner_gid:
-            continue
-        if e.get('test_mode') or e.get('entry_code'):
-            continue
-        if _self_registration_blocked(e):
-            continue
-        if not include_full and _is_full(e):
-            continue
-        out.append(e)
-    out.sort(key=lambda e: e.get('date', ''))
-    return out[:limit]
+    return event_queries.registerable_for_discord(owner_gid=owner_gid,
+                                                  include_full=include_full,
+                                                  limit=limit)
 
 def _normalize_handle(h: str) -> str:
     """Normalise a Discord handle for comparison: drop a leading @, lower-case,
@@ -586,11 +575,7 @@ def discord_linkable_events(limit: int = 25, owner_discord_id: str = None):
     """Non-test events an organiser might link to a Discord channel (for the
     /cbp link picker), restricted to events that Discord user owns. Most recent first."""
     owner_gid = _google_id_for_discord(owner_discord_id) if owner_discord_id else None
-    out = [e for e in list_events()
-           if not e.get('test_mode')
-           and (not owner_discord_id or e.get('owner_id') == owner_gid)]
-    out.sort(key=lambda e: e.get('date', ''), reverse=True)
-    return out[:limit]
+    return event_queries.linkable_for_discord(owner_gid=owner_gid, limit=limit)
 
 def set_event_discord_channel(event_id: str, channel_id: str):
     """Link an event so its pairings auto-post to this Discord channel. Returns
@@ -603,9 +588,7 @@ def set_event_discord_channel(event_id: str, channel_id: str):
 
 def discord_standings_events(limit: int = 25):
     """Non-test events that have started (have standings to show)."""
-    out = [e for e in list_events() if e.get('rounds') and not e.get('test_mode')]
-    out.sort(key=lambda e: e.get('date', ''), reverse=True)
-    return out[:limit]
+    return event_queries.with_standings(limit=limit)
 
 def discord_standings_text(event_id: str, top: int = 16):
     """Formatted standings for a Discord message, or None if the event is gone."""
