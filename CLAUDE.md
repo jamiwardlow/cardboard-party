@@ -43,9 +43,24 @@ gcloud app browse --project=cardboard-party
 gcloud app deploy staging.yaml --project=cardboard-party-staging
 ```
 
-There is **no test suite, linter, or build step**. The app runs directly from source.
+There is **no linter or build step**. The app runs directly from source.
 Local runs hit live Firestore unless you set `FIRESTORE_EMULATOR_HOST` and run the
 Firestore emulator.
+
+**Test suite** — `pytest` with `pytest-flask`. Install deps and run:
+
+```bash
+pip install -r requirements-test.txt
+python -m pytest tests/ -v
+python -m pytest tests/ --cov=. --cov-report=term-missing   # with coverage
+```
+
+Tests live in `tests/`. The `conftest.py` provides three fixtures: `app` (Flask
+test app), `client` (unauthenticated test client), and `auth_client` (pre-seeded
+with a signed-in session whose user ID is `'test_uid'`). Firestore is never hit —
+mock `routes.events.get_event`, `routes.events.save_event`, etc. with
+`unittest.mock.patch` as needed. `GOOGLE_CLOUD_PROJECT` is unset at test startup
+so `gcp_secrets.get_secret` returns `''` without calling Secret Manager.
 
 **Environments:** prod and staging run the *same code*, differing only by
 environment config — `AVATARS_BUCKET` (GCS bucket, `storage.py`), `CANONICAL_HOST`
@@ -58,8 +73,9 @@ See **DEPLOYING.md** for the full setup and the `--no-promote` safe-deploy flow.
 All HTML is rendered server-side via Jinja templates and driven client-side by `fetch()`
 calls to a JSON API.
 
-- **`main.py`** — Flask app, registers `auth_bp`, `events_bp`, and `discord_bp`. (Note:
-  `app.secret_key` is a hardcoded placeholder; sessions are cookie-based.)
+- **`main.py`** — Flask app, registers `auth_bp`, `events_bp`, and `discord_bp`.
+  `app.secret_key` comes from Secret Manager (`FLASK_SECRET_KEY`); startup raises
+  `RuntimeError` if the key is missing or the dev placeholder in production.
 - **`db.py`** — all Firestore access. Collections: `events`, `users`, `invites`, and two
   singleton config docs `config/admins` and `config/settings`.
 - **`swiss.py`** — pure functions for pairing, standings, and playoff brackets; no I/O,
@@ -180,8 +196,7 @@ and falls back to Secret Manager in production. All fetched values are `@lru_cac
 - Discord prod uses command name `cparty`; staging uses `cpstaging` (set via
   `DISCORD_COMMAND_NAME` in `staging.yaml`).
 - Rotate by adding a new version (`gcloud secrets versions add ...` or the Console UI),
-  then redeploy. `main.py`'s `app.secret_key` is still a hardcoded placeholder — move it to
-  Secret Manager too before this matters for session security.
+  then redeploy.
 
 ## Avatar storage (GCS)
 
