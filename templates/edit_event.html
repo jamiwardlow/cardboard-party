@@ -22,12 +22,12 @@
   <label>Name
     <input id="ee-name" type="text" value="{{ event.name | e }}">
   </label>
-  <label>Brand text
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Brand text
     <input id="ee-brand-text" type="text" maxlength="300"
            placeholder="Optional — series, organiser, sponsor, or community"
            value="{{ event.brand_text | default('') | e }}">
   </label>
-  <div class="field-group">
+  <div class="field-group{% if not adv %} ee-adv hidden{% endif %}">
     <span class="field-label">Brand image</span>
     {% if event.brand_image_url %}
     <img id="ee-brand-preview" class="brand-preview" src="{{ event.brand_image_url | e }}" alt="">
@@ -54,11 +54,11 @@
            placeholder="Optional — venue or city"
            value="{{ event.location | default('') | e }}">
   </label>
-  <label>Entry cost
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Entry cost
     <input id="ee-cost" type="text" placeholder="e.g. $10 or Free"
            value="{{ event.entry_cost | default('') | e }}">
   </label>
-  <label>Payment link
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Payment link
     <input id="ee-payment" type="text" placeholder="e.g. venmo.com/u/yourname (optional)"
            value="{{ event.payment_url | default('') | e }}">
   </label>
@@ -74,7 +74,7 @@
   </label>
 
   {%- set event_tags = event.tags | default([]) -%}
-  <div class="field-group{% if not adv %} ee-adv{% endif %}">
+  <div class="field-group{% if not adv %} ee-adv hidden{% endif %}">
     <span class="field-label">Tags</span>
     <div class="chip-options" id="ee-tags">
       {%- for tag in ['Weekly Play', 'Prerelease', 'Regional Championship Qualifier', 'Spotlight Series'] %}
@@ -83,7 +83,7 @@
     </div>
   </div>
 
-  <label{% if not adv %} class="ee-adv"{% endif %}>Structure
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Structure
     <select id="ee-structure" onchange="onStructureChange()">
       <option value="" {% if not event.structure %}selected{% endif %}>— Select —</option>
       <option value="swiss" {% if event.structure == 'swiss' %}selected{% endif %}>Swiss only</option>
@@ -108,20 +108,20 @@
   <label>Description
     <textarea id="ee-description" rows="3" placeholder="Optional — details, house rules, where to meet, etc.">{{ event.description | default('') | e }}</textarea>
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Schedule
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Schedule
     <textarea id="ee-schedule" rows="3" placeholder="Optional — registration, check-in, rounds, breaks, top cut times">{{ event.schedule | default('') | e }}</textarea>
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Rules
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Rules
     <textarea id="ee-rules" rows="3" placeholder="Optional — format rules, banned cards, deck restrictions">{{ event.rules | default('') | e }}</textarea>
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Prizes
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Prizes
     <textarea id="ee-prizes" rows="3" placeholder="Optional — prize breakdown by placement">{{ event.prizes | default('') | e }}</textarea>
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Prize distribution deadline (days)
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Prize distribution deadline (days)
     <input id="ee-prize-deadline" type="number" min="0" max="365" placeholder="e.g. 14"
            value="{{ event.prize_deadline_days | default('') }}">
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Contact
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Contact
     <textarea id="ee-contact" rows="2" placeholder="Optional — how to reach the organiser with questions">{{ event.contact | default('') | e }}</textarea>
   </label>
   {%- set event_fmt_lower = (event.format or '')|lower -%}
@@ -187,25 +187,25 @@
     <input id="ee-cap" type="number" min="2" max="256" placeholder="No cap"
            value="{{ event.registration_cap | default('') }}">
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Registration type
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Registration type
     <select id="ee-reg-type">
       <option value="open" {% if (event.registration_type or 'open') == 'open' %}selected{% endif %}>Open</option>
       <option value="invite_only" {% if event.registration_type == 'invite_only' %}selected{% endif %}>Invite only</option>
     </select>
     <span class="field-help">Invite only disables self sign-up — you add players yourself.</span>
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Entry code
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Entry code
     <input id="ee-entry-code" type="text" maxlength="64"
            placeholder="Optional — players must enter it to register"
            value="{{ event.entry_code | default('') | e }}">
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Registration opens
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Registration opens
     <input id="ee-reg-start" type="date" value="{{ event.registration_start | default('') | e }}">
   </label>
-  <label{% if not adv %} class="ee-adv"{% endif %}>Registration closes
+  <label{% if not adv %} class="ee-adv hidden"{% endif %}>Registration closes
     <input id="ee-reg-end" type="date" value="{{ event.registration_end | default('') | e }}">
   </label>
-  <div class="{% if not adv %}ee-adv {% endif %}field-group group-divider">
+  <div class="{% if not adv %}ee-adv hidden {% endif %}field-group group-divider">
     <span class="field-label" style="font-size:1.05rem">Drop &amp; refund policy</span>
     <label class="checkbox-row no-divider">
       <input type="checkbox" id="ee-self-drop"{% if event.self_service_drop_enabled is not false %} checked{% endif %}>
@@ -226,19 +226,19 @@
       <span class="field-help">Optional — the last day refunds are offered.</span>
     </label>
   </div>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-require-checkin"{% if event.require_check_in %} checked{% endif %}>
     <span>Require check-in
       <span class="field-help">Only players you check in get paired.</span>
     </span>
   </label>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-tables"{% if event.tables_enabled %} checked{% endif %} onchange="onEditTablesChange()">
     <span>Assign tables
       <span class="field-help">Give each pairing a table number for in-person seating.</span>
     </span>
   </label>
-  <div id="ee-table-opts" class="{% if not adv %}ee-adv {% endif %}{% if not event.tables_enabled %}hidden{% endif %}">
+  <div id="ee-table-opts" class="{% if not adv %}ee-adv hidden {% endif %}{% if adv and not event.tables_enabled %}hidden{% endif %}">
     <label>First table number
       <input id="ee-table-start" type="number" min="1" max="999" placeholder="1"
              oninput="refreshEditTableWarning()">
@@ -260,13 +260,13 @@
     </label>
     <span id="ee-table-warn" class="field-help" style="color:var(--danger)"></span>
   </div>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-delay-pairings"{% if event.delay_pairings %} checked{% endif %}>
     <span>Delay pairings
       <span class="field-help">New pairings stay hidden from players until you release them.</span>
     </span>
   </label>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-delay-standings"{% if event.delay_standings %} checked{% endif %}>
     <span>Delay standings
       <span class="field-help">Standings stay hidden from players until you release them.</span>
@@ -277,19 +277,19 @@
            value="{{ event.round_timer_minutes | default('') }}">
     <span class="field-help">Shows a countdown to players each round.</span>
   </label>
-  <label class="checkbox-row no-divider{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row no-divider{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-auto-start-timer"{% if event.auto_start_timer %} checked{% endif %}>
     <span>Start the timer when pairings are released
       <span class="field-help">Auto-starts the round timer when pairings go live — right away if posted immediately, or when you release delayed pairings. Off by default; start it manually with the button.</span>
     </span>
   </label>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-draws-frowned"{% if event.intentional_draws_frowned %} checked{% endif %}>
     <span>Intentional draws are frowned upon
       <span class="field-help">When on, the "0-0-3 Intentional draw" result option is hidden.</span>
     </span>
   </label>
-  <label class="checkbox-row{% if not adv %} ee-adv{% endif %}">
+  <label class="checkbox-row{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-test-mode"{% if event.test_mode %} checked{% endif %}>
     <span>This event is in Test Mode
       <span class="field-help">Hidden from public event discovery — only you see it.</span>

@@ -7,6 +7,16 @@ events, built as a Flask app on Google App Engine with Firestore as the datastor
 It runs in GCP project `cardboard-party` (region us-west2) at
 https://cardboard-party.wl.r.appspot.com.
 
+## Workflow
+
+After completing any meaningful unit of work:
+
+1. **Commit to git** with a clean, descriptive commit message summarizing *why* the change was made (not just what).
+2. **Push to GitHub** (`git push origin main`).
+3. **Deploy to staging** (`gcloud app deploy staging.yaml --project=cardboard-party-staging`) and verify the change works before considering the task done.
+
+Do not batch unrelated changes into one commit. Do not deploy to prod unless explicitly asked.
+
 ## Commands
 
 ```bash
@@ -45,19 +55,29 @@ See **DEPLOYING.md** for the full setup and the `--no-promote` safe-deploy flow.
 
 ## Architecture
 
-Three Python layers, with all HTML rendered server-side via Jinja templates and
-driven client-side by `fetch()` calls to a JSON API.
+All HTML is rendered server-side via Jinja templates and driven client-side by `fetch()`
+calls to a JSON API.
 
-- **`main.py`** — Flask app, registers `auth_bp` and `events_bp`. (Note: `app.secret_key`
-  is a hardcoded placeholder; sessions are cookie-based.)
-- **`db.py`** — all Firestore access. Collections: `events`, `users`, and two singleton
-  config docs `config/admins` and `config/settings`.
-- **`swiss.py`** — pure functions for pairing and standings; no I/O, no Flask. This is
-  the only part with self-contained, testable logic.
-- **`routes/auth.py`** — Google OAuth2 (manual flow, not a library) + `login_required`
-  decorator + `get_current_user()` (reads `session['user']`).
-- **`routes/events.py`** — everything else: page routes, the `/api/...` JSON endpoints,
-  registration, pairing, results, admin and profile management.
+- **`main.py`** — Flask app, registers `auth_bp`, `events_bp`, and `discord_bp`. (Note:
+  `app.secret_key` is a hardcoded placeholder; sessions are cookie-based.)
+- **`db.py`** — all Firestore access. Collections: `events`, `users`, `invites`, and two
+  singleton config docs `config/admins` and `config/settings`.
+- **`swiss.py`** — pure functions for pairing, standings, and playoff brackets; no I/O,
+  no Flask. The only part with self-contained, testable logic.
+- **`routes/auth.py`** — Google OAuth2 **and** Discord OAuth2 (both manual flows, no
+  library). Provides `login_required` decorator and `get_current_user()`.
+- **`routes/events.py`** — everything else: page routes, `/api/...` JSON endpoints,
+  registration, pairing, results, admin and profile management. Also exposes the
+  helper functions called by `routes/discord.py`.
+- **`routes/discord.py`** — Discord bot via HTTP Interactions (no gateway). Verifies
+  Ed25519 signatures, handles slash commands (`/cparty`), buttons, select menus, and
+  modals. Calls helpers in `routes/events.py` for all data mutations.
+- **`discord_api.py`** — outbound Discord REST calls (channel posts, DMs). Used by
+  `routes/events.py` to post round pairings and send result DMs.
+- **`decklist.py`** — network-free `parse_decklist` + Scryfall-calling `validate_decklist`.
+  Handles Moxfield import via `import_moxfield` (requires `MOXFIELD_USER_AGENT` secret).
+- **`storage.py`** — GCS avatar upload (validate, center-crop, resize via Pillow).
+- **`gcp_secrets.py`** — `get_secret(name)`: env var → Secret Manager fallback, `@lru_cache`d.
 
 ### The event document is the unit of state
 
@@ -107,27 +127,58 @@ Admins are added by **email** before the person has ever signed in, stored as
 `auth.py` swaps that entry for their real Google ID. This is why `bootstrap_admin.py`
 and `/api/admins` both write `pending:` IDs.
 
-### Swiss logic (`swiss.py`)
+The same pattern applies to **co-organizers**: stored as `pending:<email>` in
+`co_organizer_ids`, resolved to a Google ID on login via `resolve_pending_co_organizer`
+in `db.py`.
 
-Greedy pairing: sort active players by points (win=3, draw=1) desc, pair each with the
-highest unpaired player they haven't faced (falls back to a repeat match if forced).
-Odd count → lowest-ranked player without a prior bye gets a bye (scored as a 2-0-0 win
-against `BYE_PLAYER_ID == '__bye__'`). Standings use USCF tiebreakers (OMW%, GW%, OGW%)
-with the standard 1/3 floor. `League` event_type skips the "previous round must be
-complete" check before pairing.
+### Waitlist
+
+When an event hits its player cap, new registrants are added to `event.waitlist` (a
+list of waitlist-entry dicts with `id`, `status`, `name`, `google_id`, `discord_id`,
+etc.). Promotion to `players` is done by the organiser and is transactional in
+`db.promote_waitlist_entry` to prevent double-promotion.
+
+### Event types
+
+- **One-day** — standard Swiss, all rounds in one session.
+- **League** — Swiss, but skips the "previous round must be complete" check so rounds
+  can be paired before all results are in.
+- **Draft** — first round paired by pod seat via `pair_draft_r1`; subsequent rounds are
+  standard Swiss. Optionally followed by a single-elimination bracket cut.
+
+### Swiss / bracket logic (`swiss.py`)
+
+Swiss: greedy pairing — sort active players by points (win=3, draw=1) desc, pair each
+with the highest unpaired player they haven't faced (falls back to a repeat match if
+forced). Odd count → lowest-ranked player without a prior bye gets a bye (scored as a
+2-0-0 win against `BYE_PLAYER_ID == '__bye__'`). Standings use USCF tiebreakers (OMW%,
+GW%, OGW%) with the standard 1/3 floor.
+
+Playoff bracket: `make_bracket` seeds the top-N players into single-elimination;
+`next_bracket_round` advances winners. Bracket matches are tagged `stage == 'bracket'`
+in the match dict and appended to `rounds`; `_round_label` in `discord_notify.py`
+renders them as "Finals/Semifinals/Quarterfinals/Top N".
 
 ## Secrets
 
-`GOOGLE_CLIENT_SECRET` is **not** stored in the repo. It lives in Google Secret Manager
-(secret name `GOOGLE_CLIENT_SECRET`) and is fetched at startup by `gcp_secrets.py`, which
-prefers a same-named env var (local dev) and falls back to Secret Manager in production
-(project from `GOOGLE_CLOUD_PROJECT`, which App Engine sets automatically). The App Engine
-default service account `cardboard-party@appspot.gserviceaccount.com` has
-`roles/secretmanager.secretAccessor` on the secret.
+All secrets live in Google Secret Manager (project `cardboard-party` or
+`cardboard-party-staging`). `gcp_secrets.py` prefers a same-named env var (local dev)
+and falls back to Secret Manager in production. All fetched values are `@lru_cache`d —
+**a new secret version requires a redeploy/restart to take effect**.
+
+| Secret name | Used by |
+|---|---|
+| `GOOGLE_CLIENT_SECRET` | Google OAuth login |
+| `DISCORD_PUBLIC_KEY` | Ed25519 signature verification (`routes/discord.py`) |
+| `DISCORD_BOT_TOKEN` | Outbound Discord REST (`discord_api.py`) |
+| `DISCORD_APP_ID` | Discord OAuth login + bot identity |
+| `DISCORD_CLIENT_SECRET` | Discord OAuth login |
+| `MOXFIELD_USER_AGENT` | Moxfield deck import (`decklist.py`) |
+| `MAPS_API_KEY` | Google Maps autocomplete on event location field |
 
 - `GOOGLE_CLIENT_ID` stays in `app.yaml` env_variables — it's public (sent to browsers).
-- The fetched value is `@lru_cache`d, so **a new secret version requires a redeploy/restart**
-  to take effect; running instances keep the value they read at startup.
+- Discord prod uses command name `cparty`; staging uses `cpstaging` (set via
+  `DISCORD_COMMAND_NAME` in `staging.yaml`).
 - Rotate by adding a new version (`gcloud secrets versions add ...` or the Console UI),
   then redeploy. `main.py`'s `app.secret_key` is still a hardcoded placeholder — move it to
   Secret Manager too before this matters for session security.
