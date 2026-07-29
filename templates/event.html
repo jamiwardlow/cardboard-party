@@ -199,6 +199,9 @@ Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (r
           <button class="btn btn-sm btn-primary" onclick="addPlayer()">Add</button>
           <button class="btn btn-sm" id="btn-add-self" onclick="addSelf()">+ Add myself</button>
         </div>
+        <div id="draft-seat-actions" class="hidden" style="margin-top:0.5rem">
+          <button class="btn btn-sm" onclick="shuffleSeats()">Shuffle seats</button>
+        </div>
       </div>
       <input id="player-search" type="text" class="waitlist-search hidden"
              placeholder="Search players — name or Discord" oninput="renderPlayers()">
@@ -497,6 +500,10 @@ async function resolveGuest() {
 function canManage() {
   // Mirrors backend _can_manage: the event owner OR any global admin.
   return !!(state && state.can_manage);
+}
+
+function isDraftPreRound1() {
+  return (state.format || '').toLowerCase() === 'draft' && !state.rounds.length;
 }
 
 // Share the event: native share sheet where available (mobile), otherwise
@@ -805,6 +812,7 @@ function renderOwnerActions() {
   if (!canManage()) return;
   document.getElementById('owner-actions').classList.remove('hidden');
   document.getElementById('player-actions').classList.remove('hidden');
+  document.getElementById('draft-seat-actions').classList.toggle('hidden', !isDraftPreRound1());
 
   // Neutral action button — the current state is conveyed by the status pill,
   // so this just states what clicking will do. Hidden once the event is complete
@@ -2015,7 +2023,7 @@ function openPlayerDetails(playerId) {
       acts.push(`<button class="btn" onclick="pdRun('decklist')">${flagged ? '⚠️ View decklist' : '📋 View decklist'}</button>`);
     }
   }
-  if ((state.format || '').toLowerCase() === 'draft' && !p.dropped) {
+  if (isDraftPreRound1() && !p.dropped) {
     const seatLabel = p.seat ? `Set seat (currently ${p.seat})` : 'Set seat';
     acts.push(`<button class="btn" onclick="pdRun('seat')">${seatLabel}</button>`);
   }
@@ -2101,6 +2109,14 @@ async function setSeat(playerId) {
   });
   if (res.ok) await init();
   else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to set seat.'); }
+}
+
+async function shuffleSeats() {
+  const confirmed = await confirmDialog('Shuffle all seat assignments? This cannot be undone.');
+  if (!confirmed) return;
+  const res = await fetch(`/api/events/${EVENT_ID}/seats/shuffle`, { method: 'POST' });
+  if (res.ok) await init();
+  else { const e = await res.json().catch(() => ({})); alertDialog(e.error || 'Failed to shuffle seats.'); }
 }
 
 // Organiser edits a single match's table. Prompts, then sends; a duplicate table

@@ -1015,6 +1015,7 @@ def api_promote_waitlist(event_id, wid):
         }
         if rec.get('discord_id'):   # keep the Discord link so they can report via DM/channel
             player['discord_id'] = rec['discord_id']
+        _assign_draft_seat(player, e)
         return player
 
     status, player = promote_waitlist_entry(event_id, wid, build_player, promoter, _now_iso())
@@ -1349,9 +1350,33 @@ def api_set_seat(event_id, player_id):
     if seat is None:
         player.pop('seat', None)
     else:
+        conflict = next((p for p in e['players'] if p.get('seat') == seat and p['id'] != player_id), None)
+        if conflict:
+            return jsonify({'error': f"Seat {seat} is already assigned to {conflict['name']}"}), 409
         player['seat'] = seat
     save_event(event_id, {'players': e['players']})
     return jsonify({'ok': True, 'seat': seat})
+
+
+@events_bp.route('/api/events/<event_id>/seats/shuffle', methods=['POST'])
+@login_required
+def api_shuffle_seats(event_id):
+    """Organiser randomly reassigns seat numbers 1..N to all active draft players."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+    if (e.get('format') or '').lower() != 'draft':
+        return jsonify({'error': 'Seat shuffling is only available for Draft events'}), 400
+    if e.get('rounds'):
+        return jsonify({'error': 'Seat numbers cannot be changed after Round 1 is paired'}), 400
+    active = [p for p in e['players'] if not p.get('dropped')]
+    seats = list(range(1, len(active) + 1))
+    random.shuffle(seats)
+    for player, seat in zip(active, seats):
+        player['seat'] = seat
+    save_event(event_id, {'players': e['players']})
+    return jsonify({'ok': True, 'players': e['players']})
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/checkin', methods=['POST'])
