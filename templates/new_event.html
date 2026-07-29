@@ -96,6 +96,14 @@
   </label>
   {% endif %}
 
+  <div class="field-group no-divider">
+    <span class="field-label">Match format</span>
+    <div class="radio-row">
+      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if not source or (source.best_of | default(3)) != 1 %} checked{% endif %}> Best of 3</label>
+      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if source and (source.best_of | default(3)) == 1 %} checked{% endif %}> Best of 1</label>
+    </div>
+  </div>
+
   {% if mode == 'advanced' %}
   <div class="field-group">
     <span class="field-label">Tags</span>
@@ -315,14 +323,6 @@
            value="{{ source.round_timer_minutes | default('') if source else '' }}">
     <span class="field-help">Shows a countdown to players each round.</span>
   </label>
-
-  <div class="field-group no-divider">
-    <span class="field-label">Match format</span>
-    <div class="radio-row">
-      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if not source or (source.best_of | default(3)) != 1 %} checked{% endif %}> Best of 3</label>
-      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if source and (source.best_of | default(3)) == 1 %} checked{% endif %}> Best of 1</label>
-    </div>
-  </div>
 
   {% if mode == 'advanced' %}
   <label class="checkbox-row no-divider">

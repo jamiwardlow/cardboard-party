@@ -392,6 +392,8 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
    the printing toggles read as one group with no lines between them. */
 .modal .print-legality label.checkbox-row { gap: 0.5rem; border-top: none;
                                              padding-top: 0; margin-top: 0; }
+.radio-row { display: flex; flex-direction: row; gap: 1.5rem; }
+.radio-opt { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-weight: normal; }
 .chip-options { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .chip-options .chip { display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
               user-select: none; text-indent: 0;
