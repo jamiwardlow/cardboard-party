@@ -53,14 +53,17 @@ Firestore emulator.
 pip install -r requirements-test.txt
 python -m pytest tests/ -v
 python -m pytest tests/ --cov=. --cov-report=term-missing   # with coverage
+python -m pytest tests/test_swiss.py -v                      # single file
+python -m pytest tests/ -k "test_pair" -v                    # single test pattern
 ```
 
 Tests live in `tests/`. The `conftest.py` provides three fixtures: `app` (Flask
 test app), `client` (unauthenticated test client), and `auth_client` (pre-seeded
-with a signed-in session whose user ID is `'test_uid'`). Firestore is never hit —
-mock `routes.events.get_event`, `routes.events.save_event`, etc. with
-`unittest.mock.patch` as needed. `GOOGLE_CLOUD_PROJECT` is unset at test startup
-so `gcp_secrets.get_secret` returns `''` without calling Secret Manager.
+with a signed-in session whose user ID is `'test_uid'`). There is also a
+`minimal_event(**overrides)` helper that returns a minimal valid event dict.
+Firestore is never hit — mock `routes.events.get_event`, `routes.events.save_event`,
+etc. with `unittest.mock.patch` as needed. `GOOGLE_CLOUD_PROJECT` is unset at test
+startup so `gcp_secrets.get_secret` returns `''` without calling Secret Manager.
 
 **Environments:** prod and staging run the *same code*, differing only by
 environment config — `AVATARS_BUCKET` (GCS bucket, `storage.py`), `CANONICAL_HOST`
@@ -87,9 +90,21 @@ calls to a JSON API.
   helper functions called by `routes/discord.py`.
 - **`routes/discord.py`** — Discord bot via HTTP Interactions (no gateway). Verifies
   Ed25519 signatures, handles slash commands (`/cparty`), buttons, select menus, and
-  modals. Calls helpers in `routes/events.py` for all data mutations.
+  modals. Thin HTTP layer only — delegates all mutations and queries to `discord_actions.py`.
+- **`discord_actions.py`** — all mutations/queries triggered by Discord interactions.
+  No HTTP or Flask context: pure functions over plain dicts, directly testable. Called by
+  `routes/discord.py`. Split from `routes/events.py` to enable direct unit testing.
 - **`discord_api.py`** — outbound Discord REST calls (channel posts, DMs). Used by
-  `routes/events.py` to post round pairings and send result DMs.
+  `routes/events.py` and `discord_actions.py` to post round pairings and send result DMs.
+- **`discord_notify.py`** — round-label helpers (`_round_label`, `fmt_time`) shared
+  between the web app and the bot. Originally sent webhook notifications; that is retired.
+- **`event_state.py`** — pure predicates and utilities over the event dict (`_slugify`,
+  `_is_full`, `_self_registration_blocked`, `_validate_result`, etc.). Imported by both
+  `routes/events.py` and `discord_actions.py` to avoid circular imports between them.
+- **`event_queries.py`** — semantic query functions over `db.list_events()`. Callers
+  should import named queries from here rather than calling `list_events()` with inline filters.
+- **`routes/event_fields.py`** — `clean_event_fields(raw, partial=False)` validates and
+  normalises all event creation/update fields. Returns `(cleaned, errors)`.
 - **`decklist.py`** — network-free `parse_decklist` + Scryfall-calling `validate_decklist`.
   Handles Moxfield import via `import_moxfield` (requires `MOXFIELD_USER_AGENT` secret).
 - **`storage.py`** — GCS avatar upload (validate, center-crop, resize via Pillow).
@@ -223,3 +238,17 @@ default there. The OAuth flow uses a `state` nonce (CSRF) and only honors a post
 
 - The `{static` directory at the repo root is junk from a botched `mkdir` brace
   expansion — ignore/delete it; real assets live in `static/`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
