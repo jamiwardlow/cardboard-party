@@ -807,6 +807,9 @@ def api_update_event(event_id):
     if 'advanced' in updates:
         # One-way: an event can be upgraded Simple→Advanced but never downgraded.
         updates['advanced'] = updates['advanced'] or bool(e.get('advanced'))
+    if ('best_of' in updates and updates['best_of'] != e.get('best_of', 3)
+            and e.get('rounds')):
+        return jsonify({'error': 'Match format cannot be changed after rounds have been paired'}), 400
     old_format = e.get('validation_format', 'none')
     old_policy = {k: e.get(k) for k in _PRINT_POLICY_KEYS}
     save_event(event_id, updates)
@@ -1465,11 +1468,12 @@ def api_pair_round(event_id):
                 used.add(seat)
                 seat += 1
         is_single_elim = e.get('structure') == 'single_elim'
-        new_round = pair_draft_r1(players_to_pair, bracket=is_single_elim)
+        new_round = pair_draft_r1(players_to_pair, bracket=is_single_elim,
+                                  best_of=e.get('best_of', 3))
     elif is_draft_r2:
-        new_round = pair_draft_r2(players_to_pair, e['rounds'])
+        new_round = pair_draft_r2(players_to_pair, e['rounds'], best_of=e.get('best_of', 3))
     else:
-        new_round = pair_round(players_to_pair, e['rounds'])
+        new_round = pair_round(players_to_pair, e['rounds'], best_of=e.get('best_of', 3))
 
     assign_tables(new_round, e['players'], e)
     e['rounds'].append(new_round)
@@ -2173,7 +2177,7 @@ def api_repair_round(event_id, round_num):
         return jsonify({'error': 'Playoff rounds cannot be re-paired'}), 400
     # shuffle=True so a re-pair yields a *different* valid pairing (the initial
     # pair is deterministic, so re-pairing it unchanged would reproduce it exactly).
-    new_round = pair_round(e['players'], e['rounds'][:idx], shuffle=True)
+    new_round = pair_round(e['players'], e['rounds'][:idx], shuffle=True, best_of=e.get('best_of', 3))
     assign_tables(new_round, e['players'], e)
     e['rounds'][idx] = new_round
     save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
@@ -2209,7 +2213,7 @@ def api_record_result(event_id, round_num):
         return jsonify({'error': 'Cannot record a result for a bye'}), 400
     if result == '0-0-3' and e.get('intentional_draws_frowned'):
         return jsonify({'error': 'Intentional draws are not allowed for this event'}), 400
-    err = _validate_result(match, winner_id, result)
+    err = _validate_result(match, winner_id, result, e.get('best_of', 3))
     if err:
         return jsonify({'error': err}), 400
     match['winner_id'] = winner_id
@@ -2389,7 +2393,7 @@ def api_edit_result(event_id, round_num, match_index):
         return jsonify({'error': 'Cannot edit a bye result'}), 400
     if result == '0-0-3' and e.get('intentional_draws_frowned'):
         return jsonify({'error': 'Intentional draws are not allowed for this event'}), 400
-    err = _validate_result(rnd[match_index], winner_id, result)
+    err = _validate_result(rnd[match_index], winner_id, result, e.get('best_of', 3))
     if err:
         return jsonify({'error': err}), 400
 

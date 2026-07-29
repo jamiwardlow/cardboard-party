@@ -17,6 +17,7 @@ TOURNAMENT_TAGS = ['Weekly Play', 'Prerelease', 'Regional Championship Qualifier
 STRUCTURES = ['swiss', 'swiss_top_cut', 'single_elim', 'custom']
 REGISTRATION_TYPES = ('open', 'invite_only')
 PROXY_POLICIES = ('unlimited', 'limited', 'custom')
+BEST_OF_OPTIONS = (1, 3)
 COMMS_FIELDS = ('rules', 'schedule', 'prizes', 'contact')
 _COMMS_MAX = 5000
 _MAX_TABLE = 999
@@ -198,6 +199,13 @@ def clean_event_fields(raw: dict, partial: bool = False) -> tuple[dict, dict]:
 
     if _has('proxy_policy'):
         c['proxy_policy'] = _get('proxy_policy') if _get('proxy_policy') in PROXY_POLICIES else 'unlimited'
+
+    if _has('best_of'):
+        try:
+            raw_bo = int(_get('best_of', 3))
+        except (TypeError, ValueError):
+            raw_bo = 3
+        c['best_of'] = raw_bo if raw_bo in BEST_OF_OPTIONS else 3
 
     # ── Proxy limit ────────────────────────────────────────────────────────────
     if _has('proxy_limit'):

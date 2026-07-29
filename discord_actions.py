@@ -491,6 +491,7 @@ def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str,
         'player_id': player['id'], 'opp_id': opp_id,
         'opponent': opp['name'] if opp else 'Opponent', 'is_p1': is_p1,
         'allow_id': bool(e.get('advanced')) and not e.get('intentional_draws_frowned'),
+        'best_of': e.get('best_of', 3),
     }
 
 def discord_open_matches(discord_id: str, username: str = '', display: str = '', limit: int = 25):
@@ -521,8 +522,11 @@ def discord_match_context(event_id: str, round_idx: int, match_idx: int, discord
 _DISCORD_RESULT_CODES = {
     'w20': ('win',  2, 0), 'w21': ('win',  2, 1),
     'l02': ('lose', 0, 2), 'l12': ('lose', 1, 2),
+    'w10': ('win',  1, 0), 'l01': ('lose', 0, 1),
     'draw': ('draw', None, None), 'id': ('id', None, None),
 }
+_BO3_CODES = frozenset({'w20', 'w21', 'l02', 'l12', 'draw', 'id'})
+_BO1_CODES = frozenset({'w10', 'l01', 'draw'})
 
 def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, base_url='',
                               username='', display=''):
@@ -539,6 +543,10 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
     spec = _DISCORD_RESULT_CODES.get(code)
     if not spec:
         return None, 'Unknown result.'
+    best_of = e.get('best_of', 3)
+    valid_codes = _BO1_CODES if best_of == 1 else _BO3_CODES
+    if code not in valid_codes:
+        return None, 'That result is not valid for this event format.'
     kind, mine, theirs = spec
     if kind == 'draw':
         winner_id, result, summary = None, 'draw', 'a draw (1–1)'
@@ -552,7 +560,7 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
         a, b = (mine, theirs) if ctx['is_p1'] else (theirs, mine)
         result = f'{a}-{b}'
         summary = f"you {'won' if kind == 'win' else 'lost'} {max(mine, theirs)}–{min(mine, theirs)}"
-    err = _validate_result(e['rounds'][round_idx][match_idx], winner_id, result)
+    err = _validate_result(e['rounds'][round_idx][match_idx], winner_id, result, best_of)
     if err:
         return None, err
     m = e['rounds'][round_idx][match_idx]

@@ -91,7 +91,7 @@ def _event_complete(event: dict) -> bool:
 _RESULT_RE = re.compile(r'^(\d+)-(\d+)$')
 
 
-def _validate_result(match: dict, winner_id, result) -> str | None:
+def _validate_result(match: dict, winner_id, result, best_of: int = 3) -> str | None:
     """Validate a reported result against a match. Returns an error string, or None
     if valid. Enforces that the winner matches the score (result is recorded from
     player1's perspective, i.e. 'p1games-p2games'), so a player can't report a
@@ -105,6 +105,9 @@ def _validate_result(match: dict, winner_id, result) -> str | None:
     a, b = int(m.group(1)), int(m.group(2))
     if a == b:
         return 'Use a draw for an equal score'
+    wins_needed = best_of // 2 + 1  # 2 for BO3, 1 for BO1
+    if max(a, b) != wins_needed:
+        return f'Invalid score for best-of-{best_of}'
     expected = p1 if a > b else p2
     if winner_id != expected:
         return 'Winner does not match the score'

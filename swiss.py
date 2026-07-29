@@ -22,7 +22,8 @@ BYE_PLAYER_ID = '__bye__'
 DRAW_RESULTS = ('draw', '0-0-3')
 
 
-def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = False) -> list[dict]:
+def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = False,
+               best_of: int = 3) -> list[dict]:
     """
     Generate pairings for the next round.
 
@@ -33,6 +34,7 @@ def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = Fa
                  { 'player1_id': str, 'player2_id': str,
                    'winner_id': str | None,   # None = not yet played / draw
                    'is_bye': bool }
+        best_of: 1 or 3 — controls the bye result score (1-0-0 vs 2-0-0)
 
     Returns:
         list of match dicts for the new round (winner_id and result left empty)
@@ -61,11 +63,12 @@ def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = Fa
     pairings = _pair(active, points, opp_hist)
 
     if bye_player_id:
+        wins_needed = best_of // 2 + 1
         pairings.append({
             'player1_id': bye_player_id,
             'player2_id': BYE_PLAYER_ID,
             'winner_id':  bye_player_id,
-            'result':     '2-0-0',
+            'result':     f'{wins_needed}-0-0',
             'is_bye':     True,
             'table':      None,   # byes are never seated at a table
         })
@@ -357,7 +360,8 @@ def id_safe_players(players: list[dict], rounds: list[list[dict]],
 
 # ── Draft pod pairing ───────────────────────────────────────────────────────────
 
-def pair_draft_r2(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
+def pair_draft_r2(players: list[dict], rounds: list[list[dict]],
+                  best_of: int = 3) -> list[dict]:
     """Round 2 pairing for a Draft event.
 
     Odd-seated round-1 pairs compete within their group: winner(1v5) plays
@@ -411,9 +415,10 @@ def pair_draft_r2(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
         if len(remaining) % 2 == 1:
             bye_id = _choose_bye(remaining, points, bye_hist)
             remaining = [p for p in remaining if p['id'] != bye_id]
+            wins_needed = best_of // 2 + 1
             pairings.append({
                 'player1_id': bye_id, 'player2_id': BYE_PLAYER_ID,
-                'winner_id': bye_id, 'result': '2-0-0',
+                'winner_id': bye_id, 'result': f'{wins_needed}-0-0',
                 'is_bye': True, 'table': None,
             })
         remaining.sort(key=lambda p: (-points[p['id']], p['name']))
@@ -422,7 +427,8 @@ def pair_draft_r2(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
     return pairings
 
 
-def pair_draft_r1(players: list[dict], bracket: bool = False) -> list[dict]:
+def pair_draft_r1(players: list[dict], bracket: bool = False,
+                  best_of: int = 3) -> list[dict]:
     """First-round pairing for a Draft event.
 
     Players must already have a 'seat' integer (1..n).  Pairs seat k vs seat
@@ -442,11 +448,12 @@ def pair_draft_r1(players: list[dict], bracket: bool = False) -> list[dict]:
         pairings.append(m)
     if n % 2 == 1:
         bye_p = active[-1]
+        wins_needed = best_of // 2 + 1
         pairings.append({
             'player1_id': bye_p['id'],
             'player2_id': BYE_PLAYER_ID,
             'winner_id':  bye_p['id'],
-            'result':     '2-0-0',
+            'result':     f'{wins_needed}-0-0',
             'is_bye':     True,
             'table':      None,
         })

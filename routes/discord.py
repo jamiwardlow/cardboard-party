@@ -338,14 +338,22 @@ def _report_buttons(ctx):
     """Result-entry buttons for one match (from the reporter's perspective)."""
     def cid(code):
         return f"cbp_rep:{ctx['event_id']}:{ctx['round_idx']}:{ctx['match_idx']}:{code}"
-    rows = [{'type': ACTION_ROW, 'components': [
-        {'type': BUTTON, 'style': 3, 'label': 'Win 2–0',  'custom_id': cid('w20')},
-        {'type': BUTTON, 'style': 3, 'label': 'Win 2–1',  'custom_id': cid('w21')},
-        {'type': BUTTON, 'style': 4, 'label': 'Lose 1–2', 'custom_id': cid('l12')},
-        {'type': BUTTON, 'style': 4, 'label': 'Lose 0–2', 'custom_id': cid('l02')},
-        {'type': BUTTON, 'style': 2, 'label': 'Draw',     'custom_id': cid('draw')},
-    ]}]
-    if ctx.get('allow_id'):
+    if ctx.get('best_of', 3) == 1:
+        buttons = [
+            {'type': BUTTON, 'style': 3, 'label': 'Win 1–0',  'custom_id': cid('w10')},
+            {'type': BUTTON, 'style': 4, 'label': 'Lose 0–1', 'custom_id': cid('l01')},
+            {'type': BUTTON, 'style': 2, 'label': 'Draw',     'custom_id': cid('draw')},
+        ]
+    else:
+        buttons = [
+            {'type': BUTTON, 'style': 3, 'label': 'Win 2–0',  'custom_id': cid('w20')},
+            {'type': BUTTON, 'style': 3, 'label': 'Win 2–1',  'custom_id': cid('w21')},
+            {'type': BUTTON, 'style': 4, 'label': 'Lose 1–2', 'custom_id': cid('l12')},
+            {'type': BUTTON, 'style': 4, 'label': 'Lose 0–2', 'custom_id': cid('l02')},
+            {'type': BUTTON, 'style': 2, 'label': 'Draw',     'custom_id': cid('draw')},
+        ]
+    rows = [{'type': ACTION_ROW, 'components': buttons}]
+    if ctx.get('allow_id') and ctx.get('best_of', 3) != 1:
         rows.append({'type': ACTION_ROW, 'components': [
             {'type': BUTTON, 'style': 2, 'label': 'Intentional draw (0–0–3)', 'custom_id': cid('id')}]})
     return {'flags': EPHEMERAL,

@@ -2,6 +2,7 @@
 
 import pytest
 from swiss import pair_draft_r1, pair_draft_r2, pair_round, BYE_PLAYER_ID
+from event_state import _validate_result
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -184,3 +185,72 @@ def test_r3_1_1_players_avoid_rematches():
         p1, p2 = m['player1_id'], m['player2_id']
         assert p2 not in opp_hist.get(p1, set()), \
             f"{p1} and {p2} already played each other"
+
+
+# ── _validate_result: best_of enforcement ─────────────────────────────────────
+
+def _match(p1='p1', p2='p2'):
+    return {'player1_id': p1, 'player2_id': p2}
+
+
+def test_bo3_valid_2_0():
+    assert _validate_result(_match(), 'p1', '2-0', best_of=3) is None
+
+def test_bo3_valid_2_1():
+    assert _validate_result(_match(), 'p1', '2-1', best_of=3) is None
+
+def test_bo3_valid_0_2_p2_wins():
+    assert _validate_result(_match(), 'p2', '0-2', best_of=3) is None
+
+def test_bo3_rejects_1_0():
+    assert _validate_result(_match(), 'p1', '1-0', best_of=3) is not None
+
+def test_bo3_rejects_5_3():
+    assert _validate_result(_match(), 'p1', '5-3', best_of=3) is not None
+
+def test_bo3_draw_accepted():
+    assert _validate_result(_match(), None, 'draw', best_of=3) is None
+
+def test_bo1_valid_1_0():
+    assert _validate_result(_match(), 'p1', '1-0', best_of=1) is None
+
+def test_bo1_valid_0_1_p2_wins():
+    assert _validate_result(_match(), 'p2', '0-1', best_of=1) is None
+
+def test_bo1_rejects_2_0():
+    assert _validate_result(_match(), 'p1', '2-0', best_of=1) is not None
+
+def test_bo1_rejects_2_1():
+    assert _validate_result(_match(), 'p1', '2-1', best_of=1) is not None
+
+def test_bo1_draw_accepted():
+    assert _validate_result(_match(), None, 'draw', best_of=1) is None
+
+def test_validate_result_winner_mismatch_rejected():
+    assert _validate_result(_match(), 'p2', '2-0', best_of=3) is not None
+
+
+# ── Bye result scores by best_of ──────────────────────────────────────────────
+
+def test_bye_result_bo3():
+    players = [{'id': 'a', 'name': 'A', 'dropped': False},
+               {'id': 'b', 'name': 'B', 'dropped': False},
+               {'id': 'c', 'name': 'C', 'dropped': False}]
+    rnd = pair_round(players, [], best_of=3)
+    bye = next(m for m in rnd if m.get('is_bye'))
+    assert bye['result'] == '2-0-0'
+
+def test_bye_result_bo1():
+    players = [{'id': 'a', 'name': 'A', 'dropped': False},
+               {'id': 'b', 'name': 'B', 'dropped': False},
+               {'id': 'c', 'name': 'C', 'dropped': False}]
+    rnd = pair_round(players, [], best_of=1)
+    bye = next(m for m in rnd if m.get('is_bye'))
+    assert bye['result'] == '1-0-0'
+
+def test_draft_r1_bye_result_bo1():
+    players = [{'id': f'p{i}', 'name': f'P{i}', 'dropped': False, 'seat': i}
+               for i in range(1, 4)]
+    rnd = pair_draft_r1(players, best_of=1)
+    bye = next(m for m in rnd if m.get('is_bye'))
+    assert bye['result'] == '1-0-0'

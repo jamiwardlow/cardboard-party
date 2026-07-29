@@ -316,6 +316,14 @@
     <span class="field-help">Shows a countdown to players each round.</span>
   </label>
 
+  <div class="field-group no-divider">
+    <span class="field-label">Match format</span>
+    <div class="radio-row">
+      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if not source or (source.best_of | default(3)) != 1 %} checked{% endif %}> Best of 3</label>
+      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if source and (source.best_of | default(3)) == 1 %} checked{% endif %}> Best of 1</label>
+    </div>
+  </div>
+
   {% if mode == 'advanced' %}
   <label class="checkbox-row no-divider">
     <input type="checkbox" id="e-auto-start-timer"{% if source and source.auto_start_timer %} checked{% endif %}>
@@ -539,6 +547,7 @@ async function submitCreateEvent() {
     registration_cap: cap,
     brand_text:       IS_ADVANCED ? document.getElementById('e-brand-text').value : '',
     round_timer_minutes: parseInt(document.getElementById('e-round-timer').value) || 0,
+    best_of: parseInt(document.querySelector('[name=best_of]:checked').value) || 3,
   };
   {% if mode == 'advanced' %}
   body.requires_decklists       = DECKLIST_FORMATS.includes(format);

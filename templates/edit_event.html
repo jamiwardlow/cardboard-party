@@ -277,6 +277,23 @@
            value="{{ event.round_timer_minutes | default('') }}">
     <span class="field-help">Shows a countdown to players each round.</span>
   </label>
+
+  <div class="field-group no-divider">
+    <span class="field-label">Match format</span>
+    {% if event.rounds %}
+    <span class="field-help">Cannot change after rounds have been paired.</span>
+    <div class="radio-row">
+      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if (event.best_of | default(3)) != 1 %} checked{% endif %} disabled> Best of 3</label>
+      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if (event.best_of | default(3)) == 1 %} checked{% endif %} disabled> Best of 1</label>
+    </div>
+    {% else %}
+    <div class="radio-row">
+      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if (event.best_of | default(3)) != 1 %} checked{% endif %}> Best of 3</label>
+      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if (event.best_of | default(3)) == 1 %} checked{% endif %}> Best of 1</label>
+    </div>
+    {% endif %}
+  </div>
+
   <label class="checkbox-row no-divider{% if not adv %} ee-adv hidden{% endif %}">
     <input type="checkbox" id="ee-auto-start-timer"{% if event.auto_start_timer %} checked{% endif %}>
     <span>Start the timer when pairings are released
@@ -513,6 +530,7 @@ async function saveEventDetails() {
     entry_code:                document.getElementById('ee-entry-code').value,
     intentional_draws_frowned: document.getElementById('ee-draws-frowned').checked,
     round_timer_minutes:       parseInt(document.getElementById('ee-round-timer').value) || 0,
+    best_of:                   parseInt(document.querySelector('[name=best_of]:checked')?.value) || 3,
     auto_start_timer:          document.getElementById('ee-auto-start-timer').checked,
     delay_pairings:            document.getElementById('ee-delay-pairings').checked,
     delay_standings:           document.getElementById('ee-delay-standings').checked,

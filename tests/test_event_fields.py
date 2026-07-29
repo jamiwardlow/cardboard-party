@@ -5,7 +5,7 @@ These test the pure-function layer directly — no Flask client, no DB.
 """
 
 import pytest
-from routes.event_fields import clean_event_fields, TOURNAMENT_TAGS, STRUCTURES
+from routes.event_fields import clean_event_fields, TOURNAMENT_TAGS, STRUCTURES, BEST_OF_OPTIONS
 
 
 # ── Name validation ────────────────────────────────────────────────────────────
@@ -187,6 +187,41 @@ def test_lng_out_of_range_returns_none():
 def test_coord_non_numeric_returns_none():
     cleaned, _ = clean_event_fields({'lat': 'north'})
     assert cleaned['lat'] is None
+
+
+# ── best_of field ─────────────────────────────────────────────────────────────
+
+def test_best_of_defaults_to_3():
+    cleaned, _ = clean_event_fields({})
+    assert cleaned['best_of'] == 3
+
+def test_best_of_1_accepted():
+    cleaned, _ = clean_event_fields({'best_of': 1})
+    assert cleaned['best_of'] == 1
+
+def test_best_of_3_accepted():
+    cleaned, _ = clean_event_fields({'best_of': 3})
+    assert cleaned['best_of'] == 3
+
+def test_best_of_invalid_falls_back_to_3():
+    cleaned, _ = clean_event_fields({'best_of': 2})
+    assert cleaned['best_of'] == 3
+
+def test_best_of_string_parsed():
+    cleaned, _ = clean_event_fields({'best_of': '1'})
+    assert cleaned['best_of'] == 1
+
+def test_best_of_non_int_falls_back_to_3():
+    cleaned, _ = clean_event_fields({'best_of': 'five'})
+    assert cleaned['best_of'] == 3
+
+def test_best_of_absent_in_partial_not_cleaned():
+    cleaned, _ = clean_event_fields({}, partial=True)
+    assert 'best_of' not in cleaned
+
+def test_best_of_present_in_partial_cleaned():
+    cleaned, _ = clean_event_fields({'best_of': 1}, partial=True)
+    assert cleaned['best_of'] == 1
 
 
 # ── Full create: has all expected fields ──────────────────────────────────────

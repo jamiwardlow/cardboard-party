@@ -2372,12 +2372,18 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
   document.querySelector('#result-modal h2').textContent =
     isEdit ? 'Edit result' : 'Enter result';
 
-  const outcomes = [
-    { score: '2-0', p1w: 2, p2w: 0, cls: 'p1-wins', label: `${s1} wins` },
-    { score: '2-1', p1w: 2, p2w: 1, cls: 'p1-wins', label: `${s1} wins` },
-    { score: '1-2', p1w: 1, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
-    { score: '0-2', p1w: 0, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
-  ];
+  const bo = (state.best_of || 3);
+  const outcomes = bo === 1
+    ? [
+        { score: '1-0', p1w: 1, p2w: 0, cls: 'p1-wins', label: `${s1} wins` },
+        { score: '0-1', p1w: 0, p2w: 1, cls: 'p2-wins', label: `${s2} wins` },
+      ]
+    : [
+        { score: '2-0', p1w: 2, p2w: 0, cls: 'p1-wins', label: `${s1} wins` },
+        { score: '2-1', p1w: 2, p2w: 1, cls: 'p1-wins', label: `${s1} wins` },
+        { score: '1-2', p1w: 1, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
+        { score: '0-2', p1w: 0, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
+      ];
 
   // The plain "Draw 1–1" (an unintentional draw) is always available. Advanced
   // events also offer "0-0-3 Intentional draw", hidden when those are frowned.
@@ -2386,7 +2392,7 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
         <span class="score">1 – 1</span>
         <span class="label">Draw</span>
       </button>`;
-  if (state.advanced && !state.intentional_draws_frowned) {
+  if (state.advanced && !state.intentional_draws_frowned && bo !== 1) {
     drawBtns += `
       <button class="result-btn draw" onclick="selectResult('0-0-3')">
         <span class="score">0 – 0 – 3</span>
