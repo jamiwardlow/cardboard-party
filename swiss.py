@@ -355,7 +355,72 @@ def id_safe_players(players: list[dict], rounds: list[list[dict]],
     return safe
 
 
-# ── Draft pod first-round pairing ───────────────────────────────────────────────
+# ── Draft pod pairing ───────────────────────────────────────────────────────────
+
+def pair_draft_r2(players: list[dict], rounds: list[list[dict]]) -> list[dict]:
+    """Round 2 pairing for a Draft event.
+
+    Odd-seated round-1 pairs compete within their group: winner(1v5) plays
+    winner(3v7), loser(1v5) plays loser(3v7). Even-seated groups do the same
+    (winner(2v6) vs winner(4v8), etc.). Any players not covered by a complete
+    group pairing (e.g. from drops or non-standard pod sizes) fall through to
+    standard Swiss.
+    """
+    active = [p for p in players if not p.get('dropped')]
+    active_ids = {p['id'] for p in active}
+    seat_of = {p['id']: p.get('seat', 0) for p in players}
+    player_by_id = {p['id']: p for p in players}
+    r1 = rounds[0]
+    points = _compute_points(active, rounds)
+    opp_hist = _opponent_history(rounds)
+    bye_hist = _bye_history(rounds)
+
+    # Build sorted list of round-1 non-bye match results
+    r1_summaries = []
+    for match in r1:
+        if match.get('is_bye'):
+            continue
+        p1, p2 = match['player1_id'], match['player2_id']
+        s1, s2 = seat_of.get(p1, 0), seat_of.get(p2, 0)
+        lower = min(s1, s2)
+        winner = match.get('winner_id')
+        # For draws or unresolved matches, treat p1 as winner (arbitrary but consistent)
+        w = winner if winner in (p1, p2) else p1
+        l = p2 if w == p1 else p1
+        r1_summaries.append({'lower_seat': lower, 'winner': w, 'loser': l})
+    r1_summaries.sort(key=lambda m: m['lower_seat'])
+
+    odd_g = [m for m in r1_summaries if m['lower_seat'] % 2 == 1]
+    even_g = [m for m in r1_summaries if m['lower_seat'] % 2 == 0]
+
+    pairings: list[dict] = []
+    covered: set = set()
+
+    for group in (odd_g, even_g):
+        for i in range(0, len(group) - 1, 2):
+            m1, m2 = group[i], group[i + 1]
+            ids = [m1['winner'], m1['loser'], m2['winner'], m2['loser']]
+            if not all(pid in active_ids for pid in ids):
+                continue  # a player dropped; leave them for the fallback
+            pairings.append(_make_pairing(player_by_id[m1['winner']], player_by_id[m2['winner']]))
+            pairings.append(_make_pairing(player_by_id[m1['loser']], player_by_id[m2['loser']]))
+            covered.update(ids)
+
+    remaining = [p for p in active if p['id'] not in covered]
+    if remaining:
+        if len(remaining) % 2 == 1:
+            bye_id = _choose_bye(remaining, points, bye_hist)
+            remaining = [p for p in remaining if p['id'] != bye_id]
+            pairings.append({
+                'player1_id': bye_id, 'player2_id': BYE_PLAYER_ID,
+                'winner_id': bye_id, 'result': '2-0-0',
+                'is_bye': True, 'table': None,
+            })
+        remaining.sort(key=lambda p: (-points[p['id']], p['name']))
+        pairings.extend(_pair(remaining, points, opp_hist))
+
+    return pairings
+
 
 def pair_draft_r1(players: list[dict], bracket: bool = False) -> list[dict]:
     """First-round pairing for a Draft event.

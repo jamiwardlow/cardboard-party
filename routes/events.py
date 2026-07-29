@@ -14,7 +14,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 get_user_profile, save_user_profile, delete_user_profile, list_users,
                 find_user_by_email, find_user_by_discord_handle,
                 add_event_log, list_event_log, promote_waitlist_entry)
-from swiss import (pair_round, pair_draft_r1, compute_standings, default_num_rounds, BYE_PLAYER_ID,
+from swiss import (pair_round, pair_draft_r1, pair_draft_r2, compute_standings, default_num_rounds, BYE_PLAYER_ID,
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players,
                    assign_tables)
 from routes.auth import get_current_user, login_required, discord_login_enabled
@@ -1443,6 +1443,7 @@ def api_pair_round(event_id):
             return jsonify({'error': 'Need at least 2 checked-in players to pair'}), 400
     fmt_lower = (e.get('format') or '').lower()
     is_draft_r1 = fmt_lower == 'draft' and not e['rounds']
+    is_draft_r2 = fmt_lower == 'draft' and len(e['rounds']) == 1
 
     if is_draft_r1:
         # Seats are normally assigned at registration. Fill any gaps for players
@@ -1465,6 +1466,8 @@ def api_pair_round(event_id):
                 seat += 1
         is_single_elim = e.get('structure') == 'single_elim'
         new_round = pair_draft_r1(players_to_pair, bracket=is_single_elim)
+    elif is_draft_r2:
+        new_round = pair_draft_r2(players_to_pair, e['rounds'])
     else:
         new_round = pair_round(players_to_pair, e['rounds'])
 
