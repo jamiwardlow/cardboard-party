@@ -519,13 +519,15 @@ def discord_match_context(event_id: str, round_idx: int, match_idx: int, discord
     return _discord_match_ctx(e, round_idx, match_idx, discord_id, gid, handles)
 
 # Map a reporter-perspective result code to a stored result + summary.
+# Tuples are (kind, my_games, their_games) or (kind, my_games, their_games, draws).
 _DISCORD_RESULT_CODES = {
-    'w20': ('win',  2, 0), 'w21': ('win',  2, 1),
-    'l02': ('lose', 0, 2), 'l12': ('lose', 1, 2),
-    'w10': ('win',  1, 0), 'l01': ('lose', 0, 1),
+    'w20':  ('win',  2, 0),    'w21':  ('win',  2, 1),
+    'l02':  ('lose', 0, 2),    'l12':  ('lose', 1, 2),
+    'w10':  ('win',  1, 0),    'l01':  ('lose', 0, 1),
+    'w101': ('win',  1, 0, 1), 'l011': ('lose', 0, 1, 1),
     'draw': ('draw', None, None), 'id': ('id', None, None),
 }
-_BO3_CODES = frozenset({'w20', 'w21', 'l02', 'l12', 'draw', 'id'})
+_BO3_CODES = frozenset({'w20', 'w21', 'l02', 'l12', 'draw', 'id', 'w101', 'l011'})
 _BO1_CODES = frozenset({'w10', 'l01', 'draw'})
 
 def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, base_url='',
@@ -547,7 +549,8 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
     valid_codes = _BO1_CODES if best_of == 1 else _BO3_CODES
     if code not in valid_codes:
         return None, 'That result is not valid for this event format.'
-    kind, mine, theirs = spec
+    kind, mine, theirs, *rest = spec
+    draws = rest[0] if rest else 0
     if kind == 'draw':
         winner_id, result, summary = None, 'draw', 'a draw (1–1)'
     elif kind == 'id':
@@ -558,8 +561,10 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
         winner_id = ctx['player_id'] if kind == 'win' else ctx['opp_id']
         # Stored result is from player1's perspective.
         a, b = (mine, theirs) if ctx['is_p1'] else (theirs, mine)
-        result = f'{a}-{b}'
-        summary = f"you {'won' if kind == 'win' else 'lost'} {max(mine, theirs)}–{min(mine, theirs)}"
+        result = f'{a}-{b}-{draws}' if draws else f'{a}-{b}'
+        hi, lo = max(mine, theirs), min(mine, theirs)
+        score_str = f'{hi}–{lo}–{draws}' if draws else f'{hi}–{lo}'
+        summary = f"you {'won' if kind == 'win' else 'lost'} {score_str}"
     err = _validate_result(e['rounds'][round_idx][match_idx], winner_id, result, best_of)
     if err:
         return None, err
