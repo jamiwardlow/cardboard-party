@@ -229,6 +229,21 @@ def test_bo1_draw_accepted():
 def test_validate_result_winner_mismatch_rejected():
     assert _validate_result(_match(), 'p2', '2-0', best_of=3) is not None
 
+def test_bo3_valid_1_0_1_p1_wins():
+    assert _validate_result(_match(), 'p1', '1-0-1', best_of=3) is None
+
+def test_bo3_valid_0_1_1_p2_wins():
+    assert _validate_result(_match(), 'p2', '0-1-1', best_of=3) is None
+
+def test_bo3_1_0_1_winner_mismatch_rejected():
+    assert _validate_result(_match(), 'p2', '1-0-1', best_of=3) is not None
+
+def test_bo1_rejects_1_0_1():
+    assert _validate_result(_match(), 'p1', '1-0-1', best_of=1) is not None
+
+def test_bo3_rejects_score_exceeding_best_of():
+    assert _validate_result(_match(), 'p1', '1-0-3', best_of=3) is not None
+
 
 # ── Bye result scores by best_of ──────────────────────────────────────────────
 

@@ -1868,10 +1868,11 @@ function renderMatch(m, roundIdx, matchIdx) {
     // which player the stored 'p1-p2' score is from the perspective of.
     const hi = Math.max(parts[0], parts[1]);
     const lo = Math.min(parts[0], parts[1]);
+    const scoreStr = parts[2] != null ? `${hi}–${lo}–${parts[2]}` : `${hi}–${lo}`;
     const editBtn = canManage()
       ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
       : '';
-    resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${hi}–${lo}</span>${editBtn}`;
+    resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${scoreStr}</span>${editBtn}`;
   } else if (canReport) {
     // Highlight the button on the player's own match so it's the obvious next step.
     resultCell = `<button class="btn btn-sm ${mine ? 'btn-primary' : ''}" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
@@ -2375,14 +2376,16 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
   const bo = (state.best_of || 3);
   const outcomes = bo === 1
     ? [
-        { score: '1-0', p1w: 1, p2w: 0, cls: 'p1-wins', label: `${s1} wins` },
-        { score: '0-1', p1w: 0, p2w: 1, cls: 'p2-wins', label: `${s2} wins` },
+        { score: '1-0',   display: '1 – 0',     cls: 'p1-wins', label: `${s1} wins` },
+        { score: '0-1',   display: '1 – 0',     cls: 'p2-wins', label: `${s2} wins` },
       ]
     : [
-        { score: '2-0', p1w: 2, p2w: 0, cls: 'p1-wins', label: `${s1} wins` },
-        { score: '2-1', p1w: 2, p2w: 1, cls: 'p1-wins', label: `${s1} wins` },
-        { score: '1-2', p1w: 1, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
-        { score: '0-2', p1w: 0, p2w: 2, cls: 'p2-wins', label: `${s2} wins` },
+        { score: '2-0',   display: '2 – 0',     cls: 'p1-wins', label: `${s1} wins` },
+        { score: '2-1',   display: '2 – 1',     cls: 'p1-wins', label: `${s1} wins` },
+        { score: '1-0-1', display: '1 – 0 – 1', cls: 'p1-wins', label: `${s1} wins` },
+        { score: '1-2',   display: '2 – 1',     cls: 'p2-wins', label: `${s2} wins` },
+        { score: '0-2',   display: '2 – 0',     cls: 'p2-wins', label: `${s2} wins` },
+        { score: '0-1-1', display: '1 – 0 – 1', cls: 'p2-wins', label: `${s2} wins` },
       ];
 
   // The plain "Draw 1–1" (an unintentional draw) is always available. Advanced
@@ -2402,7 +2405,7 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
   document.getElementById('result-grid').innerHTML =
     outcomes.map(o => `
       <button class="result-btn ${o.cls}" onclick="selectResult('${o.score}')">
-        <span class="score">${Math.max(o.p1w, o.p2w)} – ${Math.min(o.p1w, o.p2w)}</span>
+        <span class="score">${o.display}</span>
         <span class="label">${o.label}</span>
       </button>
     `).join('') + drawBtns;
@@ -2447,9 +2450,14 @@ function selectResult(score) {
   // feed standings and pairings, so we confirm before saving.
   pendingResult.winner_id = winner_id;
   pendingResult.result = result;
+  const scoreParts = score.split('-').map(Number);
+  const d = scoreParts[2];
+  const displayScore = d != null
+    ? `${Math.max(scoreParts[0], scoreParts[1])}–${Math.min(scoreParts[0], scoreParts[1])}–${d}`
+    : `${Math.max(...scoreParts)}–${Math.min(...scoreParts)}`;
   const summary = result === 'draw' ? 'a draw (1–1)'
     : result === '0-0-3' ? 'an intentional draw (0–0–3)'
-    : `${playerName(winner_id)} wins ${Math.max(...score.split('-').map(Number))}–${Math.min(...score.split('-').map(Number))}`;
+    : `${playerName(winner_id)} wins ${displayScore}`;
   document.getElementById('result-confirm-msg').textContent =
     `${isEdit ? 'Update this result to' : 'Submit this result:'} ${summary}?`;
   showResultStep('confirm');

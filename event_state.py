@@ -88,14 +88,14 @@ def _event_complete(event: dict) -> bool:
     return _swiss_complete(event)
 
 
-_RESULT_RE = re.compile(r'^(\d+)-(\d+)$')
+_RESULT_RE = re.compile(r'^(\d+)-(\d+)(?:-(\d+))?$')
 
 
 def _validate_result(match: dict, winner_id, result, best_of: int = 3) -> str | None:
     """Validate a reported result against a match. Returns an error string, or None
     if valid. Enforces that the winner matches the score (result is recorded from
-    player1's perspective, i.e. 'p1games-p2games'), so a player can't report a
-    score for one player while crediting the win to the other."""
+    player1's perspective, i.e. 'p1games-p2games' or 'p1games-p2games-draws'), so
+    a player can't report a score for one player while crediting the win to the other."""
     p1, p2 = match.get('player1_id'), match.get('player2_id')
     if result in DRAW_RESULTS:
         return None if winner_id is None else 'A draw cannot have a winner'
@@ -103,11 +103,18 @@ def _validate_result(match: dict, winner_id, result, best_of: int = 3) -> str | 
     if not m:
         return 'Invalid result format'
     a, b = int(m.group(1)), int(m.group(2))
+    draws = int(m.group(3)) if m.group(3) is not None else 0
     if a == b:
         return 'Use a draw for an equal score'
-    wins_needed = best_of // 2 + 1  # 2 for BO3, 1 for BO1
-    if max(a, b) != wins_needed:
-        return f'Invalid score for best-of-{best_of}'
+    if draws > 0:
+        if best_of == 1:
+            return 'Invalid score for best-of-1'
+        if a + b + draws > best_of:
+            return f'Invalid score for best-of-{best_of}'
+    else:
+        wins_needed = best_of // 2 + 1  # 2 for BO3, 1 for BO1
+        if max(a, b) != wins_needed:
+            return f'Invalid score for best-of-{best_of}'
     expected = p1 if a > b else p2
     if winner_id != expected:
         return 'Winner does not match the score'
