@@ -73,22 +73,6 @@
     <input id="ee-format-custom" type="text" placeholder="Enter custom format" class="hidden" style="margin-top:0.4rem">
   </label>
 
-  <div class="field-group no-divider">
-    <span class="field-label">Match format</span>
-    {% if event.rounds %}
-    <span class="field-help">Cannot change after rounds have been paired.</span>
-    <div class="radio-row">
-      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if (event.best_of | default(3)) != 1 %} checked{% endif %} disabled> Best of 3</label>
-      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if (event.best_of | default(3)) == 1 %} checked{% endif %} disabled> Best of 1</label>
-    </div>
-    {% else %}
-    <div class="radio-row">
-      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if (event.best_of | default(3)) != 1 %} checked{% endif %}> Best of 3</label>
-      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if (event.best_of | default(3)) == 1 %} checked{% endif %}> Best of 1</label>
-    </div>
-    {% endif %}
-  </div>
-
   {%- set event_tags = event.tags | default([]) -%}
   <div class="field-group{% if not adv %} ee-adv hidden{% endif %}">
     <span class="field-label">Tags</span>
@@ -116,6 +100,22 @@
     </select>
     <span class="field-help">Seeds the playoff bracket; you confirm the cut when Swiss ends.</span>
   </label>
+
+  <div class="field-group no-divider">
+    <span class="field-label">Match format</span>
+    {% if event.rounds %}
+    <span class="field-help">Cannot change after rounds have been paired.</span>
+    <div class="radio-row">
+      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if (event.best_of | default(3)) != 1 %} checked{% endif %} disabled> Best of 3</label>
+      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if (event.best_of | default(3)) == 1 %} checked{% endif %} disabled> Best of 1</label>
+    </div>
+    {% else %}
+    <div class="radio-row">
+      <label class="radio-opt"><input type="radio" name="best_of" value="3"{% if (event.best_of | default(3)) != 1 %} checked{% endif %}> Best of 3</label>
+      <label class="radio-opt"><input type="radio" name="best_of" value="1"{% if (event.best_of | default(3)) == 1 %} checked{% endif %}> Best of 1</label>
+    </div>
+    {% endif %}
+  </div>
 
   <label>Number of rounds
     <input id="ee-rounds" type="number" min="1" max="20" placeholder="Auto"
