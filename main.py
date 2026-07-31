@@ -87,6 +87,31 @@ def _no_store_dynamic(resp):
     resp.headers['X-Frame-Options'] = 'DENY'
     resp.headers['X-Content-Type-Options'] = 'nosniff'
     resp.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    # HSTS: tell browsers to always use HTTPS for this domain. Production only —
+    # local dev runs on plain HTTP so this must not fire there.
+    if _is_prod:
+        resp.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    # CSP: script-src uses 'unsafe-inline' because templates have large inline
+    # <script> blocks and onclick attributes throughout — migrating to nonces is a
+    # future project. Even with 'unsafe-inline', CSP still blocks injected external
+    # scripts, eval(), object/embed injection, base-tag hijacking, and cross-origin
+    # form exfiltration.
+    # form-action includes the two external relay targets (top8 + tcdecks); the
+    # mtggoldfish page is a copy-paste flow (no form POST) so it doesn't need one.
+    resp.headers['Content-Security-Policy'] = '; '.join([
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' https://maps.googleapis.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        ("img-src 'self' data: https://storage.googleapis.com "
+         "https://cdn.discordapp.com https://lh3.googleusercontent.com "
+         "https://maps.gstatic.com"),
+        "connect-src 'self' https://maps.googleapis.com https://places.googleapis.com",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self' https://mtgtop8.com https://www.tcdecks.net",
+    ])
     return resp
 
 # Cache-busting token for static assets (CSS/JS). App Engine serves /static with
