@@ -19,6 +19,8 @@ from db import (get_admins, add_admin, remove_admin,
                 resolve_pending_co_organizer)
 from gcp_secrets import get_secret
 
+from limiter import limiter
+
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 GOOGLE_AUTH_URL    = 'https://accounts.google.com/o/oauth2/v2/auth'
@@ -87,6 +89,7 @@ def login():
 
 
 @auth_bp.route('/login/google')
+@limiter.limit('20 per minute')
 def login_google():
     state = _begin_oauth(request.args.get('next', ''))
     params = {
@@ -101,6 +104,7 @@ def login_google():
 
 
 @auth_bp.route('/login/discord')
+@limiter.limit('20 per minute')
 def login_discord():
     if not discord_login_enabled():
         return 'Discord login is not configured.', 503
@@ -122,6 +126,7 @@ def login_discord():
 
 
 @auth_bp.route('/callback')
+@limiter.limit('20 per minute')
 def callback():
     state = request.args.get('state')
     if not state or state != session.pop('oauth_state', None):
@@ -208,6 +213,7 @@ def _resolve_account_for_discord(discord_id: str, email: str):
 
 
 @auth_bp.route('/discord/callback')
+@limiter.limit('20 per minute')
 def discord_callback():
     if not discord_login_enabled():
         return 'Discord login is not configured.', 503

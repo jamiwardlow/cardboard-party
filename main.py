@@ -2,12 +2,13 @@ import os
 import time
 from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
-from flask import Flask, request, redirect
+from flask import Flask, request, redirect, jsonify
 from routes.auth import auth_bp
 from routes.events import events_bp
 from routes.discord import discord_bp
 from gcp_secrets import get_secret
 from discord_notify import fmt_time
+from limiter import limiter
 
 app = Flask(__name__)
 app.jinja_env.filters['time12'] = fmt_time
@@ -47,6 +48,15 @@ app.config.update(
 app.register_blueprint(auth_bp)
 app.register_blueprint(events_bp)
 app.register_blueprint(discord_bp)
+
+limiter.init_app(app)
+
+@app.errorhandler(429)
+def _rate_limited(e):
+    """Return JSON for API calls, plain text for page routes."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Too many requests — please slow down.'}), 429
+    return 'Too many requests — please wait a moment and try again.', 429
 
 # Canonical host (e.g. "cardboardparty.gg"). When set, every page is served
 # under this host: requests to any other host (the appspot URL, www.*, etc.)

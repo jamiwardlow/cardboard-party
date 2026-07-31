@@ -42,6 +42,8 @@ from routes.event_fields import (clean_event_fields, TOURNAMENT_TAGS, STRUCTURES
                                   _clean_table_labels, _bounded_table, _coord,
                                   _normalize_payment_url)
 
+from limiter import limiter
+
 events_bp = Blueprint('events', __name__)
 
 # Per-environment slash-command name (see routes/discord.py); 'cparty' in prod,
@@ -851,6 +853,7 @@ def api_delete_event(event_id):
 
 @events_bp.route('/api/events/<event_id>/register', methods=['POST'])
 @login_required
+@limiter.limit('20 per minute')
 def api_register(event_id):
     e = get_event(event_id)
     if not e:
