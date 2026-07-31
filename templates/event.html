@@ -2361,8 +2361,8 @@ function openResultModal(roundIdx, matchIdx, isEdit = false) {
 
   const p1 = playerName(match.player1_id);
   const p2 = playerName(match.player2_id);
-  const s1 = p1.split(' ')[0];
-  const s2 = p2.split(' ')[0];
+  const s1 = escapeHtml(p1.split(' ')[0]);
+  const s2 = escapeHtml(p2.split(' ')[0]);
 
   document.getElementById('rm-p1-name').textContent  = p1;
   document.getElementById('rm-p2-name').textContent  = p2;
