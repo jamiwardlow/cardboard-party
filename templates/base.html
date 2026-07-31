@@ -29,7 +29,9 @@
             <img class="avatar" src="{{ user.picture }}" alt="{{ user.name }}">
             <span class="user-name">{{ user.name }}</span>
           </a>
-          <a href="/auth/logout" class="btn btn-sm">Sign out</a>
+          <form method="post" action="/auth/logout" style="display:inline;margin:0">
+            <button type="submit" class="btn btn-sm">Sign out</button>
+          </form>
         {% else %}
           <a href="/auth/login" class="btn btn-sm btn-primary">Sign in</a>
         {% endif %}

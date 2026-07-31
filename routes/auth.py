@@ -322,7 +322,7 @@ def discord_callback():
     return redirect(next_url)
 
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 def logout():
     session.clear()
     return redirect('/')
