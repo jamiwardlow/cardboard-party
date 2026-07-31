@@ -474,7 +474,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
    the right of the names row; mobile (below) stacks it underneath. */
 .pairings               { width: 100%; font-size: 0.88rem; }
 .pairings tr            { display: grid;
-                          grid-template-columns: 1fr auto 1fr max-content;
+                          grid-template-columns: 1fr auto 1fr;
                           align-items: center; gap: 0.1rem 0;
                           padding: 0.55rem 1rem; border-bottom: 1px solid var(--border); }
 .pairings tr:last-child { border-bottom: none; }
@@ -491,8 +491,9 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .pairings td.p1   { grid-column: 1; font-weight: 500; }
 .pairings td.vs   { grid-column: 2; color: var(--muted); text-align: center;
                     padding: 0 0.55rem; font-family: var(--font-mono); font-size: 0.75rem; }
-.pairings td.p2   { grid-column: 3; }
-.pairings td.result { grid-column: 4; justify-self: end; }
+.pairings td.p2   { grid-column: 3; text-align: right; }
+.pairings td.result { grid-column: 1 / -1; justify-self: stretch;
+                      white-space: normal; padding-top: 0.35rem; text-align: center; }
 .table-badge { color: var(--accent); font-family: var(--font-mono); font-weight: 700;
                font-size: 0.82rem; white-space: nowrap; }
 .table-tbd   { color: var(--muted); font-size: 0.8rem; }
@@ -503,15 +504,9 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
                   color: var(--accent); padding: 0.35rem 0.8rem; margin: 0.15rem 0 0.45rem; }
 .table-edit-btn.table-tbd { color: var(--muted); font-weight: 400; }
 
-/* On mobile, drop to three columns and stack the result full-width underneath the
-   players (instead of keeping it in a right-hand column). The table badge still
-   leads on its own line via .table-cell spanning all columns. */
 @media (max-width: 480px) {
-  .pairings tr    { grid-template-columns: 1fr auto 1fr; padding: 0.6rem 0.75rem; }
-  .pairings td.vs     { padding: 0 0.4rem; }
-  .pairings td.p2     { text-align: right; }
-  .pairings td.result { grid-column: 1 / -1; justify-self: stretch;
-                        white-space: normal; padding-top: 0.35rem; text-align: center; }
+  .pairings tr    { padding: 0.6rem 0.75rem; }
+  .pairings td.vs { padding: 0 0.4rem; }
 }
 
 /* ── Standings table ──────────────────────────────────────────────────────── */
