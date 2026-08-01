@@ -15,7 +15,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 find_user_by_email, find_user_by_discord_handle,
                 add_event_log, list_event_log, promote_waitlist_entry)
 from swiss import (pair_round, pair_draft_r1, pair_draft_r2, compute_standings, default_num_rounds, BYE_PLAYER_ID,
-                   make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players,
+                   make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players, player_match_record,
                    assign_tables)
 from routes.auth import get_current_user, login_required, discord_login_enabled
 from gcp_secrets import get_secret
@@ -297,21 +297,7 @@ def api_public_decklists():
             dl = p.get('decklist') or {}
             if not (dl.get('text') or '').strip():
                 continue
-            wins = losses = draws = 0
-            for rnd in event_rounds:
-                for match in rnd:
-                    pid = p['id']
-                    if pid not in (match['player1_id'], match['player2_id']):
-                        continue
-                    if match.get('is_bye') or not match.get('result'):
-                        continue
-                    winner_id = match.get('winner_id')
-                    if match['result'] in DRAW_RESULTS or winner_id is None:
-                        draws += 1
-                    elif winner_id == pid:
-                        wins += 1
-                    else:
-                        losses += 1
+            wins, losses, draws = player_match_record(p['id'], event_rounds)
             decks.append({
                 'event_id':     e['id'],
                 'event_name':   e.get('name', ''),
@@ -535,24 +521,6 @@ def submit_mtggoldfish_page(event_id):
     def deck_lines(entries):
         return '\n'.join(f"{count} {name}" for count, name, _tag in entries)
 
-    def match_record(player_id):
-        wins = losses = draws = 0
-        for rnd in rounds:
-            for match in rnd:
-                p1, p2 = match['player1_id'], match['player2_id']
-                if player_id not in (p1, p2):
-                    continue
-                if match.get('is_bye') or not match.get('result'):
-                    continue
-                winner_id = match.get('winner_id')
-                if match['result'] in DRAW_RESULTS or winner_id is None:
-                    draws += 1
-                elif winner_id == player_id:
-                    wins += 1
-                else:
-                    losses += 1
-        return wins, losses, draws
-
     decks = []
     rank = 0
     for s in standings:
@@ -568,7 +536,7 @@ def submit_mtggoldfish_page(event_id):
             side_text = deck_lines(side_entries)
         else:
             main_text = side_text = ''
-        wins, losses, draws = match_record(p['id'])
+        wins, losses, draws = player_match_record(p['id'], rounds)
         decks.append({'player': p.get('name', ''),
                       'deck_name': dl.get('name', ''),
                       'main': main_text, 'side': side_text,
@@ -2216,23 +2184,8 @@ def player_profile(google_id):
         rank = next((i + 1 for i, s in enumerate(standings)
                      if s['id'] == player['id']), None)
 
-        wins = losses = draws = 0
-        for rnd in e.get('rounds', []):
-            for m in rnd:
-                if m.get('is_bye'):
-                    if m.get('player1_id') == player['id']:
-                        wins += 1
-                    continue
-                if player['id'] not in (m.get('player1_id'), m.get('player2_id')):
-                    continue
-                if not m.get('result'):
-                    continue
-                if m.get('result') in DRAW_RESULTS:
-                    draws += 1
-                elif m.get('winner_id') == player['id']:
-                    wins += 1
-                else:
-                    losses += 1
+        wins, losses, draws = player_match_record(
+            player['id'], e.get('rounds', []), count_byes=True)
 
         standing = next((s for s in standings if s['id'] == player['id']), {})
         event_history.append({
@@ -2567,25 +2520,6 @@ def api_submit_mtgdecks(event_id):
     standings = compute_standings(e['players'], rounds)
     rank_map  = {s['id']: i + 1 for i, s in enumerate(standings)}
 
-    def match_record(pid):
-        w = l = t = 0
-        for rnd in rounds:
-            for m in rnd:
-                if m.get('is_bye'):
-                    continue
-                if pid not in (m['player1_id'], m['player2_id']):
-                    continue
-                result = m.get('result')
-                if not result:
-                    continue
-                if result in DRAW_RESULTS:
-                    t += 1
-                elif m.get('winner_id') == pid:
-                    w += 1
-                else:
-                    l += 1
-        return w, l, t
-
     decks = []
     for p in active:
         dl   = p.get('decklist') or {}
@@ -2593,7 +2527,7 @@ def api_submit_mtgdecks(event_id):
         if not text:
             continue
         pid  = p['id']
-        w, l, t = match_record(pid)
+        w, l, t = player_match_record(pid, rounds)
         deck = {'player': p.get('name', ''), 'rank': rank_map.get(pid, len(active)),
                 'w': w, 'l': l, 't': t, 'txt_decklist': text}
         if dl.get('name'):

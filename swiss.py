@@ -295,6 +295,33 @@ def compute_standings(players: list[dict], rounds: list[list[dict]]) -> list[dic
     return standings
 
 
+def player_match_record(player_id: str, rounds: list[list[dict]], *, count_byes: bool = False) -> tuple:
+    """Returns (wins, losses, draws) for a player across all rounds.
+
+    Byes are excluded by default. Pass count_byes=True to count a bye as a win,
+    which is appropriate for player-facing win/loss display.
+    """
+    wins = losses = draws = 0
+    for rnd in rounds:
+        for match in rnd:
+            if match.get('is_bye'):
+                if count_byes and match.get('player1_id') == player_id:
+                    wins += 1
+                continue
+            if player_id not in (match['player1_id'], match['player2_id']):
+                continue
+            result = match.get('result')
+            if not result:
+                continue
+            if result in DRAW_RESULTS or match.get('winner_id') is None:
+                draws += 1
+            elif match.get('winner_id') == player_id:
+                wins += 1
+            else:
+                losses += 1
+    return wins, losses, draws
+
+
 def default_num_rounds(num_players: int) -> int:
     """Standard Swiss round count: ceil(log2(players))."""
     if num_players < 2:
