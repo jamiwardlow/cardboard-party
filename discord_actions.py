@@ -17,7 +17,10 @@ from db import (get_event, save_event, list_events, list_users,
                 add_event_log, record_invite, recent_invite_count,
                 target_invited_since, is_invite_opted_out)
 from event_state import (_slugify, _assign_draft_seat, _is_full,
-                         _self_registration_blocked, _now_iso, _validate_result)
+                         _self_registration_blocked, _now_iso, _validate_result,
+                         make_player_entry)
+from event_actions import (register_player, unregister_player,
+                           join_waitlist, leave_waitlist)
 from swiss import compute_standings, DRAW_RESULTS
 
 COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
@@ -126,46 +129,18 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     their username), the registration is linked to that account and uses its real
     name — otherwise a ghost player is created. Returns ({'player', 'event_name'},
     None) on success or (None, error_message)."""
+    # Pre-flight: Discord can't enter event codes — refuse before the action module.
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    blocked = _self_registration_blocked(e)
-    if blocked:
-        return None, blocked
     if e.get('entry_code'):
         return None, 'This event needs an entry code — please register on the web.'
-    cap = e.get('registration_cap', 0)
-    active = [p for p in e['players'] if not p.get('dropped')]
-    if cap and len(active) >= cap:
-        return None, f'This event is full ({cap} players max).'
+    # Identity resolution: find or create a profile for this Discord user.
     # discord_name is the registrant's Discord display name; pass it as a second
     # handle candidate so an account that saved its display name as the handle
     # still links (and we then lock in the numeric ID below).
     profile = _find_profile_for_discord(discord_id, discord_username, discord_name)
     google_id = profile.get('google_id') if profile else None
-    # Already in the event? If active, that's a no-op; if previously dropped,
-    # re-activate their existing entry rather than refusing or duplicating them.
-    existing = next((p for p in e['players']
-                     if p.get('discord_id') == discord_id
-                     or (google_id and p.get('google_id') == google_id)), None)
-    if existing:
-        if not existing.get('dropped'):
-            return None, "You're already registered for this event."
-        existing['dropped'] = False
-        # Capture the verified @handle if we never recorded one (e.g. an entry made
-        # before we started storing it, or a ghost re-activating).
-        if discord_username and not existing.get('discord'):
-            existing['discord'] = discord_username
-        save_event(event_id, {'players': e['players']})
-        if google_id and not (profile or {}).get('discord_id'):
-            save_user_profile(google_id, {'discord_id': discord_id})
-        refresh_event_announcement(e)
-        _log_discord(event_id, existing.get('name', ''), 'register', 'registered via Discord')
-        _dm_discord_reg_confirmation(discord_id, e, event_id, host_url)
-        return {'player': existing, 'event_name': e.get('name', 'the event')}, None
-    # Record the verified Discord @handle (username) so the organiser and other
-    # players can see who registered — falling back to it when a matched account
-    # has no handle saved, and using it directly for ghost (unlinked) players.
     if profile:
         name = (profile.get('name') or discord_name or 'Player').strip()[:80] or 'Player'
         discord_handle = profile.get('discord', '') or discord_username
@@ -179,35 +154,34 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
         google_id = f'discord:{discord_id}'
         save_user_profile(google_id, {'discord_id': str(discord_id),
                                       'name': name, 'discord': discord_handle})
-    player = {
-        'id':         _slugify(name) + '_' + uuid.uuid4().hex[:8],
-        'name':       name,
-        'google_id':  google_id,
-        'discord_id': discord_id,
-        'discord':    discord_handle,
-        'dropped':    False,
-        'checked_in': False,
-    }
-    _assign_draft_seat(player, e)
-    e['players'].append(player)
-    save_event(event_id, {'players': e['players']})
-    # Remember the Discord ID on a matched (handle-linked) account so future links
-    # are exact. The no-account case already saved its profile with the ID above.
+    player, err = register_player(
+        event_id,
+        name=name, google_id=google_id, discord=discord_handle, discord_id=discord_id,
+    )
+    if err:
+        return None, err
+    # Lock in the verified discord_id on a handle-matched account so future lookups
+    # are exact. Ghost profiles already have it; the no-account case saved it above.
     if profile and not profile.get('discord_id'):
         save_user_profile(google_id, {'discord_id': discord_id})
-    refresh_event_announcement(e)   # may have just hit the cap → show "full"
-    _log_discord(event_id, name, 'register', 'registered via Discord')
+    event_name = e.get('name', 'the event')
+    refresh_event_announcement(get_event(event_id))
+    _log_discord(event_id, player.get('name', ''), 'register', 'registered via Discord')
     _dm_discord_reg_confirmation(discord_id, e, event_id, host_url)
-    return {'player': player, 'event_name': e.get('name', 'the event')}, None
+    return {'player': player, 'event_name': event_name}, None
 
 
 def withdraw_player_via_discord(event_id: str, discord_id: str, username='', display=''):
     """Withdraw a Discord-registered player from an event (the toggle counterpart
     to register_player_via_discord). Mirrors the web withdraw: drop if rounds have
     started, else remove the entry. Returns (event_name, None) or (None, error)."""
+    # Discord handle normalization must happen before the action module lookup, since
+    # handle-matched players (verified @handle, no discord_id stored) can only be
+    # found here where the normalization logic lives.
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
+    event_name = e.get('name', 'the event')
     gid, handles = _discord_identity(discord_id, username, display)
     player = next((p for p in e['players']
                    if not p.get('dropped') and
@@ -217,19 +191,12 @@ def withdraw_player_via_discord(event_id: str, discord_id: str, username='', dis
                   None)
     if not player:
         return None, "You're not registered for this event."
-    if not e.get('self_service_drop_enabled', True):
-        return None, 'Self-service drops are disabled for this event — contact the organiser.'
-    unenroll_end = e.get('unenroll_end')
-    if unenroll_end and datetime.date.today().isoformat() > unenroll_end:
-        return None, 'The drop deadline has passed — contact the organiser.'
-    if e['rounds']:
-        set_player_dropped(event_id, player['id'], True)
-    else:
-        e['players'] = [p for p in e['players'] if p['id'] != player['id']]
-        save_event(event_id, {'players': e['players']})
-    refresh_event_announcement(get_event(event_id))   # a slot may have freed up
+    result, err = unregister_player(event_id, player_id=player['id'])
+    if err:
+        return None, err
+    refresh_event_announcement(get_event(event_id))
     _log_discord(event_id, player.get('name', ''), 'drop', 'dropped via Discord')
-    return e.get('name', 'the event'), None
+    return event_name, None
 
 
 def discord_droppable_events(discord_id: str, username: str = '', display: str = '', limit: int = 25):
@@ -323,42 +290,26 @@ def waitlist_player_via_discord(event_id: str, discord_id: str, discord_name: st
     """Add a Discord user to a full event's waitlist (the Join Waitlist button on a
     card/invite DM). Links to an existing account when the Discord matches one.
     Returns ({'event_name','position'}, None) or (None, error_message)."""
+    # Pre-flight: Discord can't enter event codes.
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    blocked = _self_registration_blocked(e)
-    if blocked:
-        return None, blocked
     if e.get('entry_code'):
         return None, 'This event needs an entry code — please register on the web.'
-    if not _is_full(e):
-        return None, 'This event has open spots — tap Register instead.'
+    # Identity resolution.
     profile = _find_profile_for_discord(discord_id, discord_username, discord_name)
     gid = profile.get('google_id') if profile else None
-    if any((p.get('discord_id') == discord_id or (gid and p.get('google_id') == gid))
-           and not p.get('dropped') for p in e['players']):
-        return None, "You're already registered for this event."
-    waitlist = e.get('waitlist') or []
-    if any(w.get('status') == 'waitlisted' and
-           (w.get('discord_id') == discord_id or (gid and w.get('google_id') == gid))
-           for w in waitlist):
-        return None, "You're already on the waitlist."
     name = ((profile.get('name') if profile else discord_name) or 'Player').strip()[:80] or 'Player'
-    record = {
-        'id':         uuid.uuid4().hex,
-        'google_id':  gid,
-        'name':       name,
-        'email':      profile.get('email', '') if profile else '',
-        'discord':    (profile.get('discord', '') if profile else '') or discord_username,
-        'discord_id': discord_id,
-        'status':     'waitlisted',
-        'joined_at':  _now_iso(),
-    }
-    waitlist.append(record)
-    save_event(event_id, {'waitlist': waitlist})
+    discord_handle = (profile.get('discord', '') if profile else '') or discord_username
+    email = profile.get('email', '') if profile else ''
+    result, err = join_waitlist(
+        event_id,
+        google_id=gid, discord_id=discord_id, name=name, discord=discord_handle, email=email,
+    )
+    if err:
+        return None, err
     _log_discord(event_id, name, 'waitlist_join', f"{name} joined the waitlist via Discord")
-    position = sum(1 for w in waitlist if w.get('status') == 'waitlisted')
-    return {'event_name': e.get('name', 'the event'), 'position': position}, None
+    return {'event_name': e.get('name', 'the event'), 'position': result['position']}, None
 
 def waitlist_leave_via_discord(event_id: str, discord_id: str, username: str = '', display: str = ''):
     """Remove a Discord user from a waitlist (the Leave Waitlist toggle on a DM).
@@ -366,18 +317,19 @@ def waitlist_leave_via_discord(event_id: str, discord_id: str, username: str = '
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    gid, handles = _discord_identity(discord_id, username, display)
-    waitlist = e.get('waitlist') or []
-    rec = next((w for w in waitlist if w.get('status') == 'waitlisted' and
-                (w.get('discord_id') == discord_id or (gid and w.get('google_id') == gid))), None)
-    if not rec:
-        return None, "You're not on the waitlist for this event."
-    rec['status'] = 'removed_by_self'
-    rec['removed_at'] = _now_iso()
-    save_event(event_id, {'waitlist': waitlist})
-    _log_discord(event_id, rec.get('name', ''), 'waitlist_leave',
-                 f"{rec.get('name', 'A player')} left the waitlist via Discord")
-    return e.get('name', 'the event'), None
+    event_name = e.get('name', 'the event')
+    # Use discord_id for the action module lookup; handle normalization is only needed
+    # for player lookups (withdraw), not waitlist entries which always store discord_id.
+    result, err = leave_waitlist(event_id, discord_id=discord_id)
+    if err:
+        # Fall back: try google_id resolution in case the entry predates discord_id storage.
+        gid, _ = _discord_identity(discord_id, username, display)
+        if gid:
+            result, err = leave_waitlist(event_id, google_id=gid)
+    if err:
+        return None, err
+    _log_discord(event_id, '', 'waitlist_leave', 'left the waitlist via Discord')
+    return event_name, None
 
 
 # Anti-spam limits for Discord event invites. Anyone may invite anyone, so these

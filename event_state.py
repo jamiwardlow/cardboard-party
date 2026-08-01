@@ -5,6 +5,7 @@ avoid a circular import between those two modules.
 """
 import datetime
 import re
+import uuid
 
 from swiss import DRAW_RESULTS, default_num_rounds
 
@@ -86,6 +87,33 @@ def _event_complete(event: dict) -> bool:
     if event.get('status') == 'finished':
         return True
     return _swiss_complete(event)
+
+
+def auto_check_in(event: dict) -> bool:
+    """True when an organiser-added player should be auto-checked-in: either
+    check-in isn't required for this event, or rounds have already started."""
+    return not event.get('require_check_in') or bool(event.get('rounds'))
+
+
+def make_player_entry(name: str, event: dict, *, google_id=None, discord: str = '',
+                      discord_id=None, guest_token=None,
+                      checked_in: bool = False) -> dict:
+    """Build a new player dict with a generated id and draft seat (if applicable).
+    Use auto_check_in(event) as checked_in for organiser-added players."""
+    player = {
+        'id':         _slugify(name) + '_' + uuid.uuid4().hex[:8],
+        'name':       name,
+        'google_id':  google_id,
+        'discord':    discord,
+        'dropped':    False,
+        'checked_in': checked_in,
+    }
+    if discord_id is not None:
+        player['discord_id'] = discord_id
+    if guest_token is not None:
+        player['guest_token'] = guest_token
+    _assign_draft_seat(player, event)
+    return player
 
 
 _RESULT_RE = re.compile(r'^(\d+)-(\d+)(?:-(\d+))?$')

@@ -32,7 +32,10 @@ import time
 import uuid
 from event_state import (_now_iso, _slugify, _assign_draft_seat, _is_full,
                          _self_registration_blocked, _validate_result,
-                         _is_bracket_round, _swiss_complete, _event_complete)
+                         _is_bracket_round, _swiss_complete, _event_complete,
+                         auto_check_in, make_player_entry)
+from event_actions import (register_player, unregister_player,
+                           join_waitlist, leave_waitlist)
 import event_queries
 from discord_actions import refresh_event_announcement, announce_event_to_channel
 from routes.event_fields import (clean_event_fields, TOURNAMENT_TAGS, STRUCTURES,
@@ -855,55 +858,24 @@ def api_delete_event(event_id):
 @login_required
 @limiter.limit('20 per minute')
 def api_register(event_id):
-    e = get_event(event_id)
-    if not e:
-        return jsonify({'error': 'Not found'}), 404
-    blocked = _self_registration_blocked(e)
-    if blocked:
-        return jsonify({'error': blocked}), 400
-    code_err = _entry_code_error(e, request.json or {})
-    if code_err:
-        return jsonify({'error': code_err}), 400
-
-    # Enforce registration cap
-    cap = e.get('registration_cap', 0)
-    active = [p for p in e['players'] if not p.get('dropped')]
-    if cap and len(active) >= cap:
-        return jsonify({'error': f'This event is full ({cap} players max)'}), 400
     user = get_current_user()
     data = request.json or {}
     display_name = data.get('display_name', '').strip() or user['name']
     # The form hides the Discord field when the user already has one on file, so
     # fall back to their saved handle when none is submitted.
-    discord      = data.get('discord', '').strip() or get_user_profile(user['id']).get('discord', '')
-    # Re-activate a previously dropped entry instead of refusing or duplicating.
-    existing = _find_player_by_google_id(e, user['id'])
-    if existing:
-        if not existing.get('dropped'):
-            return jsonify({'error': 'Already registered'}), 400
-        set_player_dropped(event_id, existing['id'], False)
-        if discord:
-            save_user_profile(user['id'], {'discord': discord})
-        refresh_event_announcement(get_event(event_id))
-        existing['dropped'] = False
-        _log_action(event_id, 'register', 'registered')
-        _dm_registration_confirmation(user['id'], e, event_id, request.host_url)
-        return jsonify(existing), 200
-    player = {
-        'id':        _slugify(display_name) + '_' + uuid.uuid4().hex[:8],
-        'name':      display_name,
-        'google_id': user['id'],
-        'discord':   discord,
-        'dropped':   False,
-        'checked_in': False,
-    }
-    _assign_draft_seat(player, e)
-    e['players'].append(player)
-    save_event(event_id, {'players': e['players']})
-    refresh_event_announcement(e)   # may have just hit the cap → show "full"
-    # Keep the user directory current: capture the discord handle they gave.
+    discord = data.get('discord', '').strip() or get_user_profile(user['id']).get('discord', '')
+    entry_code = str((data.get('entry_code') or '')).strip()
+    player, err = register_player(
+        event_id,
+        name=display_name, google_id=user['id'], discord=discord, entry_code=entry_code,
+    )
+    if err:
+        status = 404 if 'no longer exists' in err else 400
+        return jsonify({'error': err}), status
     if discord:
         save_user_profile(user['id'], {'discord': discord})
+    e = get_event(event_id)
+    refresh_event_announcement(e)
     _log_action(event_id, 'register', 'registered')
     _dm_registration_confirmation(user['id'], e, event_id, request.host_url)
     return jsonify(player), 201
@@ -911,24 +883,12 @@ def api_register(event_id):
 @events_bp.route('/api/events/<event_id>/unregister', methods=['POST'])
 @login_required
 def api_unregister(event_id):
-    e = get_event(event_id)
-    if not e:
-        return jsonify({'error': 'Not found'}), 404
     user = get_current_user()
-    player = _find_player_by_google_id(e, user['id'])
-    if not player:
-        return jsonify({'error': 'Not registered'}), 400
-    if not e.get('self_service_drop_enabled', True):
-        return jsonify({'error': 'Self-service drops are disabled for this event — contact the organiser.'}), 400
-    unenroll_end = e.get('unenroll_end')
-    if unenroll_end and datetime.date.today().isoformat() > unenroll_end:
-        return jsonify({'error': 'The drop deadline has passed — contact the organiser.'}), 400
-    if e['rounds']:
-        set_player_dropped(event_id, player['id'], True)
-    else:
-        e['players'] = [p for p in e['players'] if p.get('google_id') != user['id']]
-        save_event(event_id, {'players': e['players']})
-    refresh_event_announcement(get_event(event_id))   # a slot may have freed up
+    result, err = unregister_player(event_id, google_id=user['id'])
+    if err:
+        status = 404 if 'no longer exists' in err else 400
+        return jsonify({'error': err}), status
+    refresh_event_announcement(get_event(event_id))
     _log_action(event_id, 'drop', 'dropped')
     return jsonify({'ok': True})
 
@@ -938,64 +898,37 @@ def api_unregister(event_id):
 @events_bp.route('/api/events/<event_id>/waitlist', methods=['POST'])
 @login_required
 def api_join_waitlist(event_id):
-    """Join the waitlist for a full event (signed-in accounts only). No-op-safe:
-    refuses if the event isn't full, registration is otherwise closed, the user is
-    already registered, or they're already waiting."""
-    e = get_event(event_id)
-    if not e:
-        return jsonify({'error': 'Not found'}), 404
-    blocked = _self_registration_blocked(e)
-    if blocked:
-        return jsonify({'error': blocked}), 400
-    code_err = _entry_code_error(e, request.json or {})
-    if code_err:
-        return jsonify({'error': code_err}), 400
-    if not _is_full(e):
-        return jsonify({'error': 'This event still has open spots — register normally.'}), 400
+    """Join the waitlist for a full event (signed-in accounts only)."""
     user = get_current_user()
-    existing = _find_player_by_google_id(e, user['id'])
-    if existing and not existing.get('dropped'):
-        return jsonify({'error': "You're already registered for this event."}), 400
-    waitlist = e.get('waitlist') or []
-    if any(w.get('google_id') == user['id'] and w.get('status') == 'waitlisted' for w in waitlist):
-        return jsonify({'error': "You're already on the waitlist."}), 400
     profile = get_user_profile(user['id'])
     data = request.json or {}
+    name = (data.get('display_name', '').strip() or user['name'])[:80]
     discord = data.get('discord', '').strip() or profile.get('discord', '')
-    record = {
-        'id':         uuid.uuid4().hex,
-        'google_id':  user['id'],
-        'name':       (data.get('display_name', '').strip() or user['name'])[:80],
-        'email':      profile.get('email', '') or user.get('email', ''),
-        'discord':    discord,
-        'status':     'waitlisted',
-        'joined_at':  _now_iso(),
-    }
-    waitlist.append(record)
-    save_event(event_id, {'waitlist': waitlist})
+    email = profile.get('email', '') or user.get('email', '')
+    entry_code = str((data.get('entry_code') or '')).strip()
+    result, err = join_waitlist(
+        event_id,
+        google_id=user['id'], name=name, discord=discord, email=email,
+        entry_code=entry_code,
+    )
+    if err:
+        status = 404 if 'no longer exists' in err else 400
+        return jsonify({'error': err}), status
     if discord:
         save_user_profile(user['id'], {'discord': discord})
-    _log_action(event_id, 'waitlist_join', f"{record['name']} joined the waitlist")
-    position = sum(1 for w in waitlist if w.get('status') == 'waitlisted')
-    return jsonify({'ok': True, 'position': position}), 201
+    _log_action(event_id, 'waitlist_join', f"{name} joined the waitlist")
+    return jsonify({'ok': True, 'position': result['position']}), 201
 
 @events_bp.route('/api/events/<event_id>/waitlist/leave', methods=['POST'])
 @login_required
 def api_leave_waitlist(event_id):
     """Remove yourself from the waitlist (status → removed_by_self, kept for history)."""
-    e = get_event(event_id)
-    if not e:
-        return jsonify({'error': 'Not found'}), 404
     user = get_current_user()
-    waitlist = e.get('waitlist') or []
-    rec = next((w for w in waitlist
-                if w.get('google_id') == user['id'] and w.get('status') == 'waitlisted'), None)
-    if not rec:
-        return jsonify({'error': "You're not on the waitlist."}), 400
-    rec['status'] = 'removed_by_self'
-    rec['removed_at'] = _now_iso()
-    save_event(event_id, {'waitlist': waitlist})
-    _log_action(event_id, 'waitlist_leave', f"{rec.get('name', 'A player')} left the waitlist")
+    result, err = leave_waitlist(event_id, google_id=user['id'])
+    if err:
+        status = 404 if 'no longer exists' in err else 400
+        return jsonify({'error': err}), status
+    _log_action(event_id, 'waitlist_leave', 'left the waitlist')
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/waitlist/<wid>/promote', methods=['POST'])
@@ -1011,18 +944,13 @@ def api_promote_waitlist(event_id, wid):
     promoter = {'id': user['id'], 'name': user['name']}
 
     def build_player(rec, index):
-        player = {
-            'id':         _slugify(rec.get('name') or 'player') + '_' + uuid.uuid4().hex[:8],
-            'name':       rec.get('name') or 'Player',
-            'google_id':  rec.get('google_id'),
-            'discord':    rec.get('discord', ''),
-            'dropped':    False,
-            'checked_in': not e.get('require_check_in') or bool(e.get('rounds')),
-        }
-        if rec.get('discord_id'):   # keep the Discord link so they can report via DM/channel
-            player['discord_id'] = rec['discord_id']
-        _assign_draft_seat(player, e)
-        return player
+        return make_player_entry(
+            rec.get('name') or 'Player', e,
+            google_id=rec.get('google_id'),
+            discord=rec.get('discord', ''),
+            discord_id=rec.get('discord_id') or None,
+            checked_in=auto_check_in(e),
+        )
 
     status, player = promote_waitlist_entry(event_id, wid, build_player, promoter, _now_iso())
     if status == 'gone':
@@ -1091,16 +1019,11 @@ def api_join_guest(event_id):
     if not name:
         return jsonify({'error': 'Name required'}), 400
     token = uuid.uuid4().hex
-    player = {
-        'id':          _slugify(name) + '_' + uuid.uuid4().hex[:8],
-        'name':        name,
-        'google_id':   None,
-        'discord':     data.get('discord', '').strip(),
-        'dropped':     False,
-        'checked_in':  False,
-        'guest_token': token,
-    }
-    _assign_draft_seat(player, e)
+    player = make_player_entry(
+        name, e,
+        discord=data.get('discord', '').strip(),
+        guest_token=token,
+    )
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
@@ -1175,17 +1098,10 @@ def api_add_player(event_id):
         save_event(event_id, {'waitlist': waitlist})
         _log_action(event_id, 'waitlist_join', f"{record['name']} added to the waitlist (event full)")
         return jsonify({'waitlisted': True, 'name': record['name']}), 201
-    player = {
-        'id':        _slugify(name) + '_' + uuid.uuid4().hex[:8],
-        'name':      name,
-        'google_id': google_id,
-        'discord':   discord,
-        'dropped':   False,
-        # Check-in events need an explicit check-in (show the "Check in" button), so
-        # only auto-mark present when check-in isn't required or rounds have already started.
-        'checked_in': not e.get('require_check_in') or bool(e.get('rounds')),
-    }
-    _assign_draft_seat(player, e)
+    player = make_player_entry(
+        name, e,
+        google_id=google_id, discord=discord, checked_in=auto_check_in(e),
+    )
     e['players'].append(player)
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"

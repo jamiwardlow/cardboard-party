@@ -37,9 +37,12 @@ class TestRegisterViaDiscord:
     def _call(self, event, list_users=None, save_event=None, save_profile=None,
               discord_id='999', discord_name='Bob', username='bob', host_url='http://test/'):
         from discord_actions import register_player_via_discord
+        _save = save_event or MagicMock()
         with patch('discord_actions.get_event', return_value=event), \
+             patch('event_actions.get_event', return_value=event), \
+             patch('event_actions.save_event', _save), \
              patch('discord_actions.list_users', return_value=list_users or []), \
-             patch('discord_actions.save_event', save_event or MagicMock()), \
+             patch('discord_actions.save_event', _save), \
              patch('discord_actions.save_user_profile', save_profile or MagicMock()), \
              patch('discord_actions.refresh_event_announcement'), \
              patch('discord_actions.discord_api'):
@@ -143,6 +146,9 @@ class TestWithdrawViaDiscord:
     def _call(self, event, list_users=None, discord_id='111', username='alice', display='Alice'):
         from discord_actions import withdraw_player_via_discord
         with patch('discord_actions.get_event', return_value=event), \
+             patch('event_actions.get_event', return_value=event), \
+             patch('event_actions.save_event', MagicMock()), \
+             patch('event_actions.set_player_dropped', MagicMock()), \
              patch('discord_actions.list_users', return_value=list_users or []), \
              patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.set_player_dropped', MagicMock()), \
@@ -162,9 +168,11 @@ class TestWithdrawViaDiscord:
         save_mock = MagicMock()
         from discord_actions import withdraw_player_via_discord
         with patch('discord_actions.get_event', return_value=evt), \
+             patch('event_actions.get_event', return_value=evt), \
+             patch('event_actions.save_event', save_mock), \
+             patch('event_actions.set_player_dropped', MagicMock()), \
              patch('discord_actions.list_users', return_value=[]), \
-             patch('discord_actions.save_event', save_mock), \
-             patch('discord_actions.set_player_dropped', MagicMock()), \
+             patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.refresh_event_announcement'), \
              patch('discord_actions.add_event_log', MagicMock()):
             name, err = withdraw_player_via_discord('evt1', '111', 'alice', 'Alice')
@@ -180,9 +188,11 @@ class TestWithdrawViaDiscord:
         drop_mock = MagicMock()
         from discord_actions import withdraw_player_via_discord
         with patch('discord_actions.get_event', return_value=evt), \
+             patch('event_actions.get_event', return_value=evt), \
+             patch('event_actions.set_player_dropped', drop_mock), \
+             patch('event_actions.save_event', MagicMock()), \
              patch('discord_actions.list_users', return_value=[]), \
              patch('discord_actions.save_event', MagicMock()), \
-             patch('discord_actions.set_player_dropped', drop_mock), \
              patch('discord_actions.refresh_event_announcement'), \
              patch('discord_actions.add_event_log', MagicMock()):
             name, err = withdraw_player_via_discord('evt1', '111', 'alice', 'Alice')
@@ -204,6 +214,8 @@ class TestWaitlistViaDiscord:
     def _call(self, event, list_users=None, discord_id='999', discord_name='Bob', username='bob'):
         from discord_actions import waitlist_player_via_discord
         with patch('discord_actions.get_event', return_value=event), \
+             patch('event_actions.get_event', return_value=event), \
+             patch('event_actions.save_event', MagicMock()), \
              patch('discord_actions.list_users', return_value=list_users or []), \
              patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.add_event_log', MagicMock()):
@@ -251,8 +263,10 @@ class TestWaitlistViaDiscord:
 
         from discord_actions import waitlist_player_via_discord
         with patch('discord_actions.get_event', return_value=evt), \
+             patch('event_actions.get_event', return_value=evt), \
+             patch('event_actions.save_event', capture_save), \
              patch('discord_actions.list_users', return_value=[]), \
-             patch('discord_actions.save_event', capture_save), \
+             patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.add_event_log', MagicMock()):
             result, err = waitlist_player_via_discord('evt1', '999', 'Bob', 'bob')
 
