@@ -23,6 +23,7 @@ import discord_api
 from decklist import parse_decklist, validate_decklist, import_moxfield, VALIDATION_FORMATS
 from storage import upload_avatar, upload_brand_image, delete_object
 import datetime
+import logging
 import os
 import random
 import re
@@ -30,6 +31,8 @@ import requests
 import threading
 import time
 import uuid
+
+logger = logging.getLogger(__name__)
 from event_state import (_now_iso, _slugify, _assign_draft_seat, _is_full,
                          _self_registration_blocked, _validate_result,
                          _is_bracket_round, _swiss_complete, _event_complete,
@@ -2552,7 +2555,8 @@ def api_submit_mtgdecks(event_id):
             timeout=30,
         )
     except Exception as ex:
-        return jsonify({'error': f'Network error reaching MTGDecks: {ex}'}), 502
+        logger.exception('Network error reaching MTGDecks: %s', ex)
+        return jsonify({'error': 'Network error reaching MTGDecks.'}), 502
 
     if resp.status_code == 201:
         try:

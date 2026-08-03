@@ -41,6 +41,9 @@ gcloud app browse --project=cardboard-party
 
 # Staging (separate project, isolated Firestore/bucket) — see DEPLOYING.md
 gcloud app deploy staging.yaml --project=cardboard-party-staging
+
+# Seed staging Firestore with sample events (safe — refuses to run against prod)
+GOOGLE_CLOUD_PROJECT=cardboard-party-staging python seed_staging.py
 ```
 
 There is **no linter or build step**. The app runs directly from source.
@@ -98,9 +101,15 @@ calls to a JSON API.
   `routes/events.py` and `discord_actions.py` to post round pairings and send result DMs.
 - **`discord_notify.py`** — round-label helpers (`_round_label`, `fmt_time`) shared
   between the web app and the bot. Originally sent webhook notifications; that is retired.
+- **`event_actions.py`** — transport-free registration mutations: `register_player`,
+  `unregister_player`, `join_waitlist`, `leave_waitlist`. Each returns `(result, None)`
+  on success or `(None, error_str)` on failure. Called by both `routes/events.py` and
+  `discord_actions.py`; transport-specific side effects (DMs, announcements) stay with
+  the caller.
 - **`event_state.py`** — pure predicates and utilities over the event dict (`_slugify`,
-  `_is_full`, `_self_registration_blocked`, `_validate_result`, etc.). Imported by both
-  `routes/events.py` and `discord_actions.py` to avoid circular imports between them.
+  `_is_full`, `_self_registration_blocked`, `_validate_result`, `make_player_entry`,
+  `auto_check_in`, etc.). Imported by both `routes/events.py` and `discord_actions.py`
+  to avoid circular imports between them.
 - **`event_queries.py`** — semantic query functions over `db.list_events()`. Callers
   should import named queries from here rather than calling `list_events()` with inline filters.
 - **`routes/event_fields.py`** — `clean_event_fields(raw, partial=False)` validates and
@@ -108,6 +117,9 @@ calls to a JSON API.
 - **`decklist.py`** — network-free `parse_decklist` + Scryfall-calling `validate_decklist`.
   Handles Moxfield import via `import_moxfield` (requires `MOXFIELD_USER_AGENT` secret).
 - **`storage.py`** — GCS avatar upload (validate, center-crop, resize via Pillow).
+- **`limiter.py`** — per-IP rate limiting via `flask-limiter`. Uses in-process memory
+  storage (effective global limit ≈ `num_instances × per-instance limit`). No default
+  blanket limit — decorate specific endpoints with `@limiter.limit(...)`.
 - **`gcp_secrets.py`** — `get_secret(name)`: env var → Secret Manager fallback, `@lru_cache`d.
 
 ### The event document is the unit of state
@@ -146,8 +158,9 @@ go through those helpers and treat `rounds` as a list-of-lists everywhere else.
 
 ### Permission model
 
-`_can_manage(event)` = current user is a global admin **or** the event's `owner_id`.
-Used for organiser actions (pairing, editing results/pairings, adding/dropping players).
+`_can_manage(event)` = current user is a global admin, the event's `owner_id`, **or**
+listed in `co_organizer_ids`. Used for organiser actions (pairing, editing results/pairings,
+adding/dropping players).
 Players who are registered (matched by `google_id`) may report results for **their own**
 matches only. Anyone can view events and standings.
 
@@ -234,10 +247,6 @@ default there. The OAuth flow uses a `state` nonce (CSRF) and only honors a post
 `next` if `_is_safe_redirect` says it's same-host (no open redirects); session cookies are
 `HttpOnly` + `SameSite=Lax`, and `Secure` in production.
 
-## Gotchas
-
-- The `{static` directory at the repo root is junk from a botched `mkdir` brace
-  expansion — ignore/delete it; real assets live in `static/`.
 
 ## Agent skills
 

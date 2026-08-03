@@ -142,4 +142,7 @@ def inject_globals():
             'has_public_decklists': has_public_decklists()}
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)
+    # Debug mode is opt-in for local dev only (`FLASK_DEBUG=1 python main.py`).
+    # App Engine never executes this block; production uses FLASK_ENV=production.
+    debug = os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
+    app.run(debug=debug, port=int(os.environ.get('PORT', 8080)))
