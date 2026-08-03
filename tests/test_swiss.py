@@ -245,6 +245,28 @@ def test_bo3_rejects_score_exceeding_best_of():
     assert _validate_result(_match(), 'p1', '1-0-3', best_of=3) is not None
 
 
+# ── pair_round: rematch fallback ──────────────────────────────────────────────
+
+def test_pair_round_allows_rematch_when_no_new_opponents():
+    """After everyone has played everyone, pairing falls back to a rematch."""
+    players = [{'id': f'p{i}', 'name': f'Player {i}', 'dropped': False}
+               for i in range(1, 5)]
+    # Three rounds exhaust all six pairings among four players.
+    r1 = [_win('p1', 'p2'), _win('p3', 'p4')]
+    r2 = [_win('p1', 'p3'), _win('p2', 'p4')]
+    r3 = [_win('p1', 'p4'), _win('p2', 'p3')]
+    r4 = pair_round(players, [r1, r2, r3])
+
+    from swiss import _opponent_history
+    prior = _opponent_history([r1, r2, r3])
+    rematches = [
+        m for m in r4 if not m.get('is_bye')
+        and m['player2_id'] in prior.get(m['player1_id'], set())
+    ]
+    assert rematches, 'expected at least one rematch once the field is exhausted'
+    assert len(_ids(r4)) == 2
+
+
 # ── Bye result scores by best_of ──────────────────────────────────────────────
 
 def test_bye_result_bo3():
