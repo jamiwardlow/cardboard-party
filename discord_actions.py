@@ -22,68 +22,11 @@ from event_state import (_slugify, _assign_draft_seat, _is_full,
 from event_actions import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
 from swiss import compute_standings, DRAW_RESULTS
+from event_announcements import refresh_event_announcement, registration_card_status
+from discord_identity import (normalize_handle, find_profile_for_discord,
+                              google_id_for_discord, resolve_discord_identity)
 
 COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
-
-
-def _registration_card_status(event: dict):
-    """(state, note) for an announced event card — mirrors the self-registration
-    gates so the posted card can show open / full / closed. state is
-    'open' | 'full' | 'closed'."""
-    blocked = _self_registration_blocked(event)
-    if blocked:
-        return 'closed', blocked
-    if event.get('entry_code'):
-        return 'closed', 'Entry code required — register on the web'
-    cap = event.get('registration_cap', 0)
-    active = len([p for p in event['players'] if not p.get('dropped')])
-    if cap and active >= cap:
-        return 'full', f'Full — {cap} players'
-    return 'open', ''
-
-def announce_event_to_channel(event_id: str, channel_id: str, base_url: str, message: str = '',
-                              mention_role_id: str = None):
-    """Post an event card (Register button + details link) to a channel and
-    remember the message so its status can be kept current. `message` is an
-    optional organiser note posted above the card; `mention_role_id` pings that
-    role above the card. Returns (event_name, posted) — posted is False if the
-    event is gone or the post failed (e.g. missing channel permission)."""
-    e = get_event(event_id)
-    if not e:
-        return None, False
-    base = (base_url or '').rstrip('/')
-    state, note = _registration_card_status(e)
-    embeds, components = discord_api.event_card(e, f'{base}/events/{event_id}', state, note)
-    content = message or ''
-    allowed = None
-    if mention_role_id:
-        content = (f'<@&{mention_role_id}> ' + content).rstrip()
-        allowed = {'roles': [str(mention_role_id)]}
-    msg = discord_api.post_message(channel_id, content=(content or None),
-                                   components=components, embeds=embeds, allowed_mentions=allowed)
-    if not msg:
-        return e.get('name', 'the event'), False
-    # Keep the note alongside the card so status refreshes (which re-send content)
-    # don't wipe it.
-    save_event(event_id, {'discord_announce': {
-        'channel_id': channel_id, 'message_id': msg.get('id'), 'base_url': base,
-        'message': content}})
-    return e.get('name', 'the event'), True
-
-def refresh_event_announcement(event: dict) -> None:
-    """If this event has an announcement card posted, edit it to reflect the
-    current registration status (open / full / closed). Best-effort no-op when
-    there's no card. `event` must reflect the current players/registration."""
-    ann = event.get('discord_announce') or {}
-    if not ann.get('message_id'):
-        return
-    base = (ann.get('base_url') or '').rstrip('/')
-    state, note = _registration_card_status(event)
-    embeds, components = discord_api.event_card(
-        event, f"{base}/events/{event['id']}", state, note)
-    discord_api.edit_message(ann['channel_id'], ann['message_id'],
-                             content=(ann.get('message') or None),
-                             components=components, embeds=embeds)
 
 
 def discord_registerable_events(limit: int = 25, owner_discord_id: str = None,
@@ -92,35 +35,10 @@ def discord_registerable_events(limit: int = 25, owner_discord_id: str = None,
     not invite-only/closed/expired, and with no entry code. Full events are excluded
     by default; pass `include_full=True` for announce/invite pickers. Soonest first.
     `owner_discord_id` restricts to that Discord user's own events."""
-    owner_gid = _google_id_for_discord(owner_discord_id) if owner_discord_id else None
+    owner_gid = google_id_for_discord(owner_discord_id) if owner_discord_id else None
     return event_queries.registerable_for_discord(owner_gid=owner_gid,
                                                   include_full=include_full,
                                                   limit=limit)
-
-def _normalize_handle(h: str) -> str:
-    """Normalise a Discord handle for comparison: drop a leading @, lower-case,
-    and drop a legacy '#1234' discriminator."""
-    h = (h or '').strip().lstrip('@').lower()
-    return h.split('#', 1)[0] if '#' in h else h
-
-def _find_profile_for_discord(discord_id: str, username: str, display: str = '') -> dict | None:
-    """Match a Discord user to an existing account: by a discord_id we've stored
-    on the profile before (exact), else by the profile's saved Discord handle
-    matching either the interaction's username or display name (people often save
-    their display name as their handle). Returns the profile (with google_id) or
-    None. Exact ID matches win over handle matches.
-
-    A handle match also lets the caller store the numeric discord_id on the
-    account (see register_player_via_discord), so subsequent links are exact and
-    immune to the handle being a display name, edited, or a renamed username."""
-    candidates = {h for h in (_normalize_handle(username), _normalize_handle(display)) if h}
-    by_handle = None
-    for u in list_users():
-        if discord_id and u.get('discord_id') == discord_id:
-            return u
-        if candidates and not by_handle and _normalize_handle(u.get('discord')) in candidates:
-            by_handle = u
-    return by_handle
 
 def register_player_via_discord(event_id: str, discord_id: str, discord_name: str,
                                 discord_username: str = '', host_url: str = ''):
@@ -139,7 +57,7 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     # discord_name is the registrant's Discord display name; pass it as a second
     # handle candidate so an account that saved its display name as the handle
     # still links (and we then lock in the numeric ID below).
-    profile = _find_profile_for_discord(discord_id, discord_username, discord_name)
+    profile = find_profile_for_discord(discord_id, discord_username, discord_name)
     google_id = profile.get('google_id') if profile else None
     if profile:
         name = (profile.get('name') or discord_name or 'Player').strip()[:80] or 'Player'
@@ -182,12 +100,12 @@ def withdraw_player_via_discord(event_id: str, discord_id: str, username='', dis
     if not e:
         return None, 'That event no longer exists.'
     event_name = e.get('name', 'the event')
-    gid, handles = _discord_identity(discord_id, username, display)
+    gid, handles = resolve_discord_identity(discord_id, username, display)
     player = next((p for p in e['players']
                    if not p.get('dropped') and
                       (p.get('discord_id') == discord_id
                        or (gid and p.get('google_id') == gid)
-                       or (handles and _normalize_handle(p.get('discord')) in handles))),
+                       or (handles and normalize_handle(p.get('discord')) in handles))),
                   None)
     if not player:
         return None, "You're not registered for this event."
@@ -205,14 +123,14 @@ def discord_droppable_events(discord_id: str, username: str = '', display: str =
     via a button without an account. Soonest first; capped for the select menu.
     Gating (self-service allowed, deadline) is enforced on the drop itself, so the
     menu shows everything they're in and the action explains any refusal."""
-    gid, handles = _discord_identity(discord_id, username, display)
+    gid, handles = resolve_discord_identity(discord_id, username, display)
     out = []
     for e in list_events():
         registered = any(
             not p.get('dropped') and
             (p.get('discord_id') == discord_id
              or (gid and p.get('google_id') == gid)
-             or (handles and _normalize_handle(p.get('discord')) in handles))
+             or (handles and normalize_handle(p.get('discord')) in handles))
             for p in e['players'])
         if registered:
             out.append(e)
@@ -227,7 +145,7 @@ def backfill_discord_profiles():
     duplicate. Firestore-only, idempotent. Returns a summary dict."""
     users = list_users()
     by_did    = {str(u['discord_id']): u['google_id'] for u in users if u.get('discord_id')}
-    by_handle = {_normalize_handle(u['discord']): u['google_id'] for u in users if u.get('discord')}
+    by_handle = {normalize_handle(u['discord']): u['google_id'] for u in users if u.get('discord')}
     linked = profiles_created = 0
     for e in list_events():
         changed = False
@@ -236,7 +154,7 @@ def backfill_discord_profiles():
             if not did or p.get('google_id'):
                 continue                      # not a Discord ghost / already linked
             did = str(did)
-            gid = by_did.get(did) or by_handle.get(_normalize_handle(p.get('discord', '')))
+            gid = by_did.get(did) or by_handle.get(normalize_handle(p.get('discord', '')))
             if not gid:
                 gid = f'discord:{did}'
                 save_user_profile(gid, {'discord_id': did,
@@ -244,7 +162,7 @@ def backfill_discord_profiles():
                                         'discord': p.get('discord', '')})
                 by_did[did] = gid
                 if p.get('discord'):
-                    by_handle[_normalize_handle(p['discord'])] = gid
+                    by_handle[normalize_handle(p['discord'])] = gid
                 profiles_created += 1
             p['google_id'] = gid
             changed = True
@@ -297,7 +215,7 @@ def waitlist_player_via_discord(event_id: str, discord_id: str, discord_name: st
     if e.get('entry_code'):
         return None, 'This event needs an entry code — please register on the web.'
     # Identity resolution.
-    profile = _find_profile_for_discord(discord_id, discord_username, discord_name)
+    profile = find_profile_for_discord(discord_id, discord_username, discord_name)
     gid = profile.get('google_id') if profile else None
     name = ((profile.get('name') if profile else discord_name) or 'Player').strip()[:80] or 'Player'
     discord_handle = (profile.get('discord', '') if profile else '') or discord_username
@@ -323,7 +241,7 @@ def waitlist_leave_via_discord(event_id: str, discord_id: str, username: str = '
     result, err = leave_waitlist(event_id, discord_id=discord_id)
     if err:
         # Fall back: try google_id resolution in case the entry predates discord_id storage.
-        gid, _ = _discord_identity(discord_id, username, display)
+        gid, _ = resolve_discord_identity(discord_id, username, display)
         if gid:
             result, err = leave_waitlist(event_id, google_id=gid)
     if err:
@@ -363,7 +281,7 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
         return None, 'That person has chosen not to receive event invites.'
 
     # Already registered (by Discord ID or a linked account)?
-    gid = _google_id_for_discord(target_id)
+    gid = google_id_for_discord(target_id)
     if any(p.get('discord_id') == target_id for p in e['players']) or \
        (gid and any(p.get('google_id') == gid for p in e['players'])):
         return None, "They're already registered for this event."
@@ -378,7 +296,7 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
                       "before sending more.")
 
     base = (base_url or '').rstrip('/')
-    state, note = _registration_card_status(e)
+    state, note = registration_card_status(e)
     delivered = discord_api.dm_event_invite(
         target_id, e, f'{base}/events/{event_id}', inviter_name, state, note, message,
         inviter_username=inviter_username)
@@ -389,157 +307,10 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
     return f"Invitation sent for **{e.get('name', 'the event')}**.", None
 
 
-def _google_id_for_discord(discord_id: str):
-    """The Google account (if any) linked to a Discord numeric ID — so we can also
-    match players who registered on the web/were added by an organiser but have a
-    linked Discord. Returns the google_id or None."""
-    prof = _find_profile_for_discord(discord_id, '')   # '' = match by discord_id only
-    return prof.get('google_id') if prof else None
-
-def _discord_identity(discord_id: str, username: str = '', display: str = ''):
-    """Resolve a Discord user to what we match players on: their linked google_id
-    (by a stored numeric discord_id, or by the profile's saved handle matching the
-    interaction's verified username/display) and the set of normalised handle
-    candidates. Passing the username/display lets players who only have a Discord
-    *handle* on file — registered on the web or added by the organiser, never
-    linked by numeric ID — still be matched (e.g. for /report)."""
-    prof = _find_profile_for_discord(discord_id, username, display)
-    gid = prof.get('google_id') if prof else None
-    handles = {h for h in (_normalize_handle(username), _normalize_handle(display)) if h}
-    return gid, handles
-
-def _discord_match_ctx(e: dict, round_idx: int, match_idx: int, discord_id: str,
-                       gid=None, handles=None):
-    """Context for a Discord user's match in event `e`, or None if it's not their
-    open (unreported, non-bye) match. Shared by the report picker and reporting.
-    `gid` is the Google account linked to this Discord user (if known) and
-    `handles` the verified handle candidates, so a web/organiser-added player who's
-    linked their Discord OR just has a matching handle on file is also matched."""
-    rounds = e.get('rounds', [])
-    if not (0 <= round_idx < len(rounds)):
-        return None
-    rnd = rounds[round_idx]
-    if not (0 <= match_idx < len(rnd)):
-        return None
-    m = rnd[match_idx]
-    player = next((p for p in e['players']
-                   if not p.get('dropped') and
-                      (p.get('discord_id') == discord_id
-                       or (gid and p.get('google_id') == gid)
-                       or (handles and _normalize_handle(p.get('discord')) in handles))),
-                  None)
-    if not player or m.get('is_bye'):
-        return None
-    if player['id'] not in (m.get('player1_id'), m.get('player2_id')):
-        return None
-    if m.get('winner_id') or m.get('result') in DRAW_RESULTS:
-        return None
-    is_p1 = player['id'] == m.get('player1_id')
-    opp_id = m['player2_id'] if is_p1 else m['player1_id']
-    opp = next((p for p in e['players'] if p['id'] == opp_id), None)
-    return {
-        'event_id': e['id'], 'event_name': e.get('name', 'Event'),
-        'round_idx': round_idx, 'match_idx': match_idx, 'round_num': round_idx + 1,
-        'player_id': player['id'], 'opp_id': opp_id,
-        'opponent': opp['name'] if opp else 'Opponent', 'is_p1': is_p1,
-        'allow_id': bool(e.get('advanced')) and not e.get('intentional_draws_frowned'),
-        'best_of': e.get('best_of', 3),
-    }
-
-def discord_open_matches(discord_id: str, username: str = '', display: str = '', limit: int = 25):
-    """A Discord user's current open matches (latest round of each event they're
-    in), for the /cbp report picker."""
-    out = []
-    gid, handles = _discord_identity(discord_id, username, display)
-    for e in list_events():
-        ridx = len(e.get('rounds', [])) - 1
-        if ridx < 0:
-            continue
-        for midx in range(len(e['rounds'][ridx])):
-            ctx = _discord_match_ctx(e, ridx, midx, discord_id, gid, handles)
-            if ctx:
-                out.append(ctx)
-                break
-    return out[:limit]
-
-def discord_match_context(event_id: str, round_idx: int, match_idx: int, discord_id: str,
-                          username: str = '', display: str = ''):
-    e = get_event(event_id)
-    if not e:
-        return None
-    gid, handles = _discord_identity(discord_id, username, display)
-    return _discord_match_ctx(e, round_idx, match_idx, discord_id, gid, handles)
-
-# Map a reporter-perspective result code to a stored result + summary.
-# Tuples are (kind, my_games, their_games) or (kind, my_games, their_games, draws).
-_DISCORD_RESULT_CODES = {
-    'w20':  ('win',  2, 0),    'w21':  ('win',  2, 1),
-    'l02':  ('lose', 0, 2),    'l12':  ('lose', 1, 2),
-    'w10':  ('win',  1, 0),    'l01':  ('lose', 0, 1),
-    'w101': ('win',  1, 0, 1), 'l011': ('lose', 0, 1, 1),
-    'draw': ('draw', None, None), 'id': ('id', None, None),
-}
-_BO3_CODES = frozenset({'w20', 'w21', 'l02', 'l12', 'draw', 'id', 'w101', 'l011'})
-_BO1_CODES = frozenset({'w10', 'l01', 'draw'})
-
-def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, base_url='',
-                              username='', display=''):
-    """Record a result a Discord player reports for their own match. `code` is
-    from the reporter's perspective (see _DISCORD_RESULT_CODES). Returns
-    (confirmation, None) or (None, error)."""
-    e = get_event(event_id)
-    if not e:
-        return None, 'That event no longer exists.'
-    gid, handles = _discord_identity(discord_id, username, display)
-    ctx = _discord_match_ctx(e, round_idx, match_idx, discord_id, gid, handles)
-    if not ctx:
-        return None, "That doesn't look like an open match of yours anymore."
-    spec = _DISCORD_RESULT_CODES.get(code)
-    if not spec:
-        return None, 'Unknown result.'
-    best_of = e.get('best_of', 3)
-    valid_codes = _BO1_CODES if best_of == 1 else _BO3_CODES
-    if code not in valid_codes:
-        return None, 'That result is not valid for this event format.'
-    kind, mine, theirs, *rest = spec
-    draws = rest[0] if rest else 0
-    if kind == 'draw':
-        winner_id, result, summary = None, 'draw', 'a draw (1–1)'
-    elif kind == 'id':
-        if not ctx['allow_id']:
-            return None, 'Intentional draws are not allowed for this event.'
-        winner_id, result, summary = None, '0-0-3', 'an intentional draw (0–0–3)'
-    else:
-        winner_id = ctx['player_id'] if kind == 'win' else ctx['opp_id']
-        # Stored result is from player1's perspective.
-        a, b = (mine, theirs) if ctx['is_p1'] else (theirs, mine)
-        result = f'{a}-{b}-{draws}' if draws else f'{a}-{b}'
-        hi, lo = max(mine, theirs), min(mine, theirs)
-        score_str = f'{hi}–{lo}–{draws}' if draws else f'{hi}–{lo}'
-        summary = f"you {'won' if kind == 'win' else 'lost'} {score_str}"
-    err = _validate_result(e['rounds'][round_idx][match_idx], winner_id, result, best_of)
-    if err:
-        return None, err
-    m = e['rounds'][round_idx][match_idx]
-    m['winner_id'] = winner_id
-    m['result'] = result
-    save_event(event_id, {'rounds': e['rounds']})
-    # Turn the opponent's pairing DM into the result card (same as the web path).
-    # The reporter is excluded — their own message is updated by the interaction
-    # response (see routes/discord.py), so we don't fight that edit.
-    discord_api.notify_result(e, round_idx, match_idx, base_url,
-                              exclude_player_id=ctx['player_id'])
-    names = {p['id']: p['name'] for p in e['players']}
-    reporter = names.get(ctx['player_id'], display or 'A player')
-    _log_discord(event_id, reporter, 'result',
-                 f"reported round {round_idx + 1} vs {ctx['opponent']} ({result}) via Discord")
-    return f"Recorded — {summary} vs {ctx['opponent']} ({ctx['event_name']}). GGs!", None
-
-
 def discord_linkable_events(limit: int = 25, owner_discord_id: str = None):
     """Non-test events an organiser might link to a Discord channel (for the
     /cbp link picker), restricted to events that Discord user owns. Most recent first."""
-    owner_gid = _google_id_for_discord(owner_discord_id) if owner_discord_id else None
+    owner_gid = google_id_for_discord(owner_discord_id) if owner_discord_id else None
     return event_queries.linkable_for_discord(owner_gid=owner_gid, limit=limit)
 
 def set_event_discord_channel(event_id: str, channel_id: str):

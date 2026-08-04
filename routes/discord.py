@@ -14,6 +14,18 @@ requests), DISCORD_BOT_TOKEN (REST calls), DISCORD_APP_ID (REST/command setup).
 import os
 from flask import Blueprint, request, jsonify, abort
 from gcp_secrets import get_secret
+from db import set_invite_optout
+from discord_actions import (
+    discord_registerable_events, discord_linkable_events,
+    discord_standings_events, discord_standings_text,
+    discord_droppable_events,
+    register_player_via_discord, withdraw_player_via_discord,
+    set_event_discord_channel,
+    waitlist_player_via_discord, waitlist_leave_via_discord,
+    invite_player_via_discord,
+)
+from discord_match import discord_open_matches, discord_match_context, report_result_via_discord
+from event_announcements import announce_event_to_channel
 
 discord_bp = Blueprint('discord', __name__)
 
@@ -177,10 +189,9 @@ def _help():
 def _announce_menu(body):
     """Pick one of your events to post in the current channel with a Register button
     (or Join Waitlist when the event is full)."""
-    from discord_actions import discord_registerable_events
     events = discord_registerable_events(owner_discord_id=_interaction_user(body)[0], include_full=True)
     if not events:
-        return _reply('You don’t own any events open for sign-ups to announce.')
+        return _reply("You don't own any events open for sign-ups to announce.")
     options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
     select = {'type': STRING_SELECT, 'custom_id': 'cbp_announce_select',
               'placeholder': 'Which event do you want to post here?', 'options': options}
@@ -201,10 +212,9 @@ def _invite_menu(body):
                       if o.get('name') == 'user'), None)
     if not target_id:
         return _reply('Please choose someone to invite.')
-    from discord_actions import discord_registerable_events
     events = discord_registerable_events(owner_discord_id=_interaction_user(body)[0], include_full=True)
     if not events:
-        return _reply('You don’t own any events open for sign-ups to invite anyone to.')
+        return _reply("You don't own any events open for sign-ups to invite anyone to.")
     options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
     select = {'type': STRING_SELECT, 'custom_id': f'cbp_invite_select:{target_id}',
               'placeholder': 'Which event do you want to invite them to?', 'options': options}
@@ -239,10 +249,9 @@ def _waitlist_action_row(eid, on_waitlist):
 
 def _link_menu(body):
     """Pick one of your events whose pairings should auto-post in this channel."""
-    from discord_actions import discord_linkable_events
     events = discord_linkable_events(owner_discord_id=_interaction_user(body)[0])
     if not events:
-        return _reply('You don’t own any events to link yet.')
+        return _reply("You don't own any events to link yet.")
     options = [{'label': (e.get('name') or 'Event')[:100], 'value': e['id']} for e in events]
     select = {'type': STRING_SELECT, 'custom_id': 'cbp_link_select',
               'placeholder': 'Which event posts pairings here?', 'options': options}
@@ -254,7 +263,6 @@ def _link_menu(body):
 
 def _standings_menu():
     """Show standings; pick an event first if more than one has started."""
-    from discord_actions import discord_standings_events, discord_standings_text
     events = discord_standings_events()
     if not events:
         return _reply('No events have standings yet.')
@@ -270,7 +278,6 @@ def _standings_menu():
 
 def _register_picker():
     """Reply with an ephemeral select menu of events open for registration."""
-    from discord_actions import discord_registerable_events
     events = discord_registerable_events()
     if not events:
         return _reply('There are no events open for registration right now.')
@@ -292,7 +299,6 @@ def _drop_picker(body):
     """Reply with an ephemeral select menu of events the user is registered for, so
     they can drop themselves — works for ghost players who registered via a button
     without an account (matched by their Discord ID/handle)."""
-    from discord_actions import discord_droppable_events
     discord_id, display = _interaction_user(body)
     events = discord_droppable_events(discord_id, _interaction_username(body), display)
     if not events:
@@ -313,7 +319,6 @@ def _report_menu(body, in_place=False):
     button becomes the result buttons, and ultimately the disabled 'Result
     reported' confirmation. Channel posts and the slash command spawn a fresh
     ephemeral message instead (the channel button is shared by the whole round)."""
-    from discord_actions import discord_open_matches
     discord_id, display = _interaction_user(body)
     matches = discord_open_matches(discord_id, _interaction_username(body), display)
     if not matches:
@@ -374,7 +379,6 @@ def _handle_component(body):
     discord_id, name = _interaction_user(body)
 
     if custom_id == 'cbp_register_select':
-        from discord_actions import register_player_via_discord
         values = (body.get('data') or {}).get('values') or []
         if not values:
             return _update('No event selected.')
@@ -388,7 +392,6 @@ def _handle_component(body):
                        f"{request.host_url.rstrip('/')}/events/{eid}")
 
     if custom_id == 'cbp_drop_select':
-        from discord_actions import withdraw_player_via_discord
         val = ((body.get('data') or {}).get('values') or [''])[0]
         if not val:
             return _update('No event selected.')
@@ -401,7 +404,6 @@ def _handle_component(body):
                        f"{request.host_url.rstrip('/')}/events/{val}")
 
     if custom_id == 'cbp_report_select':
-        from discord_actions import discord_match_context
         val = ((body.get('data') or {}).get('values') or [''])[0]
         try:
             eid, ri, mi = val.split(':'); ri, mi = int(ri), int(mi)
@@ -413,12 +415,10 @@ def _handle_component(body):
         return jsonify({'type': UPDATE_MESSAGE, 'data': _report_buttons(ctx)})
 
     if custom_id == 'cbp_standings_select':
-        from discord_actions import discord_standings_text
         val = ((body.get('data') or {}).get('values') or [''])[0]
         return _update(discord_standings_text(val) or 'That event no longer exists.')
 
     if custom_id == 'cbp_link_select':
-        from discord_actions import set_event_discord_channel
         val = ((body.get('data') or {}).get('values') or [''])[0]
         channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
         name = set_event_discord_channel(val, channel_id)
@@ -436,7 +436,6 @@ def _handle_component(body):
 
     if custom_id.startswith('cbp_reg_btn:'):
         # One-tap Register button (on a channel announce card or a DM invitation).
-        from discord_actions import register_player_via_discord
         eid = custom_id.split(':', 1)[1]
         result, err = register_player_via_discord(
             eid, discord_id, name, _interaction_username(body), host_url=request.host_url)
@@ -453,7 +452,6 @@ def _handle_component(body):
 
     if custom_id.startswith('cbp_wd_btn:'):
         # Withdraw button on a DM invitation → drop/remove, then toggle back to Register.
-        from discord_actions import withdraw_player_via_discord
         eid = custom_id.split(':', 1)[1]
         ename, err = withdraw_player_via_discord(eid, discord_id, _interaction_username(body), name)
         if err:
@@ -464,7 +462,6 @@ def _handle_component(body):
 
     if custom_id.startswith('cbp_waitlist_btn:'):
         # Join Waitlist button (on a full event's announce card or invitation DM).
-        from discord_actions import waitlist_player_via_discord
         eid = custom_id.split(':', 1)[1]
         result, err = waitlist_player_via_discord(eid, discord_id, name, _interaction_username(body))
         if err:
@@ -481,7 +478,6 @@ def _handle_component(body):
 
     if custom_id.startswith('cbp_wl_leave_btn:'):
         # Leave Waitlist toggle on a DM card → remove, then flip back to Join Waitlist.
-        from discord_actions import waitlist_leave_via_discord
         eid = custom_id.split(':', 1)[1]
         ename, err = waitlist_leave_via_discord(eid, discord_id, _interaction_username(body), name)
         if err:
@@ -501,7 +497,6 @@ def _handle_component(body):
 
     if custom_id == 'cbp_invite_optout':
         # "Don't invite me" button on an invitation DM.
-        from db import set_invite_optout
         set_invite_optout(discord_id, True)
         return _reply("Got it — you won't receive event invites from Cardboard Party anymore.")
 
@@ -510,7 +505,6 @@ def _handle_component(body):
         # (cbp_report_btn:<eid>:<ri>:<mi>), so report that exact pairing directly
         # instead of offering a picker. Tapped on the player's own DM (a message,
         # no guild), so edit it in place into the result buttons.
-        from discord_actions import discord_match_context
         try:
             _, eid, ri, mi = custom_id.split(':'); ri, mi = int(ri), int(mi)
         except ValueError:
@@ -533,7 +527,6 @@ def _handle_component(body):
         return _report_menu(body, in_place=in_place)
 
     if custom_id.startswith('cbp_rep:'):
-        from discord_actions import report_result_via_discord
         try:
             _, eid, ri, mi, code = custom_id.split(':'); ri, mi = int(ri), int(mi)
         except ValueError:
@@ -554,7 +547,6 @@ def _handle_modal(body):
     message = _modal_text(body)
 
     if custom_id.startswith('cbp_announce_modal:'):
-        from discord_actions import announce_event_to_channel
         eid = custom_id.split(':', 1)[1]
         channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
         ename, posted = announce_event_to_channel(eid, channel_id, request.host_url, message)
@@ -567,7 +559,6 @@ def _handle_modal(body):
                       "It'll update automatically when registration fills or closes.")
 
     if custom_id.startswith('cbp_invite_modal:'):
-        from discord_actions import invite_player_via_discord
         _, target_id, eid = custom_id.split(':', 2)
         msg, err = invite_player_via_discord(
             eid, discord_id, target_id, name, request.host_url, message,

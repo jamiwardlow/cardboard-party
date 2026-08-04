@@ -40,7 +40,8 @@ from event_state import (_now_iso, _slugify, _assign_draft_seat, _is_full,
 from event_actions import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
 import event_queries
-from discord_actions import refresh_event_announcement, announce_event_to_channel
+from event_announcements import refresh_event_announcement, announce_event_to_channel
+from event_view import build_event_view, players_missing_discord_handle, redact_players
 from routes.event_fields import (clean_event_fields, TOURNAMENT_TAGS, STRUCTURES,
                                   COMMS_FIELDS, _COMMS_MAX, _MAX_TABLE,
                                   REGISTRATION_TYPES, PROXY_POLICIES,
@@ -55,12 +56,6 @@ events_bp = Blueprint('events', __name__)
 # Per-environment slash-command name (see routes/discord.py); 'cparty' in prod,
 # 'cpstaging' on staging. Used in user-facing text and the /discord-bot page.
 COMMAND_NAME = os.environ.get('DISCORD_COMMAND_NAME', 'cparty')
-
-def _active_waitlist(event: dict) -> list[dict]:
-    """Still-waiting waitlist records, oldest first (first come, first served)."""
-    wl = [w for w in (event.get('waitlist') or []) if w.get('status') == 'waitlisted']
-    wl.sort(key=lambda w: w.get('joined_at', ''))
-    return wl
 
 def _log_action(event_id: str, action: str, detail: str = '', target: str = '', actor_name: str = None):
     """Write an event-log entry. Stamps the current signed-in user as the actor,
@@ -144,50 +139,6 @@ _PRINT_POLICY_KEYS = ('allow_proxies', 'allow_gold_border', 'allow_ce', 'allow_i
 def _print_policy(event: dict) -> dict:
     """The event's print-legality policy passed to validate_decklist (tag checks)."""
     return {k: event.get(k) for k in _PRINT_POLICY_KEYS}
-
-def _redact_players(event: dict) -> None:
-    """Strip guest self-report tokens before sending an event to clients. The
-    token is a bearer secret — anyone holding it can report as that player and
-    claim their identity via the magic link — so it must never appear in any
-    public event payload. It's only ever returned once, to the joiner.
-
-    Also strip discord_id — it's only used server-side to match a player to the
-    Discord user reporting, and there's no need to expose the player↔Discord
-    mapping in public payloads. Decklists are private (owner + organiser only), so
-    the content is replaced with a `has_decklist` flag for status badges."""
-    for p in event.get('players', []):
-        p.pop('guest_token', None)
-        p.pop('discord_id', None)
-        dl = p.get('decklist') or {}
-        p['has_decklist'] = bool(dl.get('text', '').strip())
-        # Validation status for the organiser roster badge (None when no list yet):
-        # 'valid' | 'warnings' | 'errors' | 'unchecked' | 'none'.
-        p['decklist_status'] = ((dl.get('validation') or {}).get('status', 'none')
-                                if p['has_decklist'] else None)
-        p.pop('decklist', None)
-
-def _enrich_players_discord(event: dict) -> None:
-    """Set each player's displayed `discord` to their account's handle (the source of
-    truth), then show it only if it looks like a real handle — a single token. A
-    value with a space is a display name typed into the old free-text field, not a
-    handle, so it's blanked. Mutates the response copy only; profiles read once/id."""
-    cache = {}
-    for p in event.get('players', []):
-        gid = p.get('google_id')
-        handle = p.get('discord', '') or ''
-        if gid:
-            if gid not in cache:
-                cache[gid] = get_user_profile(gid).get('discord', '')
-            handle = cache[gid] or handle
-        p['discord'] = handle if (handle and ' ' not in handle) else ''
-
-
-def _players_missing_discord_handle(event: dict) -> bool:
-    """True if any non-dropped player registered via Discord (has a discord_id) but
-    has no @handle recorded — the case backfill_discord_handles repairs."""
-    return any(p.get('discord_id') and not p.get('discord')
-               for p in event.get('players', []) if not p.get('dropped'))
-
 
 def backfill_discord_handles(event_id: str) -> None:
     """Look up the @handle of players who registered via the bot before we captured
@@ -713,60 +664,10 @@ def api_get_event(event_id):
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
-    e['standings'] = compute_standings(e['players'], e['rounds'])
-    # Players who can intentionally draw the final Swiss round and still lock a
-    # top-cut spot (empty unless this is the final round of a Swiss + Top Cut event).
-    _num_rounds = e.get('num_rounds') or default_num_rounds(len(e['players']))
-    e['id_safe_ids'] = list(id_safe_players(e['players'], e['rounds'],
-                                            _num_rounds, e.get('planned_cut_size') or 0))
-    e['can_manage'] = _can_manage(e)
-    owner_profile = get_user_profile(e.get('owner_id', ''))
-    # Surface the organizer's discord (if known) so players know how to reach them.
-    e['owner_discord'] = owner_profile.get('discord', '')
-    # Resolve co-organizer IDs to display names for the event page.
-    co_org_names = []
-    for cid in e.get('co_organizer_ids', []):
-        if cid.startswith('pending:'):
-            co_org_names.append({'id': cid, 'name': cid[len('pending:'):], 'discord': '', 'pending': True})
-        else:
-            p = get_user_profile(cid)
-            co_org_names.append({'id': cid, 'name': p.get('name', cid),
-                                 'discord': p.get('discord', ''), 'pending': False})
-    e['co_organizers'] = co_org_names
-    # Expose only whether a code is needed; the code itself is a secret the
-    # organiser shares out-of-band, so never send it to non-managers.
-    e['entry_code_required'] = bool(e.get('entry_code'))
-    _enrich_players_discord(e)
-    # Repair handles for players who registered via the bot before we captured
-    # them — fetched from Discord in the background, so they appear on next load.
-    if e['can_manage'] and _players_missing_discord_handle(e):
+    e = build_event_view(e, get_current_user())
+    if e['can_manage'] and players_missing_discord_handle(e):
         eid = e['id']
         threading.Thread(target=backfill_discord_handles, args=(eid,), daemon=True).start()
-    # Waitlist: managers see the full records (names/emails) to manage seats;
-    # everyone else sees only their own status + queue position, never others'.
-    e['is_full'] = _is_full(e)
-    active_wl = _active_waitlist(e)
-    uid = (get_current_user() or {}).get('id')
-    mine = next((w for w in active_wl if w.get('google_id') == uid), None) if uid else None
-    e['my_waitlist'] = ({'status': 'waitlisted',
-                         'position': active_wl.index(mine) + 1,
-                         'total': len(active_wl)} if mine else None)
-    if e['can_manage']:
-        e['waitlist_count'] = len(active_wl)
-    else:
-        e.pop('waitlist', None)
-    if not e['can_manage']:
-        e.pop('entry_code', None)
-        # Delayed delivery: hide the latest round's pairings / the standings from
-        # players until released. Managers always see everything.
-        if e.get('delay_pairings') and not e.get('pairings_released', True) and e['rounds']:
-            e['pairings_hidden'] = True
-            e['rounds'] = e['rounds'][:-1]
-            e['id_safe_ids'] = []
-        if e.get('delay_standings') and not e.get('standings_released', True):
-            e['standings_hidden'] = True
-            e['standings'] = []
-    _redact_players(e)
     return jsonify(e)
 
 @events_bp.route('/api/events/<event_id>', methods=['PUT'])
@@ -808,7 +709,7 @@ def api_update_event(event_id):
                     'registration_start', 'registration_end', 'entry_code'}
     if e.get('discord_announce') and _CARD_FIELDS & updates.keys():
         refresh_event_announcement(e)
-    _redact_players(e)
+    redact_players(e)
     return jsonify({**e, **updates})
 
 @events_bp.route('/api/events/<event_id>', methods=['DELETE'])
