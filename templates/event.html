@@ -665,7 +665,18 @@ function layoutEventFlow() {
 let _flowResizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(_flowResizeTimer);
-  _flowResizeTimer = setTimeout(layoutEventFlow, 150);
+  _flowResizeTimer = setTimeout(() => {
+    // Skip layout if a form field inside the event flow has focus — on mobile,
+    // the soft keyboard opening fires a resize, and replaceChildren() would
+    // detach the focused input and dismiss the keyboard.
+    const active = document.activeElement;
+    const flow = document.getElementById('event-flow');
+    if (active && flow && flow.contains(active) &&
+        (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) {
+      return;
+    }
+    layoutEventFlow();
+  }, 150);
 });
 
 // Show who's running the event so players know who to contact for help. Only
