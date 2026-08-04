@@ -150,7 +150,7 @@ class TestWithdrawViaDiscord:
              patch('event_actions.get_event', return_value=event), \
              patch('event_actions.save_event', MagicMock()), \
              patch('event_actions.set_player_dropped', MagicMock()), \
-             patch('discord_actions.list_users', return_value=list_users or []), \
+             patch('discord_identity.list_users', return_value=list_users or []), \
              patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.set_player_dropped', MagicMock()), \
              patch('discord_actions.refresh_event_announcement'), \
@@ -172,7 +172,7 @@ class TestWithdrawViaDiscord:
              patch('event_actions.get_event', return_value=evt), \
              patch('event_actions.save_event', save_mock), \
              patch('event_actions.set_player_dropped', MagicMock()), \
-             patch('discord_actions.list_users', return_value=[]), \
+             patch('discord_identity.list_users', return_value=[]), \
              patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.refresh_event_announcement'), \
              patch('discord_actions.add_event_log', MagicMock()):
@@ -192,7 +192,7 @@ class TestWithdrawViaDiscord:
              patch('event_actions.get_event', return_value=evt), \
              patch('event_actions.set_player_dropped', drop_mock), \
              patch('event_actions.save_event', MagicMock()), \
-             patch('discord_actions.list_users', return_value=[]), \
+             patch('discord_identity.list_users', return_value=[]), \
              patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.refresh_event_announcement'), \
              patch('discord_actions.add_event_log', MagicMock()):
@@ -217,7 +217,7 @@ class TestWaitlistViaDiscord:
         with patch('discord_actions.get_event', return_value=event), \
              patch('event_actions.get_event', return_value=event), \
              patch('event_actions.save_event', MagicMock()), \
-             patch('discord_actions.list_users', return_value=list_users or []), \
+             patch('discord_identity.list_users', return_value=list_users or []), \
              patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.add_event_log', MagicMock()):
             return waitlist_player_via_discord('evt1', discord_id, discord_name, username)
@@ -266,7 +266,7 @@ class TestWaitlistViaDiscord:
         with patch('discord_actions.get_event', return_value=evt), \
              patch('event_actions.get_event', return_value=evt), \
              patch('event_actions.save_event', capture_save), \
-             patch('discord_actions.list_users', return_value=[]), \
+             patch('discord_identity.list_users', return_value=[]), \
              patch('discord_actions.save_event', MagicMock()), \
              patch('discord_actions.add_event_log', MagicMock()):
             result, err = waitlist_player_via_discord('evt1', '999', 'Bob', 'bob')
