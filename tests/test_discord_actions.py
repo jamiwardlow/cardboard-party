@@ -45,6 +45,7 @@ class TestRegisterViaDiscord:
              patch('discord_actions.save_event', _save), \
              patch('discord_actions.save_user_profile', save_profile or MagicMock()), \
              patch('discord_actions.refresh_event_announcement'), \
+             patch('discord_actions.add_event_log'), \
              patch('discord_actions.discord_api'):
             return register_player_via_discord(
                 'evt1', discord_id, discord_name, username, host_url=host_url)
