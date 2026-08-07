@@ -1886,7 +1886,7 @@ function renderMatch(m, roundIdx, matchIdx) {
       ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
           <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>`
       : '';
-    resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${scoreStr}</span>${editBtn}`;
+    resultCell = `<span class="result-win">${playerNameHtml(m.winner_id, seededName(m.winner_id))} ${scoreStr}</span>${editBtn}`;
   } else if (canReport) {
     // Highlight the button on the player's own match so it's the obvious next step.
     resultCell = `<button class="btn btn-sm ${mine ? 'btn-primary' : ''}" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
@@ -1911,9 +1911,9 @@ function renderMatch(m, roundIdx, matchIdx) {
 
   return `<tr class="${mine ? 'my-match' : ''}">
     ${tableTd}
-    <td class="p1">${escapeHtml(p1)}</td>
+    <td class="p1">${playerNameHtml(m.player1_id, p1)}</td>
     <td class="vs">vs</td>
-    <td class="p2">${escapeHtml(p2)}</td>
+    <td class="p2">${m.is_bye ? escapeHtml(p2) : playerNameHtml(m.player2_id, p2)}</td>
     <td class="result">${resultCell}</td>
   </tr>`;
 }
@@ -1928,6 +1928,17 @@ function seededName(id) {
   const name = playerName(id);
   const seed = state.cut_seeds && state.cut_seeds[id];
   return seed ? `#${seed} ${name}` : name;
+}
+
+// Escaped name for `id`, linked to /players/<google_id> when that player has one
+// (same pattern as the roster/waitlist name links). `displayName` overrides the
+// looked-up name so seed-prefixed names (see seededName) still link correctly.
+function playerNameHtml(id, displayName) {
+  const p = state.players.find(p => p.id === id);
+  const name = displayName !== undefined ? displayName : (p ? p.name : id);
+  return p && p.google_id
+    ? `<a class="player-name" href="/players/${encodeURIComponent(p.google_id)}">${escapeHtml(name)}</a>`
+    : escapeHtml(name);
 }
 
 // ── Playoff bracket helpers ──────────────────────────────────────────────────
@@ -2297,7 +2308,7 @@ function renderStandings() {
   tbody.innerHTML =
     (state.standings || []).map((s, i) => `<tr class="${s.dropped ? 'dropped' : ''}">
       <td>${i + 1}</td>
-      <td>${escapeHtml(s.name)}${s.dropped ? ' <span class="drop-tag">dropped</span>' : ''}</td>
+      <td>${playerNameHtml(s.id, s.name)}${s.dropped ? ' <span class="drop-tag">dropped</span>' : ''}</td>
       <td>${s.points}</td>
       <td class="hide-mobile">${pct(s.omw)}</td>
       <td class="hide-mobile">${pct(s.gw)}</td>
