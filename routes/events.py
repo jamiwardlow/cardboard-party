@@ -2200,6 +2200,39 @@ def api_edit_result(event_id, round_num, match_index):
     return jsonify(rnd[match_index])
 
 
+@events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/results/<int:match_index>', methods=['DELETE'])
+@login_required
+def api_delete_result(event_id, round_num, match_index):
+    """Organiser clears a recorded result so the match can be re-paired."""
+    e = get_event(event_id)
+    if not e:
+        return jsonify({'error': 'Not found'}), 404
+    _require_manage(e)
+
+    idx = round_num - 1
+    if idx < 0 or idx >= len(e['rounds']):
+        return jsonify({'error': 'Round not found'}), 404
+    rnd = e['rounds'][idx]
+    if match_index < 0 or match_index >= len(rnd):
+        return jsonify({'error': 'Invalid match_index'}), 400
+
+    match = rnd[match_index]
+    if match.get('is_bye'):
+        return jsonify({'error': 'Cannot delete a bye result'}), 400
+    if match.get('winner_id') is None and match.get('result') not in DRAW_RESULTS:
+        return jsonify({'error': 'No result to delete'}), 400
+
+    names = {p['id']: p['name'] for p in e['players']}
+    summ = 'draw' if match['result'] in DRAW_RESULTS else (match['result'] or '')
+    match['winner_id'] = None
+    match['result']    = None
+    save_event(event_id, {'rounds': e['rounds']})
+    _log_action(event_id, 'result',
+                f"deleted round {round_num} result: {names.get(match.get('player1_id'), '?')} vs "
+                f"{names.get(match.get('player2_id'), '?')} (was {summ})")
+    return jsonify(match)
+
+
 # ── User profile editing ───────────────────────────────────────────────────────
 
 @events_bp.route('/api/profile', methods=['GET'])

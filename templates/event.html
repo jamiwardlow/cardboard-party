@@ -1870,7 +1870,8 @@ function renderMatch(m, roundIdx, matchIdx) {
     resultCell = '<span class="result-bye">Bye</span>';
   } else if (m.result === 'draw' || m.result === '0-0-3') {
     const editBtn = canManage()
-      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
+      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
+          <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>`
       : '';
     const drawLabel = m.result === '0-0-3' ? 'Intentional draw 0–0–3' : 'Draw 1–1';
     resultCell = `<span class="result-draw">${drawLabel}</span>${editBtn}`;
@@ -1882,7 +1883,8 @@ function renderMatch(m, roundIdx, matchIdx) {
     const lo = Math.min(parts[0], parts[1]);
     const scoreStr = parts[2] != null ? `${hi}–${lo}–${parts[2]}` : `${hi}–${lo}`;
     const editBtn = canManage()
-      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>`
+      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
+          <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>`
       : '';
     resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${scoreStr}</span>${editBtn}`;
   } else if (canReport) {
@@ -2494,6 +2496,16 @@ function submitResult() {
   }).then(r => {
     if (r.ok) { closeResultModal(); init(); }
     else alertDialog('Failed to save result.');
+  });
+}
+
+function deleteResult(roundIdx, matchIdx) {
+  confirmDialog('Delete this result? The match will need to be re-reported.',
+      { okLabel: 'Delete result', danger: true }).then(ok => {
+    if (!ok) return;
+    fetch(`/api/events/${EVENT_ID}/rounds/${roundIdx + 1}/results/${matchIdx}`,
+      { method: 'DELETE' })
+      .then(r => { if (r.ok) init(); else alertDialog('Failed to delete result.'); });
   });
 }
 
