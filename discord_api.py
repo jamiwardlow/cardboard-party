@@ -691,8 +691,7 @@ def _dm_round_pairings(event: dict, round_num: int, base_url: str):
     ename = event.get('name', 'Event')
     link_btn = _link_btn(base_url, event['id'])
 
-    dms = {}   # player_id -> {channel_id, message_id}, so a report elsewhere can
-               # mark this DM "reported" too (see mark_dm_pairing_reported).
+    dms = {}   # player_id -> {channel_id, message_id}
     for midx, m in enumerate(rnd):
         if m.get('is_bye'):
             p = players.get(m.get('player1_id'))
@@ -822,23 +821,3 @@ def _dm_pairing_changed(event, round_num, changed_pids, base_url):
         save_event(event['id'], {'discord_pairing_dms': {'round_num': round_num, 'dms': new_dms}})
 
 
-def mark_dm_pairing_reported(event: dict, player_id: str):
-    """Edit a player's pairing DM for the current round to show their result is in
-    — swapping the 'Report my result' button for a disabled 'Result reported', the
-    same end state as reporting from the DM. Best-effort no-op if we have no stored
-    DM message for them this round."""
-    info = event.get('discord_pairing_dms') or {}
-    if info.get('round_num') != len(event.get('rounds', [])):
-        return
-    dm = (info.get('dms') or {}).get(player_id)
-    if not dm or not dm.get('message_id'):
-        return
-    edit_message(dm['channel_id'], dm['message_id'], components=_reported_components())
-
-
-def mark_dm_pairings_reported(event: dict, player_ids):
-    """Background, best-effort: mark each player's pairing DM as reported, so it
-    doesn't block the 3s interaction response with extra Discord edits."""
-    threading.Thread(
-        target=lambda: [mark_dm_pairing_reported(event, pid) for pid in player_ids],
-        daemon=True).start()
