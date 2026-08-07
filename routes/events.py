@@ -1836,15 +1836,32 @@ def api_edit_pairings(event_id, round_num):
         return jsonify({'error': 'Round not found'}), 404
     if _is_bracket_round(e['rounds'][idx]):
         return jsonify({'error': 'Playoff pairings are set by the bracket and cannot be edited'}), 400
-    has_results = any(
-        m.get('winner_id') is not None or m.get('result') in DRAW_RESULTS
-        for m in e['rounds'][idx] if not m.get('is_bye')
-    )
-    if has_results:
-        return jsonify({'error': 'Cannot edit pairings after results have been entered'}), 400
     new_pairings = request.json or []
     valid_ids = {p['id'] for p in e['players']} | {BYE_PLAYER_ID}
     names = {p['id']: p['name'] for p in e['players']}
+
+    # Matches that already have a reported result are locked: whatever the
+    # client sent for that pair is discarded and the original match dict
+    # (with its result/table) is restored, regardless of position.
+    locked = {
+        frozenset((m.get('player1_id'), m.get('player2_id'))): m
+        for m in e['rounds'][idx]
+        if not m.get('is_bye') and (m.get('winner_id') is not None or m.get('result') in DRAW_RESULTS)
+    }
+    for i, match in enumerate(new_pairings):
+        if match.get('is_bye'):
+            continue
+        pair_key = frozenset((match.get('player1_id'), match.get('player2_id')))
+        if pair_key in locked:
+            new_pairings[i] = locked.pop(pair_key)
+    if locked:
+        who = ', '.join(
+            f"{names.get(m.get('player1_id'), m.get('player1_id'))} vs "
+            f"{names.get(m.get('player2_id'), m.get('player2_id'))}"
+            for m in locked.values()
+        )
+        return jsonify({'error': f"{who} already has a result and can't be re-paired."}), 400
+
     seen: set = set()
     for match in new_pairings:
         for key in ('player1_id', 'player2_id'):
@@ -1874,8 +1891,6 @@ def api_edit_pairings(event_id, round_num):
     if missing:
         who = ', '.join(sorted(names.get(p, p) for p in missing))
         return jsonify({'error': f"{who} {'is' if len(missing) == 1 else 'are'} not in any match"}), 400
-    if seen - original:
-        return jsonify({'error': 'Pairings can only include players already in this round'}), 400
 
     old_state = _pairing_state(e['rounds'][idx])   # before re-seating/replacing
     assign_tables(new_pairings, e['players'], e)    # re-seat the rearranged matches

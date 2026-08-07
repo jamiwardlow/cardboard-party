@@ -617,6 +617,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .pairing-row span   { color: var(--muted); font-size: 0.85rem; flex-shrink: 0; }
 .row-remove         { flex-shrink: 0; padding: 0.3rem 0.55rem; color: var(--muted); line-height: 1; }
 .row-remove:hover   { color: var(--danger); border-color: var(--danger); }
+.pairing-row-locked { opacity: 0.6; }
 
 /* ── Result entry modal ───────────────────────────────────────────────────── */
 .result-modal-players { display: flex; align-items: center; gap: 0.75rem;

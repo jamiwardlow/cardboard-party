@@ -274,6 +274,7 @@ Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (r
   <div class="modal">
     <h2 id="edit-modal-title">Edit pairings</h2>
     <div id="edit-pairings-form"></div>
+    <button type="button" class="btn btn-sm" onclick="addEditRow()">+ Add pairing</button>
     <p id="edit-pairings-note" class="field-help" style="color:var(--danger)"></p>
     <div class="modal-actions">
       <button class="btn" onclick="closeEditModal()">Cancel</button>
@@ -1752,7 +1753,7 @@ function renderRounds() {
     const bracket = isBracketRound(round);
     // Playoff pairings are set by the bracket (winners advance), so they can't
     // be hand-edited or re-paired like Swiss rounds.
-    const canEdit = !bracket && canManage() && round.every(m => m.is_bye || (!m.winner_id && !isDrawResult(m.result)));
+    const canEdit = !bracket && canManage();
     const isLatest = i === state.rounds.length - 1;
     const finished  = roundFinished(round);
     const collapsed = isRoundCollapsed(i, round);
@@ -2508,6 +2509,8 @@ function openEditModal(roundIdx) {
   editRows = state.rounds[roundIdx].map(m => ({
     p1: m.player1_id,
     p2: m.is_bye ? '__bye__' : m.player2_id,
+    // Already has a result — shown but frozen; the server preserves it regardless.
+    locked: !m.is_bye && (!!m.winner_id || isDrawResult(m.result)),
   }));
   renderEditRows();
   document.getElementById('edit-modal').classList.remove('hidden');
@@ -2536,7 +2539,13 @@ function renderEditRows() {
     `<option value=""${sel === '' ? ' selected' : ''}>— Select —</option>` +
     `<option value="__bye__"${sel === '__bye__' ? ' selected' : ''}>— Bye —</option>` +
     active.map(p => `<option value="${escapeHtml(p.id)}"${p.id === sel ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
-  document.getElementById('edit-pairings-form').innerHTML = editRows.map((r, i) => `
+  document.getElementById('edit-pairings-form').innerHTML = editRows.map((r, i) => r.locked ? `
+      <div class="pairing-row pairing-row-locked">
+        <select disabled>${opts(r.p1)}</select>
+        <span>vs</span>
+        <select disabled>${opts(r.p2)}</select>
+        <span class="row-remove" title="Already has a result — can't be re-paired">🔒</span>
+      </div>` : `
       <div class="pairing-row">
         <select onchange="onEditRowChange(${i}, 'p1', this.value)">${opts(r.p1)}</select>
         <span>vs</span>
@@ -2567,6 +2576,12 @@ function removeEditRow(i) {
   reconcileEditRows();
 }
 
+// Add a blank row for pairing in a late-arriving player not yet in this round.
+function addEditRow() {
+  editRows.push({ p1: '', p2: '', locked: false });
+  renderEditRows();
+}
+
 function closeEditModal() {
   document.getElementById('edit-modal').classList.add('hidden');
   editingRound = null;
@@ -2586,6 +2601,11 @@ function buildEditedPairings() {
   const payload = [];
   const seen = new Set();
   for (const r of editRows) {
+    if (r.locked) {
+      payload.push({ player1_id: r.p1, player2_id: r.p2, winner_id: null, result: null, is_bye: false });
+      seen.add(r.p1); seen.add(r.p2);
+      continue;
+    }
     let { p1, p2 } = r;
     if (p1 === '' && p2 === '') continue;        // ignore leftover blank rows
     const isBye = p1 === '__bye__' || p2 === '__bye__';
