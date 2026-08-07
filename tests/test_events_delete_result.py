@@ -24,7 +24,8 @@ def _event_with_round():
 
 def _delete(client, match_index):
     with patch('routes.events.get_event', return_value=_event_with_round()) as mock_get, \
-         patch('routes.events.save_event') as mock_save:
+         patch('routes.events.save_event') as mock_save, \
+         patch('routes.events.add_event_log'):
         resp = client.delete(f'/api/events/evt1/rounds/1/results/{match_index}')
     return resp, mock_get, mock_save
 
