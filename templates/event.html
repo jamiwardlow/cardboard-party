@@ -1886,7 +1886,7 @@ function renderMatch(m, roundIdx, matchIdx) {
       ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
           <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>`
       : '';
-    resultCell = `<span class="result-win">${playerNameHtml(m.winner_id, seededName(m.winner_id))} ${scoreStr}</span>${editBtn}`;
+    resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${scoreStr}</span>${editBtn}`;
   } else if (canReport) {
     // Highlight the button on the player's own match so it's the obvious next step.
     resultCell = `<button class="btn btn-sm ${mine ? 'btn-primary' : ''}" onclick="openResultModal(${roundIdx},${matchIdx})">Enter result</button>`;
