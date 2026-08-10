@@ -320,8 +320,8 @@
 
   <label class="timer-field">Round timer (minutes)
     <input id="e-round-timer" type="number" min="0" max="180" placeholder="No timer"
-           value="{{ source.round_timer_minutes | default('') if source else '' }}">
-    <span class="field-help">Shows a countdown to players each round.</span>
+           value="{{ source.round_timer_minutes | default(50) if source else 50 }}">
+    <span class="field-help">Shows a countdown to players each round. Enter 0 to disable.</span>
   </label>
 
   {% if mode == 'advanced' %}

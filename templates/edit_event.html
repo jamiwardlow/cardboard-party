@@ -290,8 +290,8 @@
   </label>
   <label class="timer-field">Round timer (minutes)
     <input id="ee-round-timer" type="number" min="0" max="180" placeholder="No timer"
-           value="{{ event.round_timer_minutes | default('') }}">
-    <span class="field-help">Shows a countdown to players each round.</span>
+           value="{{ event.round_timer_minutes | default(50) }}">
+    <span class="field-help">Shows a countdown to players each round. Enter 0 to disable.</span>
   </label>
 
   <label class="checkbox-row no-divider{% if not adv %} ee-adv hidden{% endif %}">
