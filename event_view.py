@@ -79,6 +79,7 @@ def build_event_view(event: dict, current_user: dict | None = None) -> dict:
                                             _num_rounds, e.get('planned_cut_size') or 0))
     e['can_manage'] = _viewer_can_manage(e, current_user)
     owner_profile = get_user_profile(e.get('owner_id', ''))
+    e['owner_name'] = owner_profile.get('name', '') or e.get('owner_id', '')
     e['owner_discord'] = owner_profile.get('discord', '')
     co_org_names = []
     for cid in e.get('co_organizer_ids', []):
