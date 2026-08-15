@@ -681,11 +681,13 @@ window.addEventListener('resize', () => {
 });
 
 // Show who's running the event so players know who to contact for help. Only
-// shown to non-organizers — the organizer already knows who they are.
+// shown to non-staff of this event — the owner/co-organizers already know who
+// they are. A global admin who isn't this event's owner/co-organizer still
+// sees it, same as any other viewer.
 function renderOrganizer() {
   const el = document.getElementById('organizer-info');
   if (!el) return;
-  if (canManage()) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  if (state.is_event_staff) { el.style.display = 'none'; el.innerHTML = ''; return; }
   el.style.display = '';
   const staffLine = (label, name, discord) =>
     `<span>${label}: <strong>${escapeHtml(name)}</strong>`

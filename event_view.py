@@ -78,6 +78,9 @@ def build_event_view(event: dict, current_user: dict | None = None) -> dict:
     e['id_safe_ids'] = list(id_safe_players(e['players'], e['rounds'],
                                             _num_rounds, e.get('planned_cut_size') or 0))
     e['can_manage'] = _viewer_can_manage(e, current_user)
+    uid = current_user['id'] if current_user else None
+    e['is_event_staff'] = bool(uid) and (uid == e.get('owner_id')
+                                          or uid in e.get('co_organizer_ids', []))
     owner_profile = get_user_profile(e.get('owner_id', ''))
     e['owner_name'] = owner_profile.get('name', '') or e.get('owner_id', '')
     e['owner_discord'] = owner_profile.get('discord', '')
@@ -94,7 +97,6 @@ def build_event_view(event: dict, current_user: dict | None = None) -> dict:
     enrich_players_discord(e)
     e['is_full'] = _is_full(e)
     active_wl = _active_waitlist(e)
-    uid = current_user.get('id') if current_user else None
     mine = next((w for w in active_wl if w.get('google_id') == uid), None) if uid else None
     e['my_waitlist'] = ({'status': 'waitlisted',
                          'position': active_wl.index(mine) + 1,
