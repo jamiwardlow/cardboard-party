@@ -15,7 +15,7 @@ import event_queries
 from db import (get_event, save_event, list_events, list_users,
                 get_user_profile, save_user_profile, set_player_dropped,
                 add_event_log, record_invite, recent_invite_count,
-                target_invited_since, is_invite_opted_out)
+                target_invited_since, is_invite_opted_out, is_admin)
 from event_state import (_slugify, _assign_draft_seat, _is_full,
                          _self_registration_blocked, _now_iso, _validate_result,
                          make_player_entry)
@@ -309,11 +309,19 @@ def discord_linkable_events(limit: int = 25, owner_discord_id: str = None):
     owner_gid = google_id_for_discord(owner_discord_id) if owner_discord_id else None
     return event_queries.linkable_for_discord(owner_gid=owner_gid, limit=limit)
 
-def set_event_discord_channel(event_id: str, channel_id: str):
-    """Link an event so its pairings auto-post to this Discord channel. Returns
-    the event name, or None if it's gone."""
+def set_event_discord_channel(event_id: str, channel_id: str, discord_id: str = None):
+    """Link an event so its pairings auto-post to this Discord channel. Only the
+    event's owner, a co-organizer, or an admin may link it — the /cbp link picker
+    only *lists* the caller's own events, but a component interaction's selected
+    value isn't otherwise re-checked, so this must enforce it itself. Returns the
+    event name, or None if it's gone or the caller isn't allowed to manage it."""
     e = get_event(event_id)
     if not e:
+        return None
+    gid = google_id_for_discord(discord_id) if discord_id else None
+    if not (gid and (gid == e.get('owner_id')
+                     or gid in e.get('co_organizer_ids', [])
+                     or is_admin(gid))):
         return None
     save_event(event_id, {'discord_channel_id': channel_id})
     return e.get('name', 'the event')

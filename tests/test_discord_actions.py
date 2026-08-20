@@ -350,3 +350,55 @@ class TestDiscordStandingsText:
             result = discord_standings_text('evt1')
         assert 'Alice' in result
         assert 'pts' in result
+
+
+# ── set_event_discord_channel ─────────────────────────────────────────────────
+
+class TestSetEventDiscordChannel:
+    """The /cbp link picker only *lists* the caller's own events — the select
+    interaction that submits the chosen event isn't otherwise re-checked, so
+    the mutation itself must enforce ownership."""
+
+    def _call(self, evt, discord_id='999', gid=None, admin=False):
+        from discord_actions import set_event_discord_channel
+        with patch('discord_actions.get_event', return_value=evt), \
+             patch('discord_actions.save_event', MagicMock()) as save, \
+             patch('discord_actions.google_id_for_discord', return_value=gid), \
+             patch('discord_actions.is_admin', return_value=admin):
+            result = set_event_discord_channel(evt['id'] if evt else 'gone', 'chan1', discord_id)
+        return result, save
+
+    def test_owner_can_link(self):
+        evt = minimal_event(owner_id='gid_owner')
+        name, save = self._call(evt, gid='gid_owner')
+        assert name == evt['name']
+        save.assert_called_once_with(evt['id'], {'discord_channel_id': 'chan1'})
+
+    def test_co_organizer_can_link(self):
+        evt = minimal_event(owner_id='gid_owner', co_organizer_ids=['gid_co'])
+        name, save = self._call(evt, gid='gid_co')
+        assert name == evt['name']
+        save.assert_called_once()
+
+    def test_admin_can_link(self):
+        evt = minimal_event(owner_id='gid_owner')
+        name, save = self._call(evt, gid='gid_other', admin=True)
+        assert name == evt['name']
+        save.assert_called_once()
+
+    def test_unrelated_user_cannot_link(self):
+        evt = minimal_event(owner_id='gid_owner')
+        name, save = self._call(evt, gid='gid_attacker')
+        assert name is None
+        save.assert_not_called()
+
+    def test_unlinked_discord_account_cannot_link(self):
+        evt = minimal_event(owner_id='gid_owner')
+        name, save = self._call(evt, gid=None)
+        assert name is None
+        save.assert_not_called()
+
+    def test_returns_none_for_missing_event(self):
+        name, save = self._call(None, gid='gid_owner')
+        assert name is None
+        save.assert_not_called()

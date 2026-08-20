@@ -421,7 +421,7 @@ def _handle_component(body):
     if custom_id == 'cbp_link_select':
         val = ((body.get('data') or {}).get('values') or [''])[0]
         channel_id = body.get('channel_id') or (body.get('channel') or {}).get('id')
-        name = set_event_discord_channel(val, channel_id)
+        name = set_event_discord_channel(val, channel_id, discord_id)
         if not name:
             return _update('That event no longer exists.')
         return _update(f"✅ **{name}** pairings will post in this channel each round.")
