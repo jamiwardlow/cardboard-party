@@ -53,10 +53,10 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
         return None, 'That event no longer exists.'
     if e.get('entry_code'):
         return None, 'This event needs an entry code — please register on the web.'
-    # Identity resolution: find or create a profile for this Discord user.
-    # discord_name is the registrant's Discord display name; pass it as a second
-    # handle candidate so an account that saved its display name as the handle
-    # still links (and we then lock in the numeric ID below).
+    # Identity resolution: find or create a profile for this Discord user. Matches
+    # by stored discord_id or by the profile's saved handle == the verified Discord
+    # username (find_profile_for_discord also locks the discord_id in on a handle
+    # match, so this account resolves by exact ID from here on).
     profile = find_profile_for_discord(discord_id, discord_username, discord_name)
     google_id = profile.get('google_id') if profile else None
     if profile:
@@ -78,10 +78,6 @@ def register_player_via_discord(event_id: str, discord_id: str, discord_name: st
     )
     if err:
         return None, err
-    # Lock in the verified discord_id on a handle-matched account so future lookups
-    # are exact. Ghost profiles already have it; the no-account case saved it above.
-    if profile and not profile.get('discord_id'):
-        save_user_profile(google_id, {'discord_id': discord_id})
     event_name = e.get('name', 'the event')
     refresh_event_announcement(get_event(event_id))
     _log_discord(event_id, player.get('name', ''), 'register', 'registered via Discord')
