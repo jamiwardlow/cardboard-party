@@ -965,10 +965,30 @@ textarea.mgf-val { resize: vertical; min-height: 8rem; font-size: 0.8rem; }
 .confetti-piece { position: absolute; width: 7px; height: 7px;
                   transform: translate(-50%, -50%);
                   animation: confetti-pop ease-out forwards; }
+/* Burst outward (0–30%), fall under gravity (30–85%), rest and fade (85–100%). */
 @keyframes confetti-pop {
   0%   { transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
-  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)); opacity: 0; }
+  30%  { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(calc(var(--rot) * 0.35)); opacity: 1; }
+  85%  { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + var(--fall))) rotate(var(--rot)); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + var(--fall))) rotate(var(--rot)); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .confetti-piece { animation-duration: 0.01s !important; }
+}
+
+.confetti-message { position: fixed; top: 22%; left: 50%; z-index: 210;
+                     max-width: 90vw; text-align: center; padding: 0.9rem 1.4rem;
+                     background: var(--accent-h); color: var(--on-fill);
+                     border: 2px solid var(--ink); box-shadow: var(--shadow-lg);
+                     font-family: var(--font-pixel); font-size: 0.75rem; line-height: 1.5;
+                     pointer-events: none; animation: confetti-message-pop 2s ease-out forwards; }
+@keyframes confetti-message-pop {
+  0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+  15%  { transform: translate(-50%, -50%) scale(1.05); opacity: 1; }
+  25%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  80%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti-message { animation-duration: 0.01s !important; }
 }
