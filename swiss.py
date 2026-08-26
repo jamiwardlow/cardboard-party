@@ -159,6 +159,90 @@ def assign_tables(matches: list[dict], players: list[dict], settings: dict) -> l
     return matches
 
 
+def _pairing_state(rnd: list) -> dict:
+    """Map each player in a round to their (opponent_id_or_'bye', table) — used to
+    detect which players' pairings actually changed after an edit."""
+    st = {}
+    for m in rnd:
+        t = m.get('table')
+        if m.get('is_bye'):
+            st[m.get('player1_id')] = ('bye', t)
+        else:
+            p1, p2 = m.get('player1_id'), m.get('player2_id')
+            st[p1] = (p2, t)
+            st[p2] = (p1, t)
+    return st
+
+
+def apply_pairing_edit(current_round: list, new_pairings: list, players: list[dict],
+                       event: dict) -> tuple:
+    """Validate and apply an organiser's edit to one round's pairings.
+
+    Locks matches that already have a result (the client's proposed pairing for
+    that pair is discarded and the original match dict restored regardless of
+    position), validates the rest (unknown/self-paired/duplicate/missing
+    players, well-formed byes), re-seats tables, and diffs old vs. new state to
+    find who needs a "your pairing changed" notification.
+
+    Returns (new_round, changed_player_ids, None) on success, or
+    (None, None, error_str) on the first validation failure.
+    """
+    valid_ids = {p['id'] for p in players} | {BYE_PLAYER_ID}
+    names = {p['id']: p['name'] for p in players}
+
+    locked = {
+        frozenset((m.get('player1_id'), m.get('player2_id'))): m
+        for m in current_round
+        if not m.get('is_bye') and (m.get('winner_id') is not None or m.get('result') in DRAW_RESULTS)
+    }
+    for i, match in enumerate(new_pairings):
+        if match.get('is_bye'):
+            continue
+        pair_key = frozenset((match.get('player1_id'), match.get('player2_id')))
+        if pair_key in locked:
+            new_pairings[i] = locked.pop(pair_key)
+    if locked:
+        who = ', '.join(
+            f"{names.get(m.get('player1_id'), m.get('player1_id'))} vs "
+            f"{names.get(m.get('player2_id'), m.get('player2_id'))}"
+            for m in locked.values()
+        )
+        return None, None, f"{who} already has a result and can't be re-paired."
+
+    seen: set = set()
+    for match in new_pairings:
+        for key in ('player1_id', 'player2_id'):
+            if match.get(key) not in valid_ids:
+                return None, None, f"Unknown player: {match.get(key)}"
+        p1, p2 = match.get('player1_id'), match.get('player2_id')
+        if match.get('is_bye'):
+            reals = [x for x in (p1, p2) if x != BYE_PLAYER_ID]
+            if len(reals) != 1:
+                return None, None, 'A bye must include exactly one player'
+        elif p1 == p2:
+            return None, None, 'A player cannot be paired against themselves'
+        for pid in (p1, p2):
+            if pid == BYE_PLAYER_ID:
+                continue
+            if pid in seen:
+                return None, None, f"{names.get(pid, pid)} is assigned to more than one match"
+            seen.add(pid)
+
+    original = {pid for m in current_round
+                for pid in (m.get('player1_id'), m.get('player2_id'))
+                if pid and pid != BYE_PLAYER_ID}
+    missing = original - seen
+    if missing:
+        who = ', '.join(sorted(names.get(p, p) for p in missing))
+        return None, None, f"{who} {'is' if len(missing) == 1 else 'are'} not in any match"
+
+    old_state = _pairing_state(current_round)   # before re-seating/replacing
+    assign_tables(new_pairings, players, event)  # re-seat the rearranged matches
+    new_state = _pairing_state(new_pairings)
+    changed = [pid for pid, v in new_state.items() if pid and v != old_state.get(pid)]
+    return new_pairings, changed, None
+
+
 def _choose_bye(players: list[dict], points: dict, bye_hist: set) -> str:
     """
     Pick the bye recipient: lowest-ranked player who hasn't had a bye.

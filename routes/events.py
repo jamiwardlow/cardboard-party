@@ -14,9 +14,9 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 get_user_profile, save_user_profile, delete_user_profile, list_users,
                 find_user_by_email, find_user_by_discord_handle,
                 add_event_log, list_event_log, promote_waitlist_entry)
-from swiss import (pair_round, pair_draft_r1, pair_draft_r2, compute_standings, default_num_rounds, BYE_PLAYER_ID,
+from swiss import (pair_round, pair_draft_r1, pair_draft_r2, compute_standings, default_num_rounds,
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players, player_match_record,
-                   assign_tables)
+                   assign_tables, apply_pairing_edit)
 from routes.auth import get_current_user, login_required, discord_login_enabled
 from gcp_secrets import get_secret
 import discord_api
@@ -1810,20 +1810,6 @@ def api_discord_announce(event_id):
 
 # ── API: edit pairings ─────────────────────────────────────────────────────────
 
-def _pairing_state(rnd: list) -> dict:
-    """Map each player in a round to their (opponent_id_or_'bye', table) — used to
-    detect which players' pairings actually changed after an edit."""
-    st = {}
-    for m in rnd:
-        t = m.get('table')
-        if m.get('is_bye'):
-            st[m.get('player1_id')] = ('bye', t)
-        else:
-            p1, p2 = m.get('player1_id'), m.get('player2_id')
-            st[p1] = (p2, t)
-            st[p2] = (p1, t)
-    return st
-
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/pairings', methods=['PUT'])
 @login_required
 def api_edit_pairings(event_id, round_num):
@@ -1837,71 +1823,17 @@ def api_edit_pairings(event_id, round_num):
     if _is_bracket_round(e['rounds'][idx]):
         return jsonify({'error': 'Playoff pairings are set by the bracket and cannot be edited'}), 400
     new_pairings = request.json or []
-    valid_ids = {p['id'] for p in e['players']} | {BYE_PLAYER_ID}
-    names = {p['id']: p['name'] for p in e['players']}
 
-    # Matches that already have a reported result are locked: whatever the
-    # client sent for that pair is discarded and the original match dict
-    # (with its result/table) is restored, regardless of position.
-    locked = {
-        frozenset((m.get('player1_id'), m.get('player2_id'))): m
-        for m in e['rounds'][idx]
-        if not m.get('is_bye') and (m.get('winner_id') is not None or m.get('result') in DRAW_RESULTS)
-    }
-    for i, match in enumerate(new_pairings):
-        if match.get('is_bye'):
-            continue
-        pair_key = frozenset((match.get('player1_id'), match.get('player2_id')))
-        if pair_key in locked:
-            new_pairings[i] = locked.pop(pair_key)
-    if locked:
-        who = ', '.join(
-            f"{names.get(m.get('player1_id'), m.get('player1_id'))} vs "
-            f"{names.get(m.get('player2_id'), m.get('player2_id'))}"
-            for m in locked.values()
-        )
-        return jsonify({'error': f"{who} already has a result and can't be re-paired."}), 400
+    new_round, changed, err = apply_pairing_edit(e['rounds'][idx], new_pairings, e['players'], e)
+    if err:
+        return jsonify({'error': err}), 400
 
-    seen: set = set()
-    for match in new_pairings:
-        for key in ('player1_id', 'player2_id'):
-            if match.get(key) not in valid_ids:
-                return jsonify({'error': f"Unknown player: {match.get(key)}"}), 400
-        p1, p2 = match.get('player1_id'), match.get('player2_id')
-        if match.get('is_bye'):
-            # A bye is exactly one real player sitting out (vs the bye marker).
-            reals = [x for x in (p1, p2) if x != BYE_PLAYER_ID]
-            if len(reals) != 1:
-                return jsonify({'error': 'A bye must include exactly one player'}), 400
-        elif p1 == p2:
-            return jsonify({'error': 'A player cannot be paired against themselves'}), 400
-        for pid in (p1, p2):
-            if pid == BYE_PLAYER_ID:
-                continue
-            if pid in seen:
-                return jsonify({'error': f"{names.get(pid, pid)} is assigned to more than one match"}), 400
-            seen.add(pid)
-
-    # Every player who was in this round must still be assigned (to a match or a
-    # bye) exactly once — multiple byes are fine, but no one may be left out.
-    original = {pid for m in e['rounds'][idx]
-                for pid in (m.get('player1_id'), m.get('player2_id'))
-                if pid and pid != BYE_PLAYER_ID}
-    missing = original - seen
-    if missing:
-        who = ', '.join(sorted(names.get(p, p) for p in missing))
-        return jsonify({'error': f"{who} {'is' if len(missing) == 1 else 'are'} not in any match"}), 400
-
-    old_state = _pairing_state(e['rounds'][idx])   # before re-seating/replacing
-    assign_tables(new_pairings, e['players'], e)    # re-seat the rearranged matches
-    e['rounds'][idx] = new_pairings
+    e['rounds'][idx] = new_round
     save_event(event_id, {'rounds': e['rounds']})
     # DM the players whose opponent or table actually changed, so they know to move.
-    new_state = _pairing_state(new_pairings)
-    changed = [pid for pid, v in new_state.items() if pid and v != old_state.get(pid)]
     if changed:
         discord_api.dm_pairing_changed(e, round_num, changed, request.host_url)
-    return jsonify({'round_num': round_num, 'pairings': new_pairings})
+    return jsonify({'round_num': round_num, 'pairings': new_round})
 
 
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/matches/<int:match_idx>/table',
