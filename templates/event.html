@@ -2282,6 +2282,7 @@ async function addSelf() {
     const d = await res.json().catch(() => ({}));
     if (d.waitlisted) alertDialog("Event is full — you've been added to the waitlist.");
     await init();
+    if (!d.waitlisted) burstConfetti(document.querySelector('.banner-player') || document.querySelector('.event-head h1'));
   }
   else { const e = await res.json(); alertDialog(e.error || 'Failed to add yourself.'); }
 }
