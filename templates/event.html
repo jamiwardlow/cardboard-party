@@ -243,7 +243,7 @@ Refund policy: {{ event.refund_policy_text }}{% if event.refund_window_end %} (r
       <table id="standings-table" class="standings">
         <thead>
           <tr>
-            <th>#</th><th>Player</th><th>Pts</th>
+            <th class="rank-col">#</th><th>Player</th><th>Pts</th>
             <th class="hide-mobile">OMW%</th>
             <th class="hide-mobile">GW%</th>
             <th class="hide-mobile">OGW%</th>
@@ -2329,7 +2329,7 @@ function renderStandings() {
   const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
   tbody.innerHTML =
     (state.standings || []).map((s, i) => `<tr class="${s.dropped ? 'dropped' : ''}">
-      <td>${i + 1}</td>
+      <td class="rank-col">${i + 1}</td>
       <td>${playerNameHtml(s.id, s.name)}${s.dropped ? ' <span class="drop-tag">dropped</span>' : ''}</td>
       <td>${s.points}</td>
       <td class="hide-mobile">${pct(s.omw)}</td>
