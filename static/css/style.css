@@ -4,62 +4,89 @@
   /* Render native controls (date pickers, their mm/dd/yyyy placeholders, selects,
      scrollbars) in dark mode so they match the theme and aren't dark-on-dark. */
   color-scheme: dark;
-  /* Dark surfaces (deep purple-tinted near-black → progressively lighter) */
-  --bg:       #14111f;
-  --bg2:      #1d1830;
-  --bg3:      #272040;
-  --border:   #38305a;
-  --text:     #ece8f8;
-  --muted:    #9b93bd;
 
-  /* Playful accents: purple (primary), pink, green */
-  --accent:   #a78bfa;   /* purple */
-  --accent-h: #8b5cf6;
-  --pink:     #f472b6;
-  --pink-h:   #ec4899;
-  --green:    #4ade80;
-  --green-h:  #22c55e;
+  /* Cartridge-shell surfaces: flat, near-black purple. No gradients — depth comes
+     from hard pixel outlines and offset shadows, not soft blends. */
+  --bg:       #150F24;
+  --bg2:      #1E1730;
+  --bg3:      #2A2044;
+  --ink:      #0B0714;   /* hard pixel outline + shadow color, used on chrome */
+  --border:   #372F52;   /* quieter hairline, used inside dense lists/tables */
+  --text:     #F5F1FF;
+  --muted:    #B3A8D9;
 
-  --accent-soft: rgba(167, 139, 250, 0.14);
-  --pink-soft:   rgba(244, 114, 182, 0.14);
-  --green-soft:  rgba(74, 222, 128, 0.14);
+  /* Party palette: flat cartridge purple / pink / green. Each role has a lighter
+     "ink" tone for text/links and a deeper "fill" tone for solid backgrounds
+     (kept separate so white text on a filled button always clears 4.5:1). */
+  --accent:   #B98CFF;
+  --accent-h: #7C3AED;
+  --pink:     #FF6BB5;
+  --pink-h:   #C71F6B;
+  --green:    #34D399;
+  --green-h:  #16A97B;
 
-  --danger:   #fb7185;
-  --danger-bg:rgba(251, 113, 133, 0.13);
+  --accent-soft: rgba(124, 58, 237, 0.18);
+  --pink-soft:   rgba(199, 31, 107, 0.18);
+  --green-soft:  rgba(22, 169, 123, 0.18);
 
-  --radius:   12px;
+  --danger:    #FF6B6B;
+  --danger-h:  #C42B2B;
+  --danger-bg: rgba(255, 107, 107, 0.14);
+
+  /* Two-tier radius: structural chrome stays rectangular (a cartridge shell has
+     square corners); only small status tags get a whisper of rounding so they
+     still read as "tags" rather than panels. */
+  --radius:      0px;
+  --radius-chip: 3px;
   --page-pad: 1.5rem;
 
-  --font-display: 'Fredoka', system-ui, sans-serif;
+  /* Hard, zero-blur offset shadows — a cartridge sitting slightly proud of the
+     shelf, not a glow. Press states collapse them to read as pushed in. A
+     near-black shadow is invisible against a near-black page (both read as the
+     same "black" once this dark), so the block shadow is saturated pink instead
+     of another dark ink — visible by hue, not by a luminance gap that doesn't
+     exist at this end of the palette, and it echoes the logo's own duotone. */
+  --shadow-sm: 2px 2px 0 var(--pink-h);
+  --shadow-md: 4px 4px 0 var(--pink-h);
+  --shadow-lg: 6px 6px 0 var(--pink-h);
+
+  /* Pixel display face for fixed, app-authored chrome labels (nav, section
+     headings, dialog titles, round names) — never for free-text a user typed. */
+  --font-display: 'Silkscreen', var(--font-body);
+  --font-pixel:   'Press Start 2P', var(--font-mono);
   --font-body:    'Space Grotesk', system-ui, sans-serif;
   --font-mono:    'Space Mono', ui-monospace, monospace;
 
-  color-scheme: dark;
   font-size: 16px;
 }
 
 body { font-family: var(--font-body);
        background: var(--bg);
-       background-image:
-         radial-gradient(1100px 600px at 12% -8%, var(--accent-soft), transparent 60%),
-         radial-gradient(900px 600px at 105% 0%, var(--pink-soft), transparent 55%);
-       background-attachment: fixed;
-       color: var(--text); line-height: 1.6; min-height: 100vh; }
+       color: var(--text); line-height: 1.6; min-height: 100vh;
+       accent-color: var(--accent); caret-color: var(--accent); }
 
 a { color: var(--accent); }
 
+/* Browser surfaces we didn't draw still carry the world — a native checkbox's
+   blue tick or a default text-selection highlight is the tell that a page was
+   assembled, not built. */
+::selection { background: var(--accent-h); color: #fff; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--bg3); border: 2px solid var(--bg); border-radius: var(--radius-chip); }
+::-webkit-scrollbar-thumb:hover { background: var(--border); }
+* { scrollbar-color: var(--bg3) var(--bg); scrollbar-width: thin; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* ── Header ───────────────────────────────────────────────────────────────── */
-.site-header  { background: rgba(20, 17, 31, 0.82); backdrop-filter: blur(10px);
-                border-bottom: 1px solid var(--border);
+.site-header  { background: var(--bg2); border-bottom: 2px solid var(--ink);
                 position: sticky; top: 0; z-index: 50; }
 .nav-inner    { max-width: 1100px; margin: 0 auto; padding: 0 var(--page-pad);
                 display: flex; align-items: center; gap: 1.5rem; height: 56px; }
-.site-logo    { font-family: 'DynaPuff', var(--font-display); font-weight: 700;
-                font-size: 1.3rem; text-transform: uppercase;
+.site-logo    { font-family: var(--font-display); font-weight: 700;
+                font-size: 1.2rem; text-transform: uppercase;
                 text-decoration: none; white-space: nowrap; letter-spacing: 0.01em;
-                background: linear-gradient(92deg, var(--accent), var(--pink) 55%, var(--green));
-                -webkit-background-clip: text; background-clip: text;
-                -webkit-text-fill-color: transparent; }
+                color: var(--accent); text-shadow: 3px 3px 0 var(--pink-h); }
 .nav-links a  { color: var(--muted); text-decoration: none; font-size: 0.9rem;
                 margin-right: 1rem; transition: color 0.12s; }
 .nav-links a:hover { color: var(--accent); }
@@ -68,26 +95,26 @@ a { color: var(--accent); }
 .nav-decklists:hover { color: var(--accent); }
 .nav-user     { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
 .avatar       { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; object-fit: cover;
-                border: 1px solid var(--border); }
+                border: 2px solid var(--ink); }
 .user-name    { font-size: 0.88rem; color: var(--muted); }
 
 /* ── Main layout ──────────────────────────────────────────────────────────── */
 .page-main    { max-width: 1100px; margin: 0 auto;
                 padding: 1.5rem var(--page-pad) 3rem; }
 .site-footer  { max-width: 1100px; margin: 0 auto; padding: 1.5rem var(--page-pad) 2.5rem;
-                border-top: 1px solid var(--border); text-align: center; }
+                border-top: 2px solid var(--ink); text-align: center; }
 .site-footer a { color: var(--muted); font-size: 0.85rem; text-decoration: none; }
 .site-footer a:hover { color: var(--accent); }
 .about-text   { max-width: 640px; font-size: 1rem; line-height: 1.7; color: var(--text); }
 .decklist-btn.decklist-missing { color: var(--muted); }
 .mox-row { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
-.mox-row input { flex: 1; padding: 0.4rem 0.6rem; border: 1px solid var(--border);
+.mox-row input { flex: 1; padding: 0.4rem 0.6rem; border: 2px solid var(--ink);
                  border-radius: var(--radius); background: var(--bg); color: var(--text); font-size: 0.9rem; }
 /* Read-only decklist display (organiser view / after deadline) — a static text
    block, deliberately not styled like an editable field. */
 .decklist-view { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.9rem;
                  line-height: 1.5; color: var(--text); background: var(--bg2);
-                 border-left: 3px solid var(--border); border-radius: 0 6px 6px 0;
+                 border: 1px solid var(--border); border-radius: 0;
                  padding: 0.6rem 0.8rem; }
 .decklist-result { margin: 0.6rem 0 0; font-size: 0.9rem; }
 .decklist-result .dl-counts { color: var(--text); margin: 0.2rem 0; }
@@ -106,7 +133,7 @@ ul.about-text { padding-left: 1.25rem; }
 
 /* Legal pages (Terms, Privacy). */
 .legal { max-width: 720px; line-height: 1.7; color: var(--text); }
-.legal h2 { font-family: var(--font-display); font-size: 1.2rem; margin: 1.9rem 0 0.5rem; }
+.legal h2 { font-family: var(--font-display); font-size: 1.05rem; margin: 1.9rem 0 0.5rem; }
 .legal p { margin: 0.6rem 0; }
 .legal ul { padding-left: 1.25rem; margin: 0.5rem 0; }
 .legal li { margin: 0.3rem 0; }
@@ -118,14 +145,15 @@ ul.about-text { padding-left: 1.25rem; }
 .about-text code, .bot-commands code {
   font-family: var(--font-mono); font-size: 0.9em; white-space: nowrap;
   background: var(--bg3); border: 1px solid var(--border);
-  border-radius: 6px; padding: 0 0.4rem 0.1rem; color: var(--text);
+  border-radius: var(--radius-chip); padding: 0 0.4rem 0.1rem; color: var(--text);
 }
 .bot-commands { max-width: 640px; margin: 0.5rem 0 2rem; }
 .bot-commands dt { margin-top: 1.1rem; }
 .bot-commands dd { margin: 0.35rem 0 0; color: var(--muted); line-height: 1.6; }
 .bot-role { display: inline-block; font-size: 0.68rem; text-transform: uppercase;
   letter-spacing: 0.04em; color: var(--accent); background: var(--accent-soft);
-  border-radius: 99px; padding: 0.05rem 0.55rem; margin-right: 0.4rem; vertical-align: middle; }
+  border: 1px solid var(--accent); border-radius: var(--radius-chip); padding: 0.05rem 0.55rem;
+  margin-right: 0.4rem; vertical-align: middle; }
 
 /* Event branding */
 /* Brand: a logo/poster in the upper-right of the event header. Shown at natural
@@ -135,26 +163,28 @@ ul.about-text { padding-left: 1.25rem; }
 /* Size to the image's natural aspect within the column, so the border hugs the
    image itself instead of a full-width box with letterboxed blank space. */
 .event-brand-img { display: block; width: auto; height: auto; max-width: 100%; max-height: 420px;
-                   margin: 0 auto; border: 1px solid var(--border);
+                   margin: 0 auto; border: 2px solid var(--ink);
                    border-radius: var(--radius); }
 .event-brand-text { font-size: 0.9rem; color: var(--muted); margin-top: 0.5rem; }
-.brand-preview   { max-width: 100%; max-height: 180px; border: 1px solid var(--border);
+.brand-preview   { max-width: 100%; max-height: 180px; border: 2px solid var(--ink);
                    border-radius: var(--radius); object-fit: contain; }
 
 .page-header  { display: flex; justify-content: space-between; align-items: flex-start;
                 gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-.page-header h1 { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600;
-                  line-height: 1.15; letter-spacing: -0.01em; }
+.page-header h1 { font-family: var(--font-display); font-size: 1.4rem; font-weight: 700;
+                  line-height: 1.3; letter-spacing: 0; }
 .title-row    { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
 /* Event-page layout: a flex column (title/banners/status, then the section flow). */
 .event-layout    { display: flex; flex-direction: column; }
 .event-facts     { margin-bottom: 1rem; }   /* quick facts sit atop the Description block */
 
-/* Event-page header: full-width title row, then details (left) + brand (upper-right). */
+/* Event-page header: full-width title row, then details (left) + brand (upper-right).
+   The event's own name is free text a player typed — it stays in the body face,
+   just bold and large, never the pixel display face reserved for our own chrome. */
 .event-head      { margin-bottom: 1rem; }
-.event-head h1   { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600;
-                   line-height: 1.15; letter-spacing: -0.01em; }
+.event-head h1   { font-family: var(--font-body); font-size: 1.7rem; font-weight: 700;
+                   line-height: 1.25; letter-spacing: -0.005em; }
 .event-body      { display: flex; justify-content: space-between; align-items: flex-start;
                    gap: 2.5rem; margin-bottom: 1.5rem; }
 .event-body-main { flex: 1; min-width: 0; }  /* info + details flow here; brand is the rail */
@@ -183,15 +213,15 @@ ul.about-text { padding-left: 1.25rem; }
 .cal-menu > summary::-webkit-details-marker { display: none; }
 .cal-menu-pop { position: absolute; left: 0; top: calc(100% + 0.3rem); z-index: 20;
                min-width: 190px; display: flex; flex-direction: column;
-               background: var(--bg2); border: 1px solid var(--border);
+               background: var(--bg2); border: 2px solid var(--ink);
                border-radius: var(--radius); padding: 0.3rem;
-               box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
-.cal-menu-pop a { padding: 0.45rem 0.6rem; border-radius: 6px; color: var(--text);
+               box-shadow: var(--shadow-md); }
+.cal-menu-pop a { padding: 0.45rem 0.6rem; border-radius: var(--radius-chip); color: var(--text);
                   text-decoration: none; font-size: 0.9rem; white-space: nowrap; }
 .cal-menu-pop a:hover { background: var(--bg3); color: var(--accent); }
 #btn-share          { background: var(--accent-h); color: #fff;
-                      border-color: transparent; font-weight: 600; }
-#btn-share:hover    { background: #7c3aed; border-color: transparent; }
+                      border-color: var(--ink); font-weight: 600; }
+#btn-share:hover    { background: #6d28d9; border-color: var(--ink); }
 .subtitle     { color: var(--muted); font-size: 0.88rem; margin-top: 0.25rem; }
 /* Prominent date/time/location shown just below the event title. */
 .event-facts  { margin-top: 0.5rem; }
@@ -202,7 +232,7 @@ ul.about-text { padding-left: 1.25rem; }
                 display: flex; flex-wrap: wrap; column-gap: 0.5rem; row-gap: 0.4rem;
                 align-items: baseline; }
 .event-when .event-datetime { white-space: nowrap; }
-.event-when .loc-link { color: var(--accent); text-decoration-color: rgba(167,139,250,0.5); }
+.event-when .loc-link { color: var(--accent); text-decoration-color: rgba(185,140,255,0.5); }
 .event-description { color: var(--text); font-size: 0.92rem; line-height: 1.6;
                      white-space: pre-wrap; max-width: 640px; margin-top: 0.6rem; }
 .event-cost   { font-size: 0.9rem; color: var(--muted); margin-top: 0.5rem;
@@ -210,15 +240,15 @@ ul.about-text { padding-left: 1.25rem; }
 .event-cost strong { color: var(--text); }
 .pay-link     { display: inline-flex; align-items: center; gap: 0.25rem;
                 font-size: 0.82rem; font-weight: 600; text-decoration: none;
-                color: var(--green); border: 1px solid rgba(74,222,128,0.4);
-                background: var(--green-soft); border-radius: 99px; padding: 0.15rem 0.7rem; }
-.pay-link:hover { border-color: var(--green); }
+                color: var(--green); border: 1px solid var(--green);
+                background: var(--green-soft); border-radius: var(--radius-chip); padding: 0.15rem 0.7rem; }
+.pay-link:hover { background: transparent; }
 
 .two-col      { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
                 align-items: start; }
 
-h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
-     margin: 1.5rem 0 0.6rem; text-transform: uppercase; letter-spacing: 0.11em;
+h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
+     margin: 1.5rem 0 0.6rem; text-transform: uppercase; letter-spacing: 0.08em;
      color: var(--accent); }
 
 /* A section heading with inline actions on the right (the Rounds heading carries
@@ -232,11 +262,11 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .events-controls { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;
                    margin-bottom: 1rem; }
 .events-controls input[type="search"] { flex: 1 1 14rem; min-width: 0; padding: 0.45rem 0.7rem;
-   border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2);
+   border: 2px solid var(--ink); border-radius: var(--radius); background: var(--bg2);
    color: var(--text); font-size: 0.9rem; }
 .events-sort { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;
    color: var(--muted); }
-.events-sort select { padding: 0.4rem 0.5rem; border: 1px solid var(--border);
+.events-sort select { padding: 0.4rem 0.5rem; border: 2px solid var(--ink);
    border-radius: var(--radius); background: var(--bg2); color: var(--text); font-size: 0.85rem; }
 
 /* The event's location, linking out to Google Maps. */
@@ -245,32 +275,35 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 
 /* New Places API autocomplete dropdown (custom, themed) under a Location field. */
 .place-suggest { position: absolute; z-index: 1000; background: var(--bg2);
-                 border: 1px solid var(--border); border-radius: var(--radius);
-                 box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+                 border: 2px solid var(--ink); border-radius: var(--radius);
+                 box-shadow: var(--shadow-md);
                  overflow-y: auto; overflow-x: hidden; }
 .place-suggest-item { padding: 0.5rem 0.7rem; font-size: 0.88rem; cursor: pointer;
                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .place-suggest-item:hover, .place-suggest-item.active { background: var(--accent-soft); }
 
 /* ── Buttons ──────────────────────────────────────────────────────────────── */
+/* A cartridge button: flat fill, hard ink outline, a block shadow standing it
+   proud of the page. Hover lifts it further; press flattens it to the page —
+   the same physical read as clicking a console controller button. */
 .btn          { display: inline-flex; align-items: center; justify-content: center;
                 gap: 0.4rem; padding: 0.5rem 1rem; font-family: var(--font-body);
-                border: 1px solid var(--border); border-radius: 99px;
+                border: 2px solid var(--ink); border-radius: var(--radius);
                 background: var(--bg2); color: var(--text); font-size: 0.9rem;
-                font-weight: 500; cursor: pointer; text-decoration: none; line-height: 1;
-                transition: background 0.12s, border-color 0.12s, transform 0.08s;
+                font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1;
+                box-shadow: var(--shadow-sm);
+                transition: background 0.1s, border-color 0.1s, transform 0.08s, box-shadow 0.08s;
                 white-space: nowrap; }
-.btn:hover         { background: var(--bg3); border-color: var(--accent); }
-.btn:active        { transform: translateY(1px); }
-.btn-primary       { background: linear-gradient(95deg, var(--accent) -40%, var(--pink-h) 140%) padding-box,
-                                  linear-gradient(95deg, var(--accent) -40%, var(--pink-h) 140%) border-box;
-                     color: #fff; border-color: transparent; font-weight: 600; }
-.btn-primary:hover { background: linear-gradient(95deg, var(--accent-h) -40%, var(--pink-h) 140%) padding-box,
-                                  linear-gradient(95deg, var(--accent-h) -40%, var(--pink-h) 140%) border-box;
-                     border-color: transparent; box-shadow: 0 4px 18px var(--accent-soft); }
-.btn-sm            { padding: 0.3rem 0.7rem; font-size: 0.82rem; }
-.btn:disabled      { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
-.btn-danger        { color: var(--danger); border-color: rgba(251, 113, 133, 0.4);
+.btn:hover         { background: var(--bg3); border-color: var(--accent);
+                     transform: translate(-1px, -1px); box-shadow: var(--shadow-md); }
+.btn:active        { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.btn-primary       { background: var(--accent-h); color: #fff; border-color: var(--ink); font-weight: 700; }
+.btn-primary:hover { background: #6d28d9; border-color: var(--ink); }
+.btn-sm            { padding: 0.3rem 0.7rem; font-size: 0.82rem; box-shadow: 1px 1px 0 var(--pink-h); }
+.btn-sm:hover      { box-shadow: 2px 2px 0 var(--pink-h); }
+.btn:disabled      { opacity: 0.4; cursor: not-allowed; pointer-events: none;
+                     transform: none; box-shadow: var(--shadow-sm); }
+.btn-danger        { color: var(--danger); border-color: var(--ink);
                      background: transparent; }
 .btn-danger:hover  { background: var(--danger-bg); border-color: var(--danger); }
 
@@ -280,49 +313,52 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* ── Cards ────────────────────────────────────────────────────────────────── */
 .card-grid  { display: grid;
               grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-              gap: 1rem; }
-.card       { background: #16111f; border: 1px solid var(--border);
+              gap: 1.1rem; }
+/* A card reads as a cartridge box on the shelf: flat panel, hard outline, a
+   block shadow it sits proud on. Hovering lifts it toward you like pulling one
+   off the shelf; there is no gradient accent strip doing the work instead. */
+.card       { background: var(--bg2); border: 2px solid var(--ink);
               border-radius: var(--radius); padding: 1.1rem 1.25rem; overflow: hidden;
               text-decoration: none; color: var(--text); position: relative;
-              transition: box-shadow 0.15s, border-color 0.15s, transform 0.12s; display: block; }
-.card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-              background: linear-gradient(var(--accent), var(--pink));
-              opacity: 0; transition: opacity 0.15s; }
-.card:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.45);
-              border-color: var(--accent); transform: translateY(-2px); }
-.card:hover::before { opacity: 1; }
-.card-title  { font-family: var(--font-display); font-weight: 500; font-size: 1.05rem;
+              box-shadow: var(--shadow-md);
+              transition: box-shadow 0.12s, border-color 0.12s, transform 0.12s; display: block; }
+.card:hover { box-shadow: 6px 6px 0 var(--pink-h);
+              border-color: var(--accent); transform: translate(-2px, -2px); }
+.card-title  { font-family: var(--font-body); font-weight: 700; font-size: 1.05rem;
                margin-bottom: 0.2rem; }
-.card-meta   { font-size: 0.84rem; color: #c8c1e6; line-height: 1.5; }
+.card-meta   { font-size: 0.84rem; color: #cfc8ea; line-height: 1.5; }
 .card-description { font-size: 0.84rem; color: var(--text); line-height: 1.45;
                     margin-top: 0.4rem; display: -webkit-box; -webkit-line-clamp: 2;
                     -webkit-box-orient: vertical; overflow: hidden; }
 .card-status { margin-top: 0.5rem; }
 
+/* A status band reads like the cartridge's own label sticker — a filled block
+   of color with ink text, not a soft outlined pill. The one exception is
+   "closed": an unprinted, empty slot, so it stays a quiet outline instead. */
 .reg-open, .reg-closed, .reg-active, .reg-done, .reg-waitlist {
-              display: inline-block; font-size: 0.72rem; font-weight: 600;
-              border-radius: 99px; padding: 0.15rem 0.65rem;
+              display: inline-block; font-size: 0.72rem; font-weight: 700;
+              border-radius: var(--radius-chip); padding: 0.15rem 0.65rem;
+              border: 2px solid var(--ink);
               text-transform: uppercase; letter-spacing: 0.04em; }
-.reg-waitlist { background: var(--pink-soft); color: var(--pink);
-              border: 1px solid rgba(244, 114, 182, 0.35); }
-.reg-open   { background: var(--green-soft); color: var(--green);
-              border: 1px solid rgba(74, 222, 128, 0.35); }
-.reg-closed { background: var(--bg3); color: var(--muted);
-              border: 1px solid var(--border); }
-.reg-active { background: var(--pink-soft); color: var(--pink);
-              border: 1px solid rgba(244, 114, 182, 0.35); }
-.reg-done   { background: var(--accent-soft); color: var(--accent);
-              border: 1px solid rgba(167, 139, 250, 0.35); }
+.reg-waitlist { background: var(--pink-h); color: #fff; }
+.reg-open   { background: var(--green); color: var(--ink); }
+.reg-closed { background: transparent; color: var(--muted);
+              border-color: var(--border); }
+.reg-active { background: var(--accent-h); color: #fff; }
+.reg-done   { background: var(--accent-h); color: #fff; }
 
 /* ── Create flow: Simple/Advanced fork, game/test extras ──────────────────── */
 .mode-cards { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 0.5rem 0 0.25rem; }
 .mode-card  { flex: 1 1 180px; display: flex; flex-direction: column; gap: 0.3rem;
               text-align: left; align-items: flex-start; padding: 0.9rem 1rem;
-              background: var(--bg2); border: 1px solid var(--border);
+              background: var(--bg2); border: 2px solid var(--ink);
               border-radius: var(--radius); cursor: pointer; color: var(--text);
-              font: inherit; text-decoration: none; transition: border-color 0.15s, background 0.15s; }
-.mode-card:hover   { border-color: var(--accent); background: #2d2548; }
-.mode-card strong  { font-family: var(--font-display); font-size: 1rem; font-weight: 500; color: var(--accent); }
+              font: inherit; text-decoration: none; box-shadow: var(--shadow-sm);
+              transition: border-color 0.12s, background 0.12s, transform 0.08s, box-shadow 0.08s; }
+.mode-card:hover   { border-color: var(--accent); background: #2d2548;
+                     transform: translate(-1px, -1px); box-shadow: var(--shadow-md); }
+.mode-card strong  { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
+                     text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); }
 #create-title      { font-weight: 500; }
 .mode-card span    { font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
 .field-help { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 400; margin-top: 0.2rem; }
@@ -344,12 +380,13 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* Search boxes (waitlist / activity / players) — matched to the add-player input. */
 .waitlist-search { width: 100%; padding: 0.38rem 0.6rem; margin-bottom: 0.6rem;
                    background: var(--bg); color: var(--text);
-                   border: 1px solid var(--border); border-radius: var(--radius);
+                   border: 2px solid var(--ink); border-radius: var(--radius);
                    font-size: 0.9rem; font-family: var(--font-body); }
 .waitlist-search:focus { outline: none; border-color: var(--accent); }
 .waitlist-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0;
                 border-bottom: 1px solid var(--border); }
 .waitlist-row .wl-pos { flex: 0 0 1.6rem; text-align: right; color: var(--muted);
+                        font-family: var(--font-pixel); font-size: 0.7rem;
                         font-variant-numeric: tabular-nums; }
 .waitlist-row .wl-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .waitlist-row .wl-meta { font-size: 0.75rem; color: var(--muted); }
@@ -369,11 +406,11 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
    are redundant there. */
 #e-decklist-opts .print-legality { border-top: none; padding-top: 0; }
 .test-badge { display: inline-block; font-size: 0.62rem; font-weight: 700; vertical-align: middle;
-              text-transform: uppercase; letter-spacing: 0.06em; color: var(--bg);
-              background: var(--accent); border-radius: 4px; padding: 0.05rem 0.35rem; }
+              text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink);
+              background: var(--accent); border-radius: var(--radius-chip); padding: 0.05rem 0.35rem; }
 .card-game  { color: var(--accent); font-weight: 600; }
 /* Form validation (create/edit) */
-.form-errors { background: var(--danger-bg); border: 1px solid var(--danger); color: var(--danger);
+.form-errors { background: var(--danger-bg); border: 2px solid var(--danger); color: var(--danger);
               border-radius: var(--radius); padding: 0.6rem 0.8rem; font-size: 0.85rem; }
 .form-errors ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
 .modal .invalid, .modal .invalid:focus { border-color: var(--danger); outline-color: var(--danger); }
@@ -398,7 +435,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .chip-options .chip { display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
               user-select: none; text-indent: 0;
               font-size: 0.8rem; font-weight: 400; padding: 0.3rem 0.7rem; background: var(--bg2);
-              border: 1px solid var(--border); border-radius: 99px;
+              border: 1px solid var(--border); border-radius: var(--radius-chip);
               transition: border-color 0.12s, background 0.12s, color 0.12s; }
 .chip-options .chip:hover { border-color: var(--accent); }
 /* Hide the native checkbox but keep it focusable/accessible; selection is shown
@@ -412,7 +449,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .event-tags { margin-top: 0.5rem; }
 .tag-chip { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
               white-space: nowrap; color: var(--muted); background: var(--bg3); border: 1px solid var(--border);
-              border-radius: 99px; padding: 0.1rem 0.5rem; }
+              border-radius: var(--radius-chip); padding: 0.1rem 0.5rem; }
 .event-note { font-size: 0.85rem; color: var(--accent); margin: 0.5rem 0 0; }
 
 /* Round timer */
@@ -423,7 +460,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .round-timer-box { display: flex; align-items: center; gap: 0.75rem;
                padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
 .timer-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-.timer-text  { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; color: var(--text);
+.timer-text  { font-family: var(--font-pixel); font-size: 1.1rem; font-weight: 400; color: var(--text);
                margin-right: auto; font-variant-numeric: tabular-nums;
                /* Nudge up: the tall monospace glyphs carry descender space that
                   makes the countdown sit low next to "Round time". */
@@ -433,35 +470,38 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 
 /* Player-communication blocks (plain text, collapsible) */
 .event-comms { margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.event-comms details { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+.event-comms details { background: var(--bg2); border: 2px solid var(--ink); border-radius: var(--radius);
               overflow: hidden; }  /* clip the summary hover background to the rounded corners */
 .event-comms summary { cursor: pointer; user-select: none; padding: 0.6rem 1rem;
-              font-family: var(--font-display); font-weight: 500; font-size: 0.95rem; }
+              font-family: var(--font-display); font-weight: 400; font-size: 0.85rem;
+              text-transform: uppercase; letter-spacing: 0.03em; }
 .event-comms summary:hover { background: var(--bg3); }
 .comms-body { padding: 0.25rem 1rem 0.85rem; white-space: pre-wrap; line-height: 1.55;
               font-size: 0.9rem; color: var(--text); }
 
 /* ── Round cards ──────────────────────────────────────────────────────────── */
-.round-card   { background: var(--bg2); border: 1px solid var(--border);
-                border-radius: var(--radius); margin-bottom: 1rem; overflow: hidden; }
+.round-card   { background: var(--bg2); border: 2px solid var(--ink);
+                border-radius: var(--radius); margin-bottom: 1rem; overflow: hidden;
+                box-shadow: var(--shadow-sm); }
 .round-header { display: flex; justify-content: space-between; align-items: center;
-                padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+                padding: 0.6rem 1rem; border-bottom: 2px solid var(--ink);
                 background: var(--bg3); }
 .round-header { cursor: pointer; user-select: none; }
 .round-header:hover { background: #2d2548; }
-.round-header strong { font-family: var(--font-display); font-weight: 500; font-size: 0.95rem;
+.round-header strong { font-family: var(--font-display); font-weight: 400; font-size: 0.82rem;
+                       text-transform: uppercase; letter-spacing: 0.03em;
                        display: inline-flex; align-items: center; gap: 0.5rem; }
 .round-done   { font-family: var(--font-body); font-size: 0.68rem; font-weight: 600;
                 text-transform: uppercase; letter-spacing: 0.04em; color: var(--green);
-                background: var(--green-soft); border: 1px solid rgba(74,222,128,0.35);
-                border-radius: 99px; padding: 0.05rem 0.45rem; }
+                background: var(--green-soft); border: 1px solid var(--green);
+                border-radius: var(--radius-chip); padding: 0.05rem 0.45rem; }
 .round-actions { display: flex; gap: 0.5rem; align-items: center; }
 .round-caret  { color: var(--muted); font-size: 0.8rem; transition: transform 0.15s; }
 .round-card.collapsed .round-caret { transform: rotate(-90deg); }
 
 /* ── Collapsible sections (Players, Standings) ────────────────────────────── */
 .section-toggle { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 0.5rem;
-                  padding: 0.6rem 1rem; background: var(--bg3); border: 1px solid var(--border);
+                  padding: 0.6rem 1rem; background: var(--bg3); border: 2px solid var(--ink);
                   border-radius: var(--radius); margin: 1.5rem 0 0.6rem; }
 .section-toggle:hover { background: #2d2548; }
 .section-toggle .round-caret { margin-left: auto; }
@@ -483,14 +523,18 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* Server/channel dropdowns styled to match our pill buttons (purple border + soft fill). */
 .discord-select { padding: 0.3rem 0.7rem; font-size: 0.82rem; font-family: var(--font-body);
                   color: var(--text); background: var(--accent-soft);
-                  border: 1px solid var(--accent); border-radius: 99px; cursor: pointer; }
-/* The signed-in player's own match (floated to the top of the current round). */
-.pairings tr.my-match   { background: var(--accent-soft); }
+                  border: 2px solid var(--accent); border-radius: var(--radius-chip); cursor: pointer; }
+/* The signed-in player's own match (floated to the top of the current round) —
+   marked like a save-file cursor, not just a tint: an accent bar down the left. */
+.pairings tr.my-match   { background: var(--accent-soft);
+                          box-shadow: inset 4px 0 0 var(--accent); }
 .pairings td            { padding: 0; border: none; min-width: 0; overflow-wrap: break-word; }
 .pairings td.table-cell { grid-column: 1 / -1; padding-bottom: 0.25rem; }
 .pairings td.p1   { grid-column: 1; font-weight: 500; }
+/* The "VS" is the pairing sheet's one iconic beat — set in the arcade face,
+   small enough that two characters never crowd the names beside them. */
 .pairings td.vs   { grid-column: 2; color: var(--muted); text-align: center;
-                    padding: 0 0.55rem; font-family: var(--font-mono); font-size: 0.75rem; }
+                    padding: 0 0.6rem; font-family: var(--font-pixel); font-size: 0.6rem; }
 .pairings td.p2   { grid-column: 3; text-align: right; }
 .pairings td.result { grid-column: 1 / -1; justify-self: stretch;
                       white-space: normal; padding-top: 0.35rem; text-align: center; }
@@ -512,13 +556,14 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* ── Standings table ──────────────────────────────────────────────────────── */
 .standings              { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .standings th, .standings td { padding: 0.5rem 0.75rem;
-                               border-bottom: 1px solid var(--border); }
-.standings th  { font-weight: 600; text-align: left; background: var(--bg3);
-                 color: var(--muted); font-size: 0.74rem; text-transform: uppercase;
-                 letter-spacing: 0.06em; }
+                               border-bottom: 1px solid var(--border);
+                               font-variant-numeric: tabular-nums; }
+.standings th  { font-weight: 400; text-align: left; background: var(--bg3);
+                 color: var(--muted); font-size: 0.66rem; text-transform: uppercase;
+                 letter-spacing: 0.05em; font-family: var(--font-display); }
 .standings tbody tr:hover td { background: var(--accent-soft); }
 .standings td:first-child, .standings th:first-child { width: 2rem; color: var(--accent);
-                 font-family: var(--font-mono); font-weight: 700; }
+                 font-family: var(--font-pixel); font-weight: 400; font-size: 0.7rem; }
 /* Hide tiebreaker columns on small screens */
 @media (max-width: 480px) {
   .standings .hide-mobile { display: none; }
@@ -532,22 +577,22 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .player-name    { flex: 1; color: var(--text); }
 .player-discord { font-size: 0.78rem; color: var(--muted); }
 .seat-badge { font-size: 0.72rem; font-weight: 600; font-family: var(--font-mono);
-              color: var(--accent); background: var(--accent-soft); border-radius: 99px;
-              padding: 0.05rem 0.5rem; margin-left: 0.25rem; }
+              color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent);
+              border-radius: var(--radius-chip); padding: 0.05rem 0.5rem; margin-left: 0.25rem; }
 .dropped .player-name { text-decoration: line-through; color: var(--muted); }
 #standings-table tr.dropped td { color: var(--muted); }
 #standings-table tr.dropped td:first-child { color: var(--muted); }
 .drop-tag { font-family: var(--font-body); font-size: 0.68rem; text-transform: uppercase;
-            letter-spacing: 0.05em; color: var(--pink); border: 1px solid rgba(244,114,182,0.4);
-            background: var(--pink-soft); border-radius: 99px;
+            letter-spacing: 0.05em; color: var(--pink); border: 1px solid var(--pink);
+            background: var(--pink-soft); border-radius: var(--radius-chip);
             padding: 0.05rem 0.45rem; margin-left: 0.4rem; }
 .checkin-tag { font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-            white-space: nowrap; border-radius: 99px; padding: 0.05rem 0.5rem; }
-.checkin-tag.in  { color: var(--green); background: var(--green-soft); border: 1px solid rgba(74,222,128,0.35); }
+            white-space: nowrap; border-radius: var(--radius-chip); padding: 0.05rem 0.5rem; }
+.checkin-tag.in  { color: var(--green); background: var(--green-soft); border: 1px solid var(--green); }
 .checkin-tag.out { color: var(--muted); background: var(--bg3); border: 1px solid var(--border); }
 .checkin-btn { flex-shrink: 0; }
 /* The "✓ Checked in" toggle reads as a confirmed/green state; click to undo. */
-.checkin-btn.checked { color: var(--green); border-color: rgba(74,222,128,0.45);
+.checkin-btn.checked { color: var(--green); border-color: var(--green);
                        background: var(--green-soft); }
 .checkin-btn.checked:hover { border-color: var(--green); }
 .edit-name-btn { flex-shrink: 0; background: none; border: none; color: var(--muted);
@@ -557,43 +602,45 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* ── Add-player typeahead ─────────────────────────────────────────────────── */
 .autocomplete       { position: relative; }
 .autocomplete-list  { list-style: none; position: absolute; top: calc(100% + 2px); left: 0; right: 0;
-                      background: var(--bg2); border: 1px solid var(--border);
-                      border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+                      background: var(--bg2); border: 2px solid var(--ink);
+                      border-radius: var(--radius); box-shadow: var(--shadow-md);
                       max-height: 240px; overflow-y: auto; z-index: 30; padding: 0.25rem; }
 .autocomplete-list li { display: flex; justify-content: space-between; align-items: center;
                       gap: 0.5rem; padding: 0.4rem 0.55rem; cursor: pointer; font-size: 0.88rem;
-                      border-radius: calc(var(--radius) - 5px); }
+                      border-radius: var(--radius-chip); }
 .autocomplete-list li:hover { background: var(--accent-soft); }
 .autocomplete-list .ac-discord { color: var(--muted); font-size: 0.78rem; flex-shrink: 0; }
 
 .inline-form       { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
 .inline-form input { flex: 1; min-width: 0; padding: 0.38rem 0.6rem;
                      background: var(--bg); color: var(--text);
-                     border: 1px solid var(--border); border-radius: var(--radius);
+                     border: 2px solid var(--ink); border-radius: var(--radius);
                      font-size: 0.9rem; font-family: var(--font-body); }
 .inline-form input:focus { outline: none; border-color: var(--accent); }
 
 /* ── Badge ────────────────────────────────────────────────────────────────── */
 .badge { display: inline-block; background: var(--bg3); border: 1px solid var(--border);
-         border-radius: 99px; padding: 0.1rem 0.6rem; font-size: 0.74rem;
+         border-radius: var(--radius-chip); padding: 0.1rem 0.6rem; font-size: 0.74rem;
          font-weight: 500; color: var(--muted); margin-left: 0.3rem; }
 
 /* ── Modal ────────────────────────────────────────────────────────────────── */
-.modal-backdrop         { position: fixed; inset: 0; background: rgba(8, 6, 14, 0.7);
-                          backdrop-filter: blur(3px);
+/* A modal reads as a console status window popped up mid-page: flat scrim (no
+   glass blur — a real pixel display doesn't blur what's behind it), thick ink
+   frame, and a big block shadow so it visibly floats above the page beneath. */
+.modal-backdrop         { position: fixed; inset: 0; background: rgba(8, 6, 14, 0.82);
                           display: flex; align-items: center; justify-content: center;
                           z-index: 100; padding: 1rem; }
 .modal-backdrop.hidden  { display: none; }
 /* Confirm / alert / prompt are meta-dialogs — they can be opened from within another
    modal (e.g. the edit-event form), so they must stack above it, not behind. */
 #confirm-modal, #prompt-modal { z-index: 110; }
-.modal          { background: var(--bg2); border: 1px solid var(--border);
+.modal          { background: var(--bg2); border: 2px solid var(--ink);
                   border-radius: var(--radius); padding: 1.5rem;
                   width: min(460px, 100%); display: flex; flex-direction: column;
                   gap: 1rem; max-height: 90vh; overflow-x: hidden; overflow-y: auto;
-                  box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
-.modal h2       { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600;
-                  text-transform: none; letter-spacing: 0; color: var(--text); margin: 0; }
+                  box-shadow: var(--shadow-lg); }
+.modal h2       { font-family: var(--font-display); font-size: 1rem; font-weight: 400;
+                  text-transform: uppercase; letter-spacing: 0.03em; color: var(--text); margin: 0; }
 .modal .subtitle { font-size: 0.88rem; color: var(--muted); margin-top: -0.5rem; }
 .modal label    { display: flex; flex-direction: column; gap: 0.5rem;
                   font-size: 0.88rem; font-weight: 500; min-width: 0; text-indent: 0.4rem; }
@@ -602,19 +649,21 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .modal label > input, .modal label > select, .modal label > textarea { text-indent: 0; }
 .modal input, .modal select, .modal textarea
                 { padding: 0.45rem 0.65rem; background: var(--bg); color: var(--text);
-                  border: 1px solid var(--border); font-family: var(--font-body);
+                  border: 2px solid var(--ink); font-family: var(--font-body);
                   border-radius: var(--radius); font-size: 0.9rem;
                   width: 100%; min-width: 0; max-width: 100%; }
 .modal textarea { resize: vertical; line-height: 1.5; }
 .modal input:focus, .modal select:focus, .modal textarea:focus
-                { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+                { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .modal-actions  { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.25rem; }
 .form-discord-link { text-align: left; margin: 0.9rem 0 0; font-size: 0.9rem; }
 
 .pairing-row        { display: flex; align-items: center; gap: 0.6rem;
                       margin-bottom: 0.65rem; }
 .pairing-row select { flex: 1; min-width: 0; }
-.pairing-row span   { color: var(--muted); font-size: 0.85rem; flex-shrink: 0; }
+/* The "vs" is the pairing sheet's one iconic beat everywhere it appears —
+   organiser edit rows included, not just the read-only table and result modal. */
+.vs-label { color: var(--muted); font-family: var(--font-pixel); font-size: 0.6rem; flex-shrink: 0; }
 .row-remove         { flex-shrink: 0; padding: 0.3rem 0.55rem; color: var(--muted); line-height: 1; }
 .row-remove:hover   { color: var(--danger); border-color: var(--danger); }
 .pairing-row-locked { opacity: 0.6; }
@@ -622,29 +671,31 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* ── Result entry modal ───────────────────────────────────────────────────── */
 .result-modal-players { display: flex; align-items: center; gap: 0.75rem;
                         font-size: 0.95rem; font-weight: 500; }
-.result-modal-players .vs-label { color: var(--muted); font-size: 0.82rem; flex-shrink: 0;
-                                  font-family: var(--font-mono); }
+.result-modal-players .vs-label { color: var(--muted); font-size: 0.7rem; flex-shrink: 0;
+                                  font-family: var(--font-pixel); }
 .result-modal-players span      { flex: 1; }
 .result-modal-players span:last-child { text-align: right; }
 
 .result-grid        { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 .result-btn         { display: flex; flex-direction: column; align-items: center;
-                      padding: 0.8rem 0.5rem; border: 2px solid var(--border);
+                      padding: 0.8rem 0.5rem; border: 2px solid var(--ink);
                       border-radius: var(--radius); background: var(--bg);
-                      cursor: pointer; transition: all 0.12s; gap: 0.25rem; }
-.result-btn:hover   { border-color: var(--accent); background: var(--accent-soft); }
-.result-btn .score  { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700;
+                      cursor: pointer; transition: all 0.1s; gap: 0.25rem;
+                      box-shadow: var(--shadow-sm); }
+.result-btn:hover   { border-color: var(--accent); background: var(--accent-soft);
+                      transform: translate(-1px, -1px); box-shadow: var(--shadow-md); }
+.result-btn .score  { font-family: var(--font-pixel); font-size: 1.1rem; font-weight: 400;
                       color: var(--text); }
 .result-btn .label  { font-size: 0.72rem; color: var(--muted); text-align: center;
                       line-height: 1.3; }
 .result-btn.draw    { grid-column: 1 / -1; flex-direction: row;
                       justify-content: center; gap: 0.75rem; padding: 0.65rem; }
-.result-btn.draw .score { font-size: 1rem; }
+.result-btn.draw .score { font-size: 0.85rem; }
 .result-btn.draw:hover  { border-color: var(--green); background: var(--green-soft); }
 .result-confirm-msg { text-align: center; font-size: 1rem; margin: 1rem 0; padding: 0 0.5rem; }
 .confirm-modal-msg  { font-size: 0.95rem; line-height: 1.5; white-space: pre-wrap; margin: 0.25rem 0 0; }
 .prompt-modal-input { width: 100%; margin-top: 0.75rem; padding: 0.45rem 0.6rem;
-              border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.95rem; }
+              border: 2px solid var(--ink); border-radius: var(--radius); font-size: 0.95rem; }
 
 /* Highlight winner side — purple for p1, pink for p2 */
 .result-btn.p1-wins:hover { border-color: var(--accent); }
@@ -661,26 +712,30 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 
 /* ── Banners ──────────────────────────────────────────────────────────────── */
 .banner        { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
-                 background: var(--bg2); border: 1px solid var(--border);
+                 background: var(--bg2); border: 2px solid var(--ink);
                  border-radius: var(--radius); padding: 0.75rem 1rem;
-                 margin-bottom: 1.25rem; font-size: 0.9rem; }
+                 margin-bottom: 1.25rem; font-size: 0.9rem; box-shadow: var(--shadow-sm); }
 .banner-player { border-color: var(--accent); background: var(--accent-soft); }
-.banner-closed { border-color: var(--border); background: var(--bg3);
+.banner-closed { border-color: var(--ink); background: var(--bg3);
                  color: var(--muted); }
+/* The one banner that gets to shout: a decided champion is the app's biggest
+   celebration, filled solid instead of tinted like every other banner. */
+.banner-champion { background: var(--accent-h); color: #fff; font-weight: 700;
+                   font-size: 1.05rem; justify-content: center; }
 
 /* ── Player profile ───────────────────────────────────────────────────────── */
 .profile-header { display: flex; align-items: center; gap: 1.25rem;
                   margin-bottom: 1.5rem; flex-wrap: wrap; }
 .profile-avatar { width: 64px; height: 64px; border-radius: 50%;
-                  object-fit: cover; border: 2px solid var(--accent); flex-shrink: 0;
-                  box-shadow: 0 0 0 4px var(--accent-soft); }
+                  object-fit: cover; border: 3px solid var(--accent); flex-shrink: 0; }
 .profile-avatar-fallback { display: flex; align-items: center; justify-content: center;
-                  background: var(--bg3); color: var(--accent); font-family: var(--font-display);
-                  font-size: 1.6rem; font-weight: 600; }
+                  background: var(--bg3); color: var(--accent); font-family: var(--font-body);
+                  font-size: 1.6rem; font-weight: 700; }
 .cropper-stage  { display: flex; justify-content: center; }
 #cropper-canvas { border-radius: 50%; background: var(--bg3); touch-action: none;
                   cursor: grab; }
-.profile-name   { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; }
+/* A player's own display name is their content, not our chrome — bold body face. */
+.profile-name   { font-family: var(--font-body); font-size: 1.5rem; font-weight: 700; }
 .profile-pronouns { font-family: var(--font-body); font-size: 1rem; font-weight: 400; color: var(--muted); }
 .profile-pronunciation { font-size: 0.88rem; color: var(--muted); font-style: italic; }
 .profile-discord { font-size: 0.88rem; color: var(--muted); }
@@ -688,14 +743,15 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
                   white-space: pre-wrap; max-width: 600px; margin: -0.75rem 0 1.5rem; }
 .stat-grid      { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
                   gap: 1rem; margin-bottom: 1.5rem; }
-.stat-card      { background: var(--bg2); border: 1px solid var(--border);
+.stat-card      { background: var(--bg2); border: 2px solid var(--ink);
                   border-radius: var(--radius); padding: 1rem; text-align: center;
-                  transition: border-color 0.15s, transform 0.12s; }
-.stat-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-.stat-value     { font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700;
+                  box-shadow: var(--shadow-sm);
+                  transition: border-color 0.12s, transform 0.08s, box-shadow 0.08s; }
+.stat-card:hover { border-color: var(--accent); transform: translate(-1px, -1px); box-shadow: var(--shadow-md); }
+.stat-value     { font-family: var(--font-pixel); font-size: 1.2rem; font-weight: 400;
                   color: var(--accent); }
 .stat-label     { font-size: 0.74rem; color: var(--muted); text-transform: uppercase;
-                  letter-spacing: 0.06em; margin-top: 0.2rem; }
+                  letter-spacing: 0.06em; margin-top: 0.3rem; }
 
 /* Wide tables scroll horizontally inside their own box instead of pushing the
    whole page wider than the viewport. */
@@ -708,16 +764,14 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
   .two-col { grid-template-columns: 1fr; }
   .user-name { display: none; }
   .page-header { gap: 0.75rem; }
-  .page-header h1 { font-size: 1.4rem; }
+  .page-header h1 { font-size: 1.15rem; }
   .card-grid { grid-template-columns: 1fr; }
   /* On mobile, let the fixed full-screen backdrop be the scroll container (with
      scroll-chaining contained) so the page behind can't hijack the gesture, and
-     the modal grows naturally inside it. Also drop the blurred backdrop, whose
-     per-frame repaint reads as a "wobble". */
+     the modal grows naturally inside it. */
   .modal-backdrop { align-items: flex-start; padding: 0.75rem;
                     overflow-y: auto; overscroll-behavior: contain;
-                    -webkit-overflow-scrolling: touch;
-                    backdrop-filter: none; -webkit-backdrop-filter: none; }
+                    -webkit-overflow-scrolling: touch; }
   .modal { width: 100%; padding: 1.25rem; max-height: none; overflow: visible; }
   /* iOS Safari ignores width:100% on date inputs and overflows the form; and
      appearance:none hides the empty mm/dd/yyyy placeholder. So keep the native
@@ -751,7 +805,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 @media (min-width: 701px) {
   .modal select {
     -webkit-appearance: none; appearance: none;
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%239b93bd' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%23b3a8d9' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.85rem center;
     padding-right: 2.1rem;
@@ -764,22 +818,24 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
    widget JSON when available, with a static fallback. */
 .discord-card { display: flex; align-items: center; gap: 0.9rem; max-width: 360px;
                 margin-top: 0.6rem; padding: 0.85rem 1rem; background: var(--bg2);
-                border: 1px solid var(--border); border-radius: var(--radius);
-                text-decoration: none; color: var(--text);
-                transition: border-color 0.15s, background 0.15s; }
-.discord-card:hover { border-color: var(--accent); background: var(--bg3); }
+                border: 2px solid var(--ink); border-radius: var(--radius);
+                text-decoration: none; color: var(--text); box-shadow: var(--shadow-sm);
+                transition: border-color 0.12s, background 0.12s, transform 0.08s, box-shadow 0.08s; }
+.discord-card:hover { border-color: var(--accent); background: var(--bg3);
+                      transform: translate(-1px, -1px); box-shadow: var(--shadow-md); }
 .discord-card-icon { flex-shrink: 0; width: 44px; height: 44px; display: flex;
                      align-items: center; justify-content: center;
-                     background: #5865f2; border-radius: 50%; }
+                     background: #5865f2; border: 2px solid var(--ink); border-radius: 50%; }
 .discord-card-icon svg { width: 26px; height: 20px; fill: #fff; }
 .discord-card-body { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 0; }
-.discord-card-name { font-weight: 600; }
+.discord-card-name { font-weight: 700; }
 .discord-card-online { font-size: 0.82rem; color: var(--muted); display: inline-flex;
                        align-items: center; gap: 0.4rem; }
 .discord-card-online .dot { width: 8px; height: 8px; border-radius: 50%;
                             background: var(--green); display: inline-block; }
-.discord-card-cta { flex-shrink: 0; font-size: 0.82rem; font-weight: 600; color: #fff;
-                    background: #5865f2; border-radius: 99px; padding: 0.35rem 0.9rem; }
+.discord-card-cta { flex-shrink: 0; font-size: 0.82rem; font-weight: 700; color: #fff;
+                    background: #5865f2; border: 2px solid var(--ink);
+                    border-radius: var(--radius-chip); padding: 0.35rem 0.9rem; }
 .discord-card:hover .discord-card-cta { background: #4752c4; }
 
 /* A player's pinned fixed-seat button reads as "set" with an accent outline. */
@@ -802,7 +858,7 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 }
 
 /* Decklist submission: which print tags the event allows + how to mark a line. */
-.decklist-print-help { font-size: 0.83rem; color: #cdc8e6; background: var(--bg3);
+.decklist-print-help { font-size: 0.83rem; color: #d6d0ee; background: var(--bg3);
                        border: 1px solid var(--border); border-radius: var(--radius);
                        padding: 0.5rem 0.7rem; margin-bottom: 0.6rem; line-height: 1.5; }
 .decklist-print-help strong { color: var(--text); }
@@ -818,7 +874,8 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .decklist-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .decklist-table th, .decklist-table td { padding: 0.5rem 0.75rem;
                    border-bottom: 1px solid var(--border); text-align: left; }
-.decklist-table th { background: var(--bg3); color: var(--muted); font-size: 0.74rem;
+.decklist-table th { background: var(--bg3); color: var(--muted); font-size: 0.66rem;
+                     font-family: var(--font-display);
                      text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
 .decklist-table th[onclick] { cursor: pointer; user-select: none; }
 .decklist-table tbody tr:hover td { background: var(--accent-soft); }
@@ -841,10 +898,10 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .tc-meta label { display: flex; flex-direction: column; gap: 0.35rem;
                  font-size: 0.88rem; font-weight: 500; }
 .tc-meta input, .tc-meta select { padding: 0.4rem 0.6rem; background: var(--bg);
-  color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); border: 2px solid var(--ink); border-radius: var(--radius);
   font-size: 0.9rem; font-family: var(--font-body); width: 100%; max-width: 100%; }
 .tc-meta input:focus, .tc-meta select:focus
-  { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .tc-deck-list { display: flex; flex-direction: column; gap: 0.3rem; max-width: 540px; }
 .tc-deck-row { display: flex; align-items: center; gap: 0.6rem;
                padding: 0.4rem 0; border-bottom: 1px solid var(--border);
@@ -862,13 +919,13 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 /* ── Public decklists browser ───────────────────────────────────────────── */
 .dl-browse-bar { display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
 .dl-browse-bar input  { flex: 1; min-width: 200px; padding: 0.4rem 0.7rem;
-  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); border: 2px solid var(--ink);
   border-radius: var(--radius); font-size: 0.9rem; font-family: var(--font-body); }
 .dl-browse-bar select { padding: 0.4rem 0.6rem; background: var(--bg);
-  color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); border: 2px solid var(--ink); border-radius: var(--radius);
   font-size: 0.9rem; font-family: var(--font-body); }
 .dl-browse-bar input:focus, .dl-browse-bar select:focus
-  { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 
 /* ── MTG Goldfish copy-paste helper ──────────────────────────────────────── */
 .mgf-fields { display: flex; flex-direction: column; gap: 0.5rem; max-width: 540px; }
@@ -876,11 +933,11 @@ h2 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600;
 .mgf-row-tall { align-items: flex-start; }
 .mgf-label { flex: 0 0 7rem; font-size: 0.82rem; color: var(--muted); text-align: right; }
 .mgf-val { flex: 1; min-width: 0; padding: 0.3rem 0.5rem; background: var(--bg);
-           color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+           color: var(--text); border: 2px solid var(--ink); border-radius: var(--radius);
            font-size: 0.88rem; font-family: var(--font-mono); cursor: pointer; }
 textarea.mgf-val { resize: vertical; min-height: 8rem; font-size: 0.8rem; }
 .mgf-decks { display: flex; flex-direction: column; gap: 0.5rem; max-width: 640px; }
-.mgf-deck { border: 1px solid var(--border); border-radius: var(--radius); }
+.mgf-deck { border: 2px solid var(--ink); border-radius: var(--radius); }
 .mgf-deck-summary { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem;
                     cursor: pointer; font-size: 0.9rem; list-style: none; }
 .mgf-deck-summary::-webkit-details-marker { display: none; }
@@ -895,3 +952,20 @@ textarea.mgf-val { resize: vertical; min-height: 8rem; font-size: 0.8rem; }
 .loading, .empty { color: var(--muted); font-size: 0.9rem; padding: 1rem 0; }
 .hidden { display: none !important; }
 .text-muted { color: var(--muted); }
+
+/* ── Signature moment: pixel confetti ─────────────────────────────────────── */
+/* Earned at real milestones only (registration confirmed, your name found in a
+   freshly posted round) — never ambient decoration. Flat squares, no blur, no
+   gradient: the same hard-edged material as the rest of the world. */
+.confetti-layer { position: absolute; left: 0; top: 0; width: 0; height: 0;
+                  overflow: visible; z-index: 200; pointer-events: none; }
+.confetti-piece { position: absolute; width: 7px; height: 7px;
+                  transform: translate(-50%, -50%);
+                  animation: confetti-pop ease-out forwards; }
+@keyframes confetti-pop {
+  0%   { transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confetti-piece { animation-duration: 0.01s !important; }
+}

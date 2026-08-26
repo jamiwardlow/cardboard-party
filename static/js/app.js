@@ -272,3 +272,35 @@ document.addEventListener('keydown', (e) => {
   const open = document.querySelectorAll('.modal-backdrop:not(.hidden)');
   if (open.length) open[open.length - 1].classList.add('hidden');
 });
+
+// ── Pixel confetti (signature moment) ───────────────────────────────────────
+// A burst of flat, hard-edged squares in the cartridge palette — earned at real
+// milestones (you're registered, your name is in the pairings), never ambient.
+// Respects reduced-motion; a static "sparkle" ring stands in instead.
+const CONFETTI_COLORS = ['var(--accent)', 'var(--pink)', 'var(--green)'];
+function burstConfetti(originEl) {
+  if (!originEl) return;
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const r = originEl.getBoundingClientRect();
+  const cx = r.left + r.width / 2 + window.scrollX;
+  const cy = r.top + r.height / 2 + window.scrollY;
+  const layer = document.createElement('div');
+  layer.className = 'confetti-layer';
+  document.body.appendChild(layer);
+  const count = reduced ? 8 : 22;
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('span');
+    piece.className = 'confetti-piece';
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
+    const dist = 60 + Math.random() * 90;
+    piece.style.left = `${cx}px`;
+    piece.style.top = `${cy}px`;
+    piece.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    piece.style.setProperty('--dy', `${Math.sin(angle) * dist - 40}px`);
+    piece.style.setProperty('--rot', `${(Math.random() - 0.5) * 720}deg`);
+    piece.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    piece.style.animationDuration = reduced ? '0.01s' : `${0.7 + Math.random() * 0.5}s`;
+    layer.appendChild(piece);
+  }
+  setTimeout(() => layer.remove(), reduced ? 50 : 1300);
+}

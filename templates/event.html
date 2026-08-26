@@ -42,7 +42,7 @@
     <button class="btn btn-sm hidden" id="btn-duplicate" onclick="duplicateEvent()">Duplicate event</button>
   </div>
   <div class="event-facts">
-    <p class="event-when"><span class="event-datetime">{{ event.date }}{% if event.start_time %} · {{ event.start_time | time12 }}{% endif %}</span>{% if event.location %}<span class="event-loc">📍 <a class="loc-link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&amp;query={{ event.location|urlencode }}{% if event.place_id %}&amp;query_place_id={{ event.place_id|urlencode }}{% endif %}">{{ event.location }}</a></span>{% endif %}</p>
+    <p class="event-when"><span class="event-datetime">{{ event.date }}{% if event.start_time %} · {{ event.start_time | time12 }}{% endif %}</span>{% if event.location %}<span class="event-loc"><a class="loc-link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&amp;query={{ event.location|urlencode }}{% if event.place_id %}&amp;query_place_id={{ event.place_id|urlencode }}{% endif %}">{{ event.location }}</a></span>{% endif %}</p>
     <p class="subtitle" style="margin-top:0.25rem">{{ event.event_type or 'One-day' }} · {{ event.format }}{% if event.structure == 'swiss_top_cut' %} · Swiss + Top {{ event.planned_cut_size or 8 }}{% elif event.structure == 'swiss' %} · Swiss{% elif event.structure == 'custom' %} · Custom structure{% endif %}{% if event.game %} · {{ event.game }}{% endif %}</p>
   </div>
 </div>
@@ -89,7 +89,7 @@
 </div>
 
 <!-- Playoff champion banner (shown once the bracket final is decided) -->
-<div id="champion-banner" class="banner hidden" style="background:var(--accent-soft);border:1px solid rgba(167,139,250,0.35)">
+<div id="champion-banner" class="banner banner-champion hidden">
   <span id="champion-msg"></span>
 </div>
 
@@ -130,7 +130,7 @@
   {% if has_extra %}
   <div class="event-extra flow-block" data-section="description">
     {% if event.tags %}<div class="event-tags">{% for t in event.tags %}<span class="tag-chip">{{ t }}</span>{% endfor %}</div>{% endif %}
-    {% if event.requires_decklists %}{% set dl_public = not event.closed_decklists or event.decklists_released %}{% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">📋 Decklists required{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% else %}<p class="event-note">📋 Decklists optional{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% endif %}{% endif %}
+    {% if event.requires_decklists %}{% set dl_public = not event.closed_decklists or event.decklists_released %}{% if event.decklists_required | default(event.requires_decklists) %}<p class="event-note">Decklists required{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% else %}<p class="event-note">Decklists optional{% if dl_public %} — <a href="/events/{{ event.id }}/decklists">View decklists</a>{% endif %}</p>{% endif %}{% endif %}
     {% if event.description %}<p class="event-description">{{ event.description }}</p>{% endif %}
     {% if event.entry_cost or event.payment_url %}
     <p class="event-cost">
@@ -420,6 +420,8 @@ let pendingResult = null;
 let roundCollapsed = {};   // round index -> explicit collapsed state (user override)
 let guestToken   = null;   // self-report token for a non-Google (guest) player
 let guestPlayerId = null;  // which player that token maps to in this event
+let lastCelebratedRound = 0;  // round count already shown a confetti burst for
+let champCelebrated = false;  // whether the champion banner already got its burst
 
 const GUEST_KEY = `cbp_guest_${EVENT_ID}`;
 
@@ -434,6 +436,11 @@ async function init() {
   myPlayer = me.signed_in
     ? (state.players.find(p => p.google_id === me.user.id) || null)
     : (guestPlayerId ? (state.players.find(p => p.id === guestPlayerId) || null) : null);
+  lastCelebratedRound = state.rounds.length;  // don't celebrate rounds already posted before this visit
+  {
+    const lastRound = state.rounds[state.rounds.length - 1];
+    champCelebrated = !!(isBracketRound(lastRound) && lastRound.length === 1 && lastRound[0].winner_id);
+  }
   applyStageCollapse();   // completed events open collapsed except Standings
   render();
   _maybeAutoRegister();
@@ -805,8 +812,10 @@ function renderStatus() {
   const last = state.rounds[state.rounds.length - 1] || null;
   if (isBracketRound(last) && last.length === 1 && last[0].winner_id) {
     champ.querySelector('#champion-msg').textContent =
-      `🏆 Champion: ${seededName(last[0].winner_id)}`;
+      `Champion: ${seededName(last[0].winner_id)}`;
     champ.classList.remove('hidden');
+    // Earned once — never re-celebrate a champion already decided before this visit.
+    if (!champCelebrated) { champCelebrated = true; burstConfetti(champ); }
   } else {
     champ.classList.add('hidden');
   }
@@ -1531,6 +1540,7 @@ async function submitRegister() {
     const i = state.players.findIndex(p => p.id === myPlayer.id);
     if (i >= 0) state.players[i] = myPlayer; else state.players.push(myPlayer);
     render();
+    burstConfetti(document.querySelector('.banner-player') || document.querySelector('.event-head h1'));
   } else { const e = await res.json(); alertDialog(e.error || 'Registration failed.'); }
 }
 
@@ -1782,6 +1792,16 @@ function renderRounds() {
   // The countdown lives inside the latest round card now, so it's (re)created on
   // every renderRounds — re-init its ticking afterwards.
   renderRoundTimer();
+  // Signature moment: a freshly posted round that includes your own match, found
+  // for the first time this visit — never on the initial page load.
+  if (state.rounds.length > lastCelebratedRound) {
+    lastCelebratedRound = state.rounds.length;
+    const latest = state.rounds[state.rounds.length - 1];
+    if (latest.some(isMyMatch)) {
+      const row = el.querySelector('tr.my-match');
+      if (row) burstConfetti(row);
+    }
+  }
 }
 
 // The per-round action box below the "Round X" heading. Manager-only. The
@@ -2021,7 +2041,7 @@ function renderPlayers() {
       ? `<button class="btn btn-sm player-details-btn" onclick="openPlayerDetails('${p.id}')">Details</button>`
       : '';
     const selfEditBtn = (!canManage() && isMine)
-      ? `<button class="btn btn-sm edit-name-btn" title="Edit display name" onclick="renamePlayer('${p.id}')">✎</button>`
+      ? `<button class="btn btn-sm edit-name-btn" title="Edit display name" onclick="renamePlayer('${p.id}')">Edit</button>`
       : '';
     return `<li class="${p.dropped ? 'dropped' : ''}">
       ${profileLink}${selfEditBtn}${discord}${seatBadge}${checkEl}${detailsBtn}
@@ -2042,13 +2062,13 @@ function openPlayerDetails(playerId) {
   const meta = document.getElementById('pd-discord');
   meta.textContent = p.discord ? `Discord: ${p.discord}` : '';
   meta.style.display = p.discord ? '' : 'none';
-  const acts = [`<button class="btn" onclick="pdRun('rename')">✎ Edit display name</button>`];
+  const acts = [`<button class="btn" onclick="pdRun('rename')">Edit display name</button>`];
   if (state.requires_decklists && !p.dropped) {
     if (!p.has_decklist) {
-      acts.push(`<button class="btn" onclick="pdRun('decklist')">📋 Add decklist</button>`);
+      acts.push(`<button class="btn" onclick="pdRun('decklist')">Add decklist</button>`);
     } else {
       const flagged = p.decklist_status === 'errors' || p.decklist_status === 'warnings';
-      acts.push(`<button class="btn" onclick="pdRun('decklist')">${flagged ? '⚠️ View decklist' : '📋 View decklist'}</button>`);
+      acts.push(`<button class="btn" onclick="pdRun('decklist')">${flagged ? 'View decklist — flagged' : 'View decklist'}</button>`);
     }
   }
   if (isDraftPreRound1() && !p.dropped) {
@@ -2567,16 +2587,16 @@ function renderEditRows() {
   document.getElementById('edit-pairings-form').innerHTML = editRows.map((r, i) => r.locked ? `
       <div class="pairing-row pairing-row-locked">
         <select disabled>${opts(r.p1)}</select>
-        <span>vs</span>
+        <span class="vs-label">vs</span>
         <select disabled>${opts(r.p2)}</select>
-        <span class="row-remove" title="Already has a result — can't be re-paired">🔒</span>
+        <span class="row-remove" title="Already has a result — can't be re-paired">Locked</span>
       </div>` : `
       <div class="pairing-row">
         <select onchange="onEditRowChange(${i}, 'p1', this.value)">${opts(r.p1)}</select>
-        <span>vs</span>
+        <span class="vs-label">vs</span>
         <select onchange="onEditRowChange(${i}, 'p2', this.value)">${opts(r.p2)}</select>
         <button type="button" class="btn btn-sm row-remove" title="Remove this pairing"
-                onclick="removeEditRow(${i})">✕</button>
+                onclick="removeEditRow(${i})">Remove</button>
       </div>`).join('');
   editNote(buildEditedPairings().note);   // live: self-pairing, dupes, still-to-assign, …
 }

@@ -192,7 +192,7 @@ async function viewDeck(pid) {
   if (dvp && allowProxies) {
     dvp.style.display = '';
     dvp.innerHTML = d.proxy_override
-      ? `<p class="dl-note">⚠️ Proxy validation overridden — ${escapeHtml(d.proxy_override_note)} `
+      ? `<p class="dl-note">Proxy validation overridden — ${escapeHtml(d.proxy_override_note)} `
         + `<button class="btn btn-sm" onclick="clearProxyOverride('${pid}')">Clear</button></p>`
       : `<button class="btn btn-sm" onclick="setProxyOverride('${pid}')">Override proxy check</button>`;
   } else if (dvp) { dvp.style.display = 'none'; }

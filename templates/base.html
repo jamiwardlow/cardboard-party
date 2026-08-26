@@ -4,17 +4,34 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Cardboard Party{% endblock %}</title>
-  <meta name="theme-color" content="#a78bfa">
+  <meta name="theme-color" content="#150F24">
   <link rel="icon" href="/static/favicon.ico?v={{ asset_v }}" sizes="any">
   <link rel="icon" href="/static/favicon.svg?v={{ asset_v }}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ asset_v }}">
   {% block head %}{% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DynaPuff:wght@500;600;700&family=Fredoka:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Press+Start+2P&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap">
   <link rel="stylesheet" href="/static/css/style.css?v={{ asset_v }}">
 </head>
 <body>
+  <!--
+    THESIS: Cardboard Party owns the arcade cartridge, not the SaaS dashboard —
+    it refuses the soft-gradient hero and rounded-pill chrome every bracket tool ships.
+    OWN-WORLD: flat, saturated cartridge purple/pink/green, hard 2px ink outlines,
+    zero-blur offset shadows, rectangular chrome (a small chip radius only on tags);
+    Silkscreen/Press Start 2P for our own fixed labels, clean sans for anything a
+    user typed; pixel-confetti bursts mark real milestones, never ambient.
+    STORY: a player recognizes a game they've played, trusts the save-file's worth
+    of state (nothing lost), and feels the tournament is a party, not paperwork.
+    FIRST VIEWPORT: the event list as a shelf of cartridge cards — flat panel, hard
+    outline, block shadow; the status band reads like a cartridge label sticker.
+    FORM: user-pinned "Cartridge Confetti" (8-bit console chrome + earned pixel
+    confetti), superseding the in-progress roll at seed key 1e86c68a (bolder register).
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the
+    finish review, the verdict, and DESIGN.md
+  -->
+
   <header class="site-header">
     <nav class="nav-inner">
       <a class="site-logo" href="/">Cardboard Party</a>

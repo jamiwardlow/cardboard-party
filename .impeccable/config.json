@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "space grotesk",
+        "createdAt": "2026-08-26T19:13:06.164Z",
+        "reason": "Design decision: Space Grotesk is used only as the body/content face (user-typed event names, player names, forms, descriptions), never as a display face — the pixel display faces (Silkscreen/Press Start 2P) carry all of the app's own fixed chrome labels instead. Operate-mode guidance (craft-floor.md) explicitly permits workhorse/system sans faces for body content; kept as the pre-existing incumbent body font for continuity."
+      }
+    ]
+  }
+}

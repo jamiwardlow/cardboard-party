@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-26T00:00:00Z",
+  "title": "Design System: Cardboard Party",
+  "extensions": {
+    "colorMeta": {
+      "accent": { "role": "primary", "displayName": "Cartridge Purple", "canonical": "#B98CFF", "tonalRamp": ["#241A3D", "#3A2A5E", "#57408A", "#7C3AED", "#9662F0", "#B98CFF", "#D4B7FF", "#EFE3FF"] },
+      "accent-h": { "role": "primary-fill", "displayName": "Cartridge Purple (fill)", "canonical": "#7C3AED", "tonalRamp": ["#1F1533", "#301F52", "#4A2A82", "#7C3AED", "#9662F0", "#B98CFF", "#D4B7FF", "#EFE3FF"] },
+      "pink": { "role": "secondary", "displayName": "Cartridge Pink", "canonical": "#FF6BB5", "tonalRamp": ["#2E0F1E", "#4C1636", "#7A1F51", "#C71F6B", "#E8397F", "#FF6BB5", "#FF9ECF", "#FFD6EA"] },
+      "pink-h": { "role": "secondary-fill", "displayName": "Cartridge Pink (fill/shadow)", "canonical": "#C71F6B", "tonalRamp": ["#2E0F1E", "#4C1636", "#7A1F51", "#C71F6B", "#E8397F", "#FF6BB5", "#FF9ECF", "#FFD6EA"] },
+      "green": { "role": "tertiary", "displayName": "Cartridge Green", "canonical": "#34D399", "tonalRamp": ["#0C2A20", "#12402F", "#16A97B", "#1CC28C", "#34D399", "#6EE7C1", "#A7F3D9", "#DAFAEC"] },
+      "bg": { "role": "neutral-bg", "displayName": "Cartridge Shell (page)", "canonical": "#150F24", "tonalRamp": ["#0B0714", "#150F24", "#1E1730", "#2A2044", "#372F52", "#5C4E80", "#8B7EB0", "#C9C1E0"] },
+      "bg2": { "role": "neutral-surface", "displayName": "Cartridge Shell (panel)", "canonical": "#1E1730", "tonalRamp": ["#0B0714", "#150F24", "#1E1730", "#2A2044", "#372F52", "#5C4E80", "#8B7EB0", "#C9C1E0"] },
+      "ink": { "role": "neutral-border", "displayName": "Ink Outline", "canonical": "#0B0714", "tonalRamp": ["#000000", "#0B0714", "#150F24", "#1E1730", "#2A2044", "#372F52", "#5C4E80", "#8B7EB0"] },
+      "text": { "role": "neutral-text", "displayName": "Party Text", "canonical": "#F5F1FF", "tonalRamp": ["#0B0714", "#372F52", "#5C4E80", "#8B7EB0", "#B3A8D9", "#C9C1E0", "#E4DEF5", "#F5F1FF"] },
+      "muted": { "role": "neutral-text-secondary", "displayName": "Muted Lavender", "canonical": "#B3A8D9", "tonalRamp": ["#0B0714", "#372F52", "#5C4E80", "#8B7EB0", "#B3A8D9", "#C9C1E0", "#E4DEF5", "#F5F1FF"] },
+      "danger": { "role": "danger", "displayName": "Alert Coral", "canonical": "#FF6B6B", "tonalRamp": ["#3D0F0F", "#5C1717", "#8A2020", "#C42B2B", "#E14040", "#FF6B6B", "#FF9E9E", "#FFD0D0"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Silkscreen Display", "purpose": "Nav logo and app-authored h1 headings — never user content." },
+      "pixel": { "displayName": "Press Start 2P Label", "purpose": "Fixed chrome: section headings, dialog titles, round labels, 'vs' separator, standings rank, score numerals, timers, waitlist position." },
+      "body": { "displayName": "Space Grotesk Body", "purpose": "All user-typed content and general UI copy." },
+      "mono": { "displayName": "Space Mono", "purpose": "Decklist text, inline code, table-assignment badges." }
+    },
+    "shadows": [
+      { "name": "shadow-sm", "value": "2px 2px 0 var(--pink-h)", "purpose": "Default resting depth: buttons, round cards, banners, stat cards." },
+      { "name": "shadow-md", "value": "4px 4px 0 var(--pink-h)", "purpose": "Shelf cards at rest; button/stat-card hover; popovers." },
+      { "name": "shadow-lg", "value": "6px 6px 0 var(--pink-h)", "purpose": "Modal resting depth; card hover (lifted-off-shelf)." }
+    ],
+    "motion": [
+      { "name": "press-collapse", "value": "translate(2px, 2px); box-shadow: 0 0 0", "purpose": "Active/press state on buttons and result-entry tiles — reads as pushed into the shelf." },
+      { "name": "hover-lift", "value": "translate(-1px, -1px) to (-2px, -2px)", "purpose": "Hover state on cards/buttons — reads as pulled proud of the shelf." },
+      { "name": "confetti-pop", "value": "keyframes: translate + rotate + opacity fade, ease-out", "purpose": "Signature milestone celebration; scaled down under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "700px" },
+      { "name": "sm", "value": "480px" },
+      { "name": "xs", "value": "380px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Filled call-to-action button (Sign in, Register, Save).",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Register</button>",
+      "css": ".ds-btn { display:inline-flex; align-items:center; justify-content:center; gap:0.4rem; padding:0.5rem 1rem; font-family:'Space Grotesk',system-ui,sans-serif; border:2px solid #0B0714; border-radius:0; font-size:0.9rem; font-weight:600; cursor:pointer; box-shadow:2px 2px 0 #C71F6B; transition:transform 0.08s, box-shadow 0.08s; } .ds-btn-primary { background:#7C3AED; color:#fff; font-weight:700; } .ds-btn-primary:hover { background:#6d28d9; transform:translate(-1px,-1px); box-shadow:4px 4px 0 #C71F6B; } .ds-btn-primary:active { transform:translate(2px,2px); box-shadow:0 0 0 #0B0714; } .ds-btn-primary:focus-visible { outline:2px solid #B98CFF; outline-offset:2px; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Secondary/neutral action button.",
+      "html": "<button class=\"ds-btn ds-btn-default\">Sign out</button>",
+      "css": ".ds-btn-default { background:#1E1730; color:#F5F1FF; } .ds-btn-default:hover { background:#2A2044; border-color:#B98CFF; transform:translate(-1px,-1px); box-shadow:4px 4px 0 #C71F6B; } .ds-btn-default:active { transform:translate(2px,2px); box-shadow:0 0 0 #0B0714; }"
+    },
+    {
+      "name": "Event Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Shelf-of-cartridges event card used in the event list grid.",
+      "html": "<a class=\"ds-card\" href=\"#\"><div class=\"ds-card-title\">Regional Qualifier</div><div class=\"ds-card-meta\">One-day · Sat, Sep 12 · 10:00 AM</div><div class=\"ds-card-meta\">Modern</div><span class=\"ds-chip ds-chip-open\">Registration open</span></a>",
+      "css": ".ds-card { display:block; background:#1E1730; border:2px solid #0B0714; border-radius:0; padding:1.1rem 1.25rem; text-decoration:none; color:#F5F1FF; box-shadow:4px 4px 0 #C71F6B; transition:box-shadow 0.12s, border-color 0.12s, transform 0.12s; } .ds-card:hover { box-shadow:6px 6px 0 #C71F6B; border-color:#B98CFF; transform:translate(-2px,-2px); } .ds-card-title { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1.05rem; margin-bottom:0.2rem; } .ds-card-meta { font-size:0.84rem; color:#cfc8ea; line-height:1.5; } .ds-chip { display:inline-block; margin-top:0.5rem; font-size:0.72rem; font-weight:700; border-radius:3px; padding:0.15rem 0.65rem; border:2px solid #0B0714; text-transform:uppercase; letter-spacing:0.04em; } .ds-chip-open { background:#34D399; color:#0B0714; }"
+    },
+    {
+      "name": "Status Chip (open)",
+      "kind": "chip",
+      "refersTo": "chip-status-open",
+      "description": "Filled 'label sticker' status chip — the default treatment for every status except closed.",
+      "html": "<span class=\"ds-chip ds-chip-open\">Registration open</span>",
+      "css": ".ds-chip { display:inline-block; font-size:0.72rem; font-weight:700; border-radius:3px; padding:0.15rem 0.65rem; border:2px solid #0B0714; text-transform:uppercase; letter-spacing:0.04em; font-family:'Space Grotesk',sans-serif; } .ds-chip-open { background:#34D399; color:#0B0714; }"
+    },
+    {
+      "name": "Status Chip (closed, exception)",
+      "kind": "chip",
+      "refersTo": "chip-status-closed",
+      "description": "The one deliberate outline-only chip — represents an 'empty/unprinted slot', not the norm for other statuses.",
+      "html": "<span class=\"ds-chip ds-chip-closed\">Registration closed</span>",
+      "css": ".ds-chip-closed { display:inline-block; font-size:0.72rem; font-weight:700; border-radius:3px; padding:0.15rem 0.65rem; border:2px solid #372F52; text-transform:uppercase; letter-spacing:0.04em; background:transparent; color:#B3A8D9; font-family:'Space Grotesk',sans-serif; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": null,
+      "description": "Standard modal/form text field.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Event name\">",
+      "css": ".ds-input { padding:0.45rem 0.65rem; background:#150F24; color:#F5F1FF; border:2px solid #0B0714; border-radius:0; font-family:'Space Grotesk',sans-serif; font-size:0.9rem; width:100%; } .ds-input:focus { outline:2px solid #B98CFF; outline-offset:1px; border-color:#B98CFF; }"
+    },
+    {
+      "name": "Nav Header",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Sticky site header with pixel-shadowed logo.",
+      "html": "<header class=\"ds-header\"><nav class=\"ds-nav\"><a class=\"ds-logo\" href=\"#\">Cardboard Party</a><a class=\"ds-nav-link\" href=\"#\">Decklists</a></nav></header>",
+      "css": ".ds-header { background:#1E1730; border-bottom:2px solid #0B0714; } .ds-nav { max-width:1100px; margin:0 auto; padding:0 1.5rem; display:flex; align-items:center; gap:1.5rem; height:56px; } .ds-logo { font-family:'Silkscreen',sans-serif; font-weight:700; font-size:1.2rem; text-transform:uppercase; text-decoration:none; color:#B98CFF; text-shadow:3px 3px 0 #C71F6B; } .ds-nav-link { color:#B3A8D9; text-decoration:none; font-size:0.9rem; transition:color 0.12s; } .ds-nav-link:hover { color:#B98CFF; }"
+    },
+    {
+      "name": "Result-Entry Tile",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature result-entry button (event page modal) — pixel-numeral score, hard shadow, press-flattens on click.",
+      "html": "<button class=\"ds-result-btn\"><span class=\"ds-result-score\">2-0-0</span><span class=\"ds-result-label\">Player wins</span></button>",
+      "css": ".ds-result-btn { display:flex; flex-direction:column; align-items:center; padding:0.8rem 0.5rem; border:2px solid #0B0714; border-radius:0; background:#150F24; cursor:pointer; gap:0.25rem; box-shadow:2px 2px 0 #C71F6B; transition:all 0.1s; } .ds-result-btn:hover { border-color:#B98CFF; background:rgba(124,58,237,0.18); transform:translate(-1px,-1px); box-shadow:4px 4px 0 #C71F6B; } .ds-result-score { font-family:'Press Start 2P',monospace; font-size:1.1rem; color:#F5F1FF; } .ds-result-label { font-size:0.72rem; color:#B3A8D9; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Cartridge Confetti",
+    "overview": "Cardboard Party is an 8-bit console cartridge, not a SaaS dashboard: flat, saturated cartridge purple/pink/green on a near-black shell, hard 2px ink outlines, zero-blur offset shadows, and rectangular chrome (rounding is reserved for a small chip radius on tags, never on structural panels). It refuses the soft-gradient hero and rounded-pill chrome that every other bracket tool ships. A player should recognize a game they've played, trust the save-file's worth of state behind it, and feel the tournament is a party — not paperwork. The world's one moment of ambient delight, pixel confetti, is earned rather than decorative: it fires only at three real milestones (self-registration confirmed, a freshly-posted round containing your own match, a newly-decided champion), gated so it never replays for state that already existed before the current page visit, and it steps down to a smaller reduced-motion burst under prefers-reduced-motion. This is a code-led build: there is no approved comp image in the record, only text-only decision cards during direction selection, followed directly by implementation and a finish review (disposition: ship, after one fix round covering shadow-color contrast, a unicode-glyph icon cleanup, pairing 'vs' pixel-font unification, and the status-chip filled treatment). The whole app inherits from one shared stylesheet; only the event list and the event page received bespoke visual review.",
+    "keyCharacteristics": [
+      "Flat cartridge-purple world, zero gradients, zero blur",
+      "Two-tier radius: true rectangles for structure, a whisper of rounding only on tags",
+      "Depth carried by a saturated pink offset shadow, not a dark drop shadow",
+      "Two-tier type: pixel/display faces for our own fixed chrome only, clean sans for anything a user typed",
+      "Confetti as an earned, gated signature — never ambient"
+    ],
+    "rules": [
+      { "name": "The Hue-Not-Luminance Rule", "body": "Depth cues never rely on a dark drop shadow against this near-black world — a black-on-black shadow is invisible here, so weight and proximity are always signaled with a saturated hue (pink) instead of a darker tone.", "section": "colors" },
+      { "name": "The Chrome-vs-Content Rule", "body": "The pixel display faces (Silkscreen, Press Start 2P) are reserved exclusively for fixed, app-authored strings the team controls. Anything a user typed stays in the body face (Space Grotesk), even directly beside pixel-font chrome. This is the load-bearing rule of the whole system.", "section": "typography" },
+      { "name": "The Hue-Shadow Rule", "body": "Every structural shadow in the system is colored var(--pink-h), never var(--ink) or black — ink is reserved for outlines, pink is reserved for depth.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep --radius: 0 on every structural surface (cards, buttons, modals, inputs, panels); reserve --radius-chip (3px) for small status/tag chips only.",
+      "Do color structural shadows with var(--pink-h), never var(--ink) or black — a dark shadow disappears against this palette's near-black base.",
+      "Do render app-authored fixed chrome (nav, section headings, dialog titles, round labels, the \"vs\" separator, standings rank, score numerals, status chips) in the pixel display faces (Silkscreen / Press Start 2P).",
+      "Do render anything a user typed (names, descriptions, form content) in the body face (Space Grotesk), even directly adjacent to pixel-font chrome.",
+      "Do gate any new celebratory effect (confetti or otherwise) to a genuine, one-time milestone the user just reached — never fire it on page load or for pre-existing state.",
+      "Do respect prefers-reduced-motion for any new motion (scale it down, don't silently drop the moment)."
+    ],
+    "donts": [
+      "Don't use a soft blurred drop-shadow or glow anywhere — every shadow in this system is a hard, zero-blur offset.",
+      "Don't round a structural panel, button, card, or modal corner; rounding above 3px signals \"not a cartridge\" in this world.",
+      "Don't put user-generated text in Silkscreen or Press Start 2P — it was built for short, fixed, all-caps-friendly labels and degrades badly on long or unpredictable strings.",
+      "Don't treat .reg-closed's outline-only treatment as the norm for status chips — it's a deliberate one-off \"empty slot\" exception; every other status chip in the system is filled solid.",
+      "Don't add ambient/ornamental animation (auto-playing sparkle, idle looping motion) — this world's only motion signature is the three earned confetti triggers plus ordinary hover/press feedback."
+    ]
+  }
+}
