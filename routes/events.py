@@ -33,10 +33,11 @@ import time
 import uuid
 
 logger = logging.getLogger(__name__)
-from event_state import (_now_iso, _slugify, _assign_draft_seat, _is_full,
+from event_state import (_now_iso, _slugify, _assign_draft_seat,
                          _self_registration_blocked, _validate_result,
                          _is_bracket_round, _swiss_complete, _event_complete,
                          auto_check_in, make_player_entry)
+from player_actions import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
 from event_actions import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
 import event_queries
@@ -938,6 +939,7 @@ def api_add_player(event_id):
     # the event on their profile and report their own results.
     google_id = None
     discord   = data.get('discord', '').strip()
+    email     = ''
     if data.get('self'):
         google_id = user['id']
     elif data.get('google_id'):
@@ -946,41 +948,20 @@ def api_add_player(event_id):
         profile = get_user_profile(google_id)
         name    = profile.get('name') or name
         discord = profile.get('discord', '')
-    if google_id and any(p.get('google_id') == google_id for p in e['players']):
-        return jsonify({'error': 'That player is already in this event'}), 400
-    # At capacity → route the add onto the waitlist rather than overfilling. This
-    # applies to organisers adding themselves or walk-ins too; promote later to
-    # seat them when a spot opens.
-    if _is_full(e):
-        waitlist = e.get('waitlist') or []
-        if google_id and any(w.get('google_id') == google_id and w.get('status') == 'waitlisted'
-                             for w in waitlist):
-            return jsonify({'error': 'That player is already on the waitlist'}), 400
-        record = {
-            'id':        uuid.uuid4().hex,
-            'google_id': google_id,
-            'name':      name[:80],
-            'email':     get_user_profile(google_id).get('email', '') if google_id else '',
-            'discord':   discord,
-            'status':    'waitlisted',
-            'joined_at': _now_iso(),
-            'added_by_organizer': True,
-        }
-        waitlist.append(record)
-        save_event(event_id, {'waitlist': waitlist})
-        _log_action(event_id, 'waitlist_join', f"{record['name']} added to the waitlist (event full)")
-        return jsonify({'waitlisted': True, 'name': record['name']}), 201
-    player = make_player_entry(
-        name, e,
-        google_id=google_id, discord=discord, checked_in=auto_check_in(e),
-    )
-    e['players'].append(player)
+        email   = profile.get('email', '')
+    result, err = add_player(e, name=name, google_id=google_id, discord=discord, email=email)
+    if err:
+        return jsonify({'error': err}), 400
+    if result.get('waitlisted'):
+        save_event(event_id, {'waitlist': e['waitlist']})
+        _log_action(event_id, 'waitlist_join', f"{result['name']} added to the waitlist (event full)")
+        return jsonify(result), 201
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # may have just hit the cap → show "full"
     _log_action(event_id, 'register', f'added {name}', target=name)
     if google_id:
         _dm_registration_confirmation(google_id, e, event_id, request.host_url)
-    return jsonify(player), 201
+    return jsonify(result), 201
 
 @events_bp.route('/api/events/<event_id>/player-search', methods=['GET'])
 @login_required
@@ -1017,13 +998,10 @@ def api_remove_player(event_id, player_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    if e['rounds']:
-        return jsonify({'error': 'Drop the player instead once rounds have started'}), 400
-    removed = next((p for p in e['players'] if p['id'] == player_id), None)
-    remaining = [p for p in e['players'] if p['id'] != player_id]
-    if len(remaining) == len(e['players']):
-        return jsonify({'error': 'Player not found'}), 404
-    e['players'] = remaining
+    removed, err = remove_player(e, player_id)
+    if err:
+        status = 404 if err == 'Player not found' else 400
+        return jsonify({'error': err}), status
     save_event(event_id, {'players': e['players']})
     refresh_event_announcement(e)   # a slot may have freed up
     _log_action(event_id, 'drop', f"removed {removed['name']}", target=removed['name'])
@@ -1097,23 +1075,12 @@ def api_set_fixed_table(event_id, player_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    player = next((p for p in e['players'] if p['id'] == player_id), None)
-    if not player:
-        return jsonify({'error': 'Player not found'}), 404
     raw = (request.json or {}).get('table')
-    table = None
-    if raw not in (None, '', 0, '0'):
-        try:
-            n = int(raw)
-        except (TypeError, ValueError):
-            return jsonify({'error': 'Table must be a number'}), 400
-        if not (1 <= n <= _MAX_TABLE):
-            return jsonify({'error': f'Table must be between 1 and {_MAX_TABLE}'}), 400
-        table = n
-    if table is None:
-        player.pop('fixed_table', None)
-    else:
-        player['fixed_table'] = table
+    player, err = set_fixed_table(e, player_id, raw)
+    if err:
+        status = 404 if err == 'Player not found' else 400
+        return jsonify({'error': err}), status
+    table = player.get('fixed_table')
     save_event(event_id, {'players': e['players']})
     _log_action(event_id, 'table',
                 f"set {player['name']}'s fixed table to {table}" if table
@@ -1128,28 +1095,13 @@ def api_set_seat(event_id, player_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    player = next((p for p in e['players'] if p['id'] == player_id), None)
-    if not player:
-        return jsonify({'error': 'Player not found'}), 404
     raw = (request.json or {}).get('seat')
-    seat = None
-    if raw not in (None, '', 0, '0'):
-        try:
-            n = int(raw)
-        except (TypeError, ValueError):
-            return jsonify({'error': 'Seat must be a number'}), 400
-        if not (1 <= n <= 256):
-            return jsonify({'error': 'Seat must be between 1 and 256'}), 400
-        seat = n
-    if seat is None:
-        player.pop('seat', None)
-    else:
-        conflict = next((p for p in e['players'] if p.get('seat') == seat and p['id'] != player_id), None)
-        if conflict:
-            return jsonify({'error': f"Seat {seat} is already assigned to {conflict['name']}"}), 409
-        player['seat'] = seat
+    player, err = set_seat(e, player_id, raw)
+    if err:
+        status = 404 if err == 'Player not found' else (409 if 'already assigned to' in err else 400)
+        return jsonify({'error': err}), status
     save_event(event_id, {'players': e['players']})
-    return jsonify({'ok': True, 'seat': seat})
+    return jsonify({'ok': True, 'seat': player.get('seat')})
 
 
 @events_bp.route('/api/events/<event_id>/seats/shuffle', methods=['POST'])
@@ -1160,17 +1112,11 @@ def api_shuffle_seats(event_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    if (e.get('format') or '').lower() != 'draft':
-        return jsonify({'error': 'Seat shuffling is only available for Draft events'}), 400
-    if e.get('rounds'):
-        return jsonify({'error': 'Seat numbers cannot be changed after Round 1 is paired'}), 400
-    active = [p for p in e['players'] if not p.get('dropped')]
-    seats = list(range(1, len(active) + 1))
-    random.shuffle(seats)
-    for player, seat in zip(active, seats):
-        player['seat'] = seat
-    save_event(event_id, {'players': e['players']})
-    return jsonify({'ok': True, 'players': e['players']})
+    players, err = shuffle_seats(e)
+    if err:
+        return jsonify({'error': err}), 400
+    save_event(event_id, {'players': players})
+    return jsonify({'ok': True, 'players': players})
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/checkin', methods=['POST'])
