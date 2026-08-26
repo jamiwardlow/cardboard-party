@@ -13,7 +13,7 @@
   --ink:      #0B0714;   /* hard pixel outline + shadow color, used on chrome */
   --border:   #372F52;   /* quieter hairline, used inside dense lists/tables */
   --text:     #F5F1FF;
-  --muted:    #8F85D6;
+  --muted:    #AA7FF3;
 
   /* Party palette: flat cartridge purple / pink / green. Each role has a lighter
      "ink" tone for text/links and a deeper "fill" tone for solid backgrounds
