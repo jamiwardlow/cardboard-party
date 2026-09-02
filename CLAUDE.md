@@ -84,121 +84,87 @@ See **DEPLOYING.md** for the full setup and the `--no-promote` safe-deploy flow.
 All HTML is rendered server-side via Jinja templates and driven client-side by `fetch()`
 calls to a JSON API.
 
-- **`main.py`** — Flask app, registers `auth_bp`, `events_bp`, and `discord_bp`.
-  `app.secret_key` comes from Secret Manager (`FLASK_SECRET_KEY`); startup raises
-  `RuntimeError` if the key is missing or the dev placeholder in production.
-- **`db.py`** — all Firestore access. Collections: `events`, `users`, `invites`, and two
-  singleton config docs `config/admins` and `config/settings`.
-- **`swiss.py`** — pure functions for pairing, standings, and playoff brackets; no I/O,
-  no Flask. The only part with self-contained, testable logic.
-- **`routes/auth.py`** — Google OAuth2 **and** Discord OAuth2 (both manual flows, no
-  library). Provides `login_required` decorator and `get_current_user()`.
-- **`routes/events.py`** — everything else: page routes, `/api/...` JSON endpoints,
-  registration, pairing, results, admin and profile management. Also exposes the
-  helper functions called by `routes/discord.py`.
-- **`routes/discord.py`** — Discord bot via HTTP Interactions (no gateway). Verifies
-  Ed25519 signatures, handles slash commands (`/cparty`), buttons, select menus, and
-  modals. Thin HTTP layer only — delegates all mutations and queries to `discord_actions.py`.
-- **`discord_actions.py`** — all mutations/queries triggered by Discord interactions.
-  No HTTP or Flask context: pure functions over plain dicts, directly testable. Called by
-  `routes/discord.py`. Split from `routes/events.py` to enable direct unit testing.
-- **`discord_api.py`** — outbound Discord REST calls (channel posts, DMs). Used by
-  `routes/events.py` and `discord_actions.py` to post round pairings and send result DMs.
-- **`discord_notify.py`** — round-label helpers (`_round_label`, `fmt_time`) shared
-  between the web app and the bot. Originally sent webhook notifications; that is retired.
-- **`discord_identity.py`** — pure functions for matching a Discord user to a Cardboard
-  Party account: first by stored numeric `discord_id`, then by normalised handle
-  candidates (username and display name). `resolve_discord_identity` returns
-  `(google_id, handle_set)` and is the entry point for any Discord interaction that
-  needs to identify its invoker.
-- **`discord_match.py`** — open-match lookup and result reporting for Discord. Pure
-  functions: `discord_open_matches` lists a user's current open matches across all
-  events (used by the `/report` picker); `report_result_via_discord` records a result
-  from the reporter's perspective. Uses `discord_identity` to resolve the reporter
-  before touching any match.
-- **`event_actions.py`** — transport-free registration mutations: `register_player`,
-  `unregister_player`, `join_waitlist`, `leave_waitlist`. Each returns `(result, None)`
-  on success or `(None, error_str)` on failure. Called by both `routes/events.py` and
-  `discord_actions.py`; transport-specific side effects (DMs, announcements) stay with
-  the caller.
-- **`event_state.py`** — pure predicates and utilities over the event dict (`_slugify`,
-  `_is_full`, `_self_registration_blocked`, `_validate_result`, `make_player_entry`,
-  `auto_check_in`, etc.). Imported by both `routes/events.py` and `discord_actions.py`
-  to avoid circular imports between them.
-- **`event_announcements.py`** — Discord event-card posting and refresh. No Flask
-  context. `announce_event_to_channel` posts a card with a Register button and persists
-  `discord_announce` on the event; `refresh_event_announcement` edits the posted card
-  whenever registration status changes (open / full / closed).
-- **`event_view.py`** — `build_event_view(event, current_user)` enriches the raw event
-  dict before it is returned by any API endpoint: computes standings, strips sensitive
-  fields (`guest_token`, `discord_id`; replaces decklist content with `has_decklist` /
-  `decklist_status` flags), applies `delay_pairings` / `delay_standings` visibility
-  rules, and populates `can_manage`, `is_full`, `my_waitlist`, and co-organizer names.
-  Every route that returns event state to clients should call this.
-- **`event_queries.py`** — semantic query functions over `db.list_events()`. Callers
-  should import named queries from here rather than calling `list_events()` with inline filters.
-- **`routes/event_fields.py`** — `clean_event_fields(raw, partial=False)` validates and
-  normalises all event creation/update fields. Returns `(cleaned, errors)`.
-- **`decklist.py`** — network-free `parse_decklist` + Scryfall-calling `validate_decklist`.
-  Handles Moxfield import via `import_moxfield` (requires `MOXFIELD_USER_AGENT` secret).
-- **`storage.py`** — GCS avatar upload (validate, center-crop, resize via Pillow).
-- **`limiter.py`** — per-IP rate limiting via `flask-limiter`. Uses in-process memory
-  storage (effective global limit ≈ `num_instances × per-instance limit`). No default
-  blanket limit — decorate specific endpoints with `@limiter.limit(...)`.
+- **`main.py`** — Flask app; registers `auth_bp`, `events_bp`, `discord_bp`. Fails
+  closed at startup if `FLASK_SECRET_KEY` is missing or the dev placeholder in production.
+- **`db.py`** — all Firestore access (`events`, `users`, `invites` collections, plus
+  singleton `config/admins` and `config/settings` docs).
+- **`swiss.py`** — pure pairing/standings/bracket functions; no I/O, no Flask. The
+  only part with self-contained, testable logic.
+- **`routes/auth.py`** — Google + Discord OAuth2 (manual flows, no library). Provides
+  `login_required` and `get_current_user()`.
+- **`routes/events.py`** — everything else: pages, `/api/...` endpoints, registration,
+  pairing, results, admin/profile management. Also exposes helpers `routes/discord.py` calls.
+- **`routes/discord.py`** — Discord bot via HTTP Interactions (no gateway); verifies
+  Ed25519 signatures. Thin HTTP layer only — delegates mutations/queries to `discord_actions.py`.
+- **`discord_actions.py`** — mutations/queries triggered by Discord interactions. Pure
+  functions over plain dicts (no HTTP/Flask context) — split out from `routes/events.py`
+  so they're directly unit-testable.
+- **`discord_api.py`** — outbound Discord REST calls (channel posts, DMs).
+- **`discord_notify.py`** — round-label helpers (`_round_label`, `fmt_time`) shared by
+  the web app and the bot.
+- **`discord_identity.py`** — matches a Discord user to a Cardboard Party account (by
+  stored numeric `discord_id`, then normalised handle). `resolve_discord_identity` is the
+  entry point any Discord interaction uses to identify its invoker.
+- **`discord_match.py`** — open-match lookup and result reporting for Discord; resolves
+  the reporter via `discord_identity` before touching a match.
+- **`event_actions.py`** — transport-free registration mutations (`register_player`,
+  `unregister_player`, `join_waitlist`, `leave_waitlist`), each returning `(result, None)`
+  or `(None, error_str)`. Called by both `routes/events.py` and `discord_actions.py`;
+  transport-specific side effects (DMs, announcements) stay with the caller.
+- **`event_state.py`** — pure predicates/utilities over the event dict (slugify,
+  fullness checks, result validation, player-entry building, auto check-in). Lives here,
+  not in `routes/events.py`, so `discord_actions.py` can import it without a circular import.
+- **`event_announcements.py`** — posts/refreshes the Discord event-card (Register
+  button); no Flask context.
+- **`event_view.py`** — `build_event_view(event, current_user)` enriches an event
+  before any API endpoint returns it: standings, strips sensitive fields, applies
+  visibility rules, computes `can_manage`/`is_full`/etc. Every route returning event
+  state to clients should call this.
+- **`event_queries.py`** — semantic query functions over `db.list_events()`; prefer
+  these over inline filters.
+- **`routes/event_fields.py`** — `clean_event_fields(raw, partial=False)` validates/
+  normalises event fields, returns `(cleaned, errors)`.
+- **`decklist.py`** — network-free `parse_decklist` + Scryfall-calling `validate_decklist`;
+  Moxfield import via `import_moxfield`.
+- **`storage.py`** — GCS avatar upload (validate/center-crop/resize via Pillow).
+- **`limiter.py`** — per-IP rate limiting (`flask-limiter`, in-process memory — effective
+  global limit ≈ instances × per-instance limit). No blanket default; decorate endpoints individually.
 - **`gcp_secrets.py`** — `get_secret(name)`: env var → Secret Manager fallback, `@lru_cache`d.
 
 ### The event document is the unit of state
 
-There is essentially one aggregate: the `events/<id>` document. It holds `players`
-(list of player snapshots) and `rounds` (list of rounds, each a list of match dicts).
-A **match dict** looks like:
+One aggregate: `events/<id>`, holding `players` and `rounds` (list of match dicts:
+`player1_id`/`player2_id`, `winner_id` (`None` = unplayed), `result` (score like
+`'2-1-0'`, `'draw'`, or `'2-0-0'` for a bye), `is_bye`). Mutations read-modify-write via
+`save_event(id, {field: value})` (Firestore `merge=True`) — no optimistic locking, so
+concurrent writers can clobber each other.
 
-```python
-{'player1_id': str, 'player2_id': str,
- 'winner_id': str | None,   # None = unplayed; a draw is result=='draw'
- 'result': str | None,      # game score like '2-1-0', or 'draw', or '2-0-0' for a bye
- 'is_bye': bool}
-```
-
-Mutations read the whole event, edit the in-memory dict, and write it back with
-`save_event(id, {field: value})` (a Firestore `merge=True` set). There is no
-optimistic locking, so concurrent writers can clobber each other.
-
-### Firestore nested-array workaround (critical)
-
-Firestore cannot store an array of arrays. `rounds` is therefore **flattened** on write
-(each match gets a `round_num` field, all matches in one flat list) and **unflattened**
-on read, via `_flatten_rounds`/`_unflatten_rounds` in `db.py`. `create_event`,
-`save_event`, `get_event`, and `list_events` all handle this transparently — so always
-go through those helpers and treat `rounds` as a list-of-lists everywhere else.
+Firestore can't store arrays of arrays, so `rounds` is flattened on write / unflattened
+on read (`_flatten_rounds`/`_unflatten_rounds` in `db.py`, transparent through
+`create_event`/`save_event`/`get_event`/`list_events`). Always use those helpers; treat
+`rounds` as list-of-lists everywhere else.
 
 ### Player identity is twofold
 
-- `players[].id` — a per-event slug (`_slugify(name) + '_' + index`). Used inside that
-  event's matches and standings only.
-- `players[].google_id` — links a player entry to a real Google account (may be `None`
-  for organiser-added "ghost" players). Cross-event identity (profiles, history) keys on
-  this. The `users/<google_id>` collection is the source of truth for display name and
-  Discord handle going forward; per-event entries are registration-time snapshots.
+`players[].id` is a per-event slug, used only within that event's matches/standings.
+`players[].google_id` links to a real account (`None` for organiser-added "ghost"
+players) and is what cross-event identity (profiles, history) keys on — `users/<google_id>`
+is the source of truth for display name/Discord handle; per-event entries are just
+registration-time snapshots.
 
 ### Permission model
 
-`_can_manage(event)` = current user is a global admin, the event's `owner_id`, **or**
-listed in `co_organizer_ids`. Used for organiser actions (pairing, editing results/pairings,
-adding/dropping players).
-Players who are registered (matched by `google_id`) may report results for **their own**
-matches only. Anyone can view events and standings.
+`_can_manage(event)` = global admin, the event's `owner_id`, or listed in
+`co_organizer_ids` — used for organiser actions (pairing, editing results/pairings,
+adding/dropping players). Registered players may report results for **their own**
+matches only (matched by `google_id`). Anyone can view events and standings.
 
 ### Admin bootstrapping via "pending" entries
 
-Admins are added by **email** before the person has ever signed in, stored as
-`id = "pending:<email>"`. On their next OAuth login, `_resolve_pending_admin` in
-`auth.py` swaps that entry for their real Google ID. This is why `bootstrap_admin.py`
-and `/api/admins` both write `pending:` IDs.
-
-The same pattern applies to **co-organizers**: stored as `pending:<email>` in
-`co_organizer_ids`, resolved to a Google ID on login via `resolve_pending_co_organizer`
-in `db.py`.
+Admins/co-organizers can be added by **email** before the person ever signs in, stored
+as `pending:<email>` (in the admins config doc, or in `co_organizer_ids`). On next OAuth
+login, `_resolve_pending_admin` (`auth.py`) / `resolve_pending_co_organizer` (`db.py`)
+swap the entry for their real Google ID.
 
 ### Waitlist
 
