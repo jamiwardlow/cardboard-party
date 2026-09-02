@@ -250,7 +250,7 @@ ul.about-text { padding-left: 1.25rem; }
 .two-col      { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
                 align-items: start; }
 
-h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
+h2 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 400;
      margin: 1.5rem 0 0.6rem; text-transform: uppercase; letter-spacing: 0.08em;
      color: var(--accent); }
 
@@ -479,7 +479,7 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
 .event-comms details { background: var(--bg2); border: 2px solid var(--ink); border-radius: var(--radius);
               overflow: hidden; }  /* clip the summary hover background to the rounded corners */
 .event-comms summary { cursor: pointer; user-select: none; padding: 0.6rem 1rem;
-              font-family: var(--font-display); font-weight: 400; font-size: 0.85rem;
+              font-family: var(--font-display); font-weight: 400; font-size: 0.9rem;
               text-transform: uppercase; letter-spacing: 0.03em; }
 .event-comms summary:hover { background: var(--bg3); }
 .comms-body { padding: 0.25rem 1rem 0.85rem; white-space: pre-wrap; line-height: 1.55;
@@ -494,7 +494,7 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
                 background: var(--bg3); }
 .round-header { cursor: pointer; user-select: none; }
 .round-header:hover { background: #2d2548; }
-.round-header strong { font-family: var(--font-display); font-weight: 400; font-size: 0.82rem;
+.round-header strong { font-family: var(--font-display); font-weight: 400; font-size: 0.9rem;
                        text-transform: uppercase; letter-spacing: 0.03em;
                        display: inline-flex; align-items: center; gap: 0.5rem; }
 .round-done   { font-family: var(--font-body); font-size: 0.68rem; font-weight: 600;
