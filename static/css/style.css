@@ -716,6 +716,7 @@ h2 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 400;
 .result-draw    { color: var(--muted);  font-size: 0.84rem; }
 .result-bye     { color: var(--muted);  font-size: 0.84rem; font-style: italic; }
 .result-pending { color: var(--muted);  font-size: 0.84rem; }
+.result-actions { margin-top: 0.35rem; }
 
 /* ── Banners ──────────────────────────────────────────────────────────────── */
 .banner        { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;

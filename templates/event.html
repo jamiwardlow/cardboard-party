@@ -1889,8 +1889,10 @@ function renderMatch(m, roundIdx, matchIdx) {
     resultCell = '<span class="result-bye">Bye</span>';
   } else if (m.result === 'draw' || m.result === '0-0-3') {
     const editBtn = canManage()
-      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
-          <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>`
+      ? `<div class="result-actions">
+           <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
+           <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>
+         </div>`
       : '';
     const drawLabel = m.result === '0-0-3' ? 'Intentional draw 0–0–3' : 'Draw 1–1';
     resultCell = `<span class="result-draw">${drawLabel}</span>${editBtn}`;
@@ -1902,8 +1904,10 @@ function renderMatch(m, roundIdx, matchIdx) {
     const lo = Math.min(parts[0], parts[1]);
     const scoreStr = parts[2] != null ? `${hi}–${lo}–${parts[2]}` : `${hi}–${lo}`;
     const editBtn = canManage()
-      ? ` <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
-          <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>`
+      ? `<div class="result-actions">
+           <button class="btn btn-sm" onclick="openResultModal(${roundIdx},${matchIdx},true)">Edit</button>
+           <button class="btn btn-sm" onclick="deleteResult(${roundIdx},${matchIdx})">Delete</button>
+         </div>`
       : '';
     resultCell = `<span class="result-win">${escapeHtml(seededName(m.winner_id))} ${scoreStr}</span>${editBtn}`;
   } else if (canReport) {
