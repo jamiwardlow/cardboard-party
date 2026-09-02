@@ -899,7 +899,6 @@ h2 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 400;
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 @media (max-width: 480px) {
   .decklist-table th, .decklist-table td { padding: 0.4rem 0.45rem; font-size: 0.82rem; }
-  .decklist-table th { white-space: normal; }   /* let "Maindeck"/"Sideboard" wrap */
   .decklist-table .dl-col-maindeck, .decklist-table .dl-col-sideboard, .decklist-table .dl-col-proxy { display: none; }
 }
 .proxy-ovr { color: var(--green); font-size: 0.78rem; text-transform: uppercase;
