@@ -140,9 +140,9 @@ function render() {
       ${isComplete ? `<th onclick="setSort('rank')">#${arrow('rank')}</th>` : ''}
       <th onclick="setSort('player_name')">Player${arrow('player_name')}</th>
       <th onclick="setSort('has_decklist')">Submitted${arrow('has_decklist')}</th>
-      <th onclick="setSort('maindeck')">Maindeck${arrow('maindeck')}</th>
-      <th onclick="setSort('sideboard')">Sideboard${arrow('sideboard')}</th>
-      ${allowProxies ? `<th onclick="setSort('proxy_count')">Proxy${arrow('proxy_count')}</th>` : ''}
+      <th class="dl-col-maindeck" onclick="setSort('maindeck')">Maindeck${arrow('maindeck')}</th>
+      <th class="dl-col-sideboard" onclick="setSort('sideboard')">Sideboard${arrow('sideboard')}</th>
+      ${allowProxies ? `<th class="dl-col-proxy" onclick="setSort('proxy_count')">Proxy${arrow('proxy_count')}</th>` : ''}
     </tr>`;
   const body = sorted.map(r => {
     const player = r.google_id
@@ -157,9 +157,9 @@ function render() {
         ${isComplete ? `<td class="rank-cell">${r.rank ?? '—'}</td>` : ''}
         <td>${player}</td>
         <td>${submitted_cell}</td>
-        <td>${r.has_decklist ? r.maindeck : '—'}</td>
-        <td>${r.has_decklist ? r.sideboard : '—'}</td>
-        ${allowProxies ? `<td>${!r.has_decklist ? '—' : (r.proxy_count + (r.proxy_override ? ` <span class="proxy-ovr" title="${escapeHtml(r.proxy_override_note)}">override</span>` : ''))}</td>` : ''}
+        <td class="dl-col-maindeck">${r.has_decklist ? r.maindeck : '—'}</td>
+        <td class="dl-col-sideboard">${r.has_decklist ? r.sideboard : '—'}</td>
+        ${allowProxies ? `<td class="dl-col-proxy">${!r.has_decklist ? '—' : (r.proxy_count + (r.proxy_override ? ` <span class="proxy-ovr" title="${escapeHtml(r.proxy_override_note)}">override</span>` : ''))}</td>` : ''}
       </tr>`;
   }).join('');
   wrap.innerHTML = summary + `<div class="table-scroll"><table class="decklist-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
