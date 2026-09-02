@@ -259,6 +259,8 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
 .section-head { display: flex; align-items: center; justify-content: space-between;
                 gap: 0.75rem; flex-wrap: wrap; margin: 1.5rem 0 0.6rem; }
 .section-head h2 { margin: 0; }
+
+.events-list-heading { font-size: 1.15rem; }
 .round-actions-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 
 /* All-events search + sort controls (location). */
@@ -290,7 +292,7 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
    proud of the page. Hover lifts it further; press flattens it to the page —
    the same physical read as clicking a console controller button. */
 .btn          { display: inline-flex; align-items: center; justify-content: center;
-                gap: 0.4rem; padding: 0.5rem 1rem; font-family: var(--font-body);
+                gap: 0.4rem; padding: 0.5rem 1rem; min-height: 2.75rem; font-family: var(--font-body);
                 border: 2px solid var(--ink); border-radius: var(--radius);
                 background: var(--bg2); color: var(--text); font-size: 0.9rem;
                 font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1;
@@ -302,7 +304,7 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
 .btn:active        { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
 .btn-primary       { background: var(--accent-h); color: var(--on-fill); border-color: var(--ink); font-weight: 700; }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--ink); }
-.btn-sm            { padding: 0.3rem 0.7rem; font-size: 0.82rem; box-shadow: 1px 1px 0 var(--pink-h); }
+.btn-sm            { padding: 0.5rem 0.95rem; min-height: 2.5rem; font-size: 0.82rem; box-shadow: 1px 1px 0 var(--pink-h); }
 .btn-sm:hover      { box-shadow: 2px 2px 0 var(--pink-h); }
 .btn:disabled      { opacity: 0.4; cursor: not-allowed; pointer-events: none;
                      transform: none; box-shadow: var(--shadow-sm); }
@@ -793,6 +795,14 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
      links: Organisers / Users / Settings + Webhooks + Sign out). */
   .nav-inner   { flex-wrap: wrap; height: auto; min-height: 56px;
                  gap: 0.5rem 0.75rem; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  /* flex-basis:100% forces the logo onto its own line; everything else
+     (Decklists, admin links, sign-in/user) wraps to the line below it. */
+  /* vw-scaled (not a fixed rem) because the pixel display font is wide per
+     character — a size that fits "CARDBOARD PARTY" at 700px would overflow
+     narrower phones, and a clamp() max just moves the overflow to wherever
+     the max kicks in. Scaling continuously keeps a margin at every width,
+     including where --page-pad itself steps down below. */
+  .site-logo   { flex: 0 0 100%; font-size: min(1.8rem, 6.8vw); }
   .nav-links a { margin-right: 0.75rem; font-size: 0.85rem; }
   .nav-user    { gap: 0.5rem; }
 }
@@ -852,10 +862,10 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
 .player-details-actions .pd-static { color: var(--muted); font-size: 0.9rem;
                                      text-align: center; padding: 0.4rem 0; }
 
-/* Roomier tap targets on mobile for the roster controls and the player-details
-   menu options — easier to hit on a phone while running an event. */
+/* Roomier tap targets on mobile for the player-details menu options — easier
+   to hit on a phone while running an event. (.checkin-btn/.player-details-btn
+   are .btn-sm, which now carries this sizing at every width.) */
 @media (max-width: 480px) {
-  .checkin-btn, .player-details-btn { padding: 0.5rem 0.95rem; min-height: 2.5rem; }
   .player-details-actions { gap: 0.6rem; }
   .player-details-actions .btn { padding: 0.8rem 1rem; min-height: 3rem; font-size: 0.95rem; }
 }
