@@ -304,11 +304,12 @@ function burstConfetti(originEl, message) {
     piece.style.setProperty('--dy', `${Math.sin(angle) * dist * 0.6 - 60}px`);
     piece.style.setProperty('--fall', `${fall}px`);
     piece.style.setProperty('--rot', `${(Math.random() - 0.5) * 900}deg`);
+    piece.style.setProperty('--sway', `${(Math.random() - 0.5) * 2 * (30 + Math.random() * 40)}px`);
     piece.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
-    piece.style.animationDuration = reduced ? '0.01s' : `${1.4 + Math.random() * 0.6}s`;
+    piece.style.animationDuration = reduced ? '0.01s' : `${2.2 + Math.random() * 1}s`;
     layer.appendChild(piece);
   }
-  setTimeout(() => layer.remove(), reduced ? 50 : 2200);
+  setTimeout(() => layer.remove(), reduced ? 50 : 3300);
 
   if (message) {
     const toast = document.createElement('div');

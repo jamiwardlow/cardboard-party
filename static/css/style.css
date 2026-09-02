@@ -977,11 +977,13 @@ textarea.mgf-val { resize: vertical; min-height: 8rem; font-size: 0.8rem; }
 .confetti-piece { position: absolute; width: 7px; height: 7px;
                   transform: translate(-50%, -50%);
                   animation: confetti-pop ease-out forwards; }
-/* Burst outward (0–30%), fall under gravity (30–85%), rest and fade (85–100%). */
+/* Burst outward (0–25%), flutter down under gravity with side-to-side sway
+   (25–85%), rest and fade (85–100%). */
 @keyframes confetti-pop {
   0%   { transform: translate(-50%, -50%) rotate(0deg); opacity: 1; }
-  30%  { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(calc(var(--rot) * 0.35)); opacity: 1; }
-  85%  { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + var(--fall))) rotate(var(--rot)); opacity: 1; }
+  25%  { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(calc(var(--rot) * 0.3)); opacity: 1; }
+  50%  { transform: translate(calc(-50% + var(--dx) + var(--sway)), calc(-50% + var(--dy) + var(--fall) * 0.5)) rotate(calc(var(--rot) * 0.55)); opacity: 1; }
+  75%  { transform: translate(calc(-50% + var(--dx) - var(--sway)), calc(-50% + var(--dy) + var(--fall) * 0.85)) rotate(calc(var(--rot) * 0.85)); opacity: 1; }
   100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + var(--fall))) rotate(var(--rot)); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
