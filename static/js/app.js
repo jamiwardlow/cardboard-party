@@ -315,6 +315,8 @@ function burstConfetti(originEl, message) {
     toast.className = 'confetti-message';
     toast.textContent = message;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), reduced ? 50 : 2000);
+    // Not tied to `reduced`: the toast's pop animation stays normal-speed
+    // under reduced motion (see style.css), so it needs the full 2s to read.
+    setTimeout(() => toast.remove(), 2000);
   }
 }

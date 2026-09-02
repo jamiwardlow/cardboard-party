@@ -1001,6 +1001,7 @@ textarea.mgf-val { resize: vertical; min-height: 8rem; font-size: 0.8rem; }
   80%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .confetti-message { animation-duration: 0.01s !important; }
-}
+/* Message keeps its normal-speed pop even under reduced motion — it's a
+   mild scale/fade, not a vestibular trigger, and squashing it to 0.01s made
+   the toast vanish before it could be read (only the confetti burst needs
+   quieting down). */
