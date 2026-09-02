@@ -1,5 +1,31 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Self-hosted (not Google Fonts CDN): these render fixed branding/chrome text,
+   so a font-display:optional race that falls back to system font on a cold
+   cache is worse here than a slightly bigger same-origin file. Preloaded in
+   base.html so the file starts downloading before the optional-swap decision. */
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 400;
+  font-display: optional;
+  src: url('/static/fonts/silkscreen-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Silkscreen';
+  font-style: normal;
+  font-weight: 700;
+  font-display: optional;
+  src: url('/static/fonts/silkscreen-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Press Start 2P';
+  font-style: normal;
+  font-weight: 400;
+  font-display: optional;
+  src: url('/static/fonts/press-start-2p-400.woff2') format('woff2');
+}
+
 :root {
   /* Render native controls (date pickers, their mm/dd/yyyy placeholders, selects,
      scrollbars) in dark mode so they match the theme and aren't dark-on-dark. */
