@@ -8,6 +8,18 @@
         "value": "space grotesk",
         "createdAt": "2026-08-26T19:13:06.164Z",
         "reason": "Design decision: Space Grotesk is used only as the body/content face (user-typed event names, player names, forms, descriptions), never as a display face — the pixel display faces (Silkscreen/Press Start 2P) carry all of the app's own fixed chrome labels instead. Operate-mode guidance (craft-floor.md) explicitly permits workhorse/system sans faces for body content; kept as the pre-existing incumbent body font for continuity."
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#5865f2",
+        "createdAt": "2026-08-26T19:36:22.602Z",
+        "reason": "Discord's official brand blurple, used only on the Discord-link CTA — must stay pixel-accurate to Discord's brand color, not reskinned into our palette"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#4752c4",
+        "createdAt": "2026-08-26T19:36:22.657Z",
+        "reason": "Discord's official brand blurple hover shade, same Discord-link CTA — brand-accuracy exception, not a design-system color"
       }
     ]
   }

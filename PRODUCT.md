@@ -9,11 +9,7 @@ web
 ## Users
 
 Volunteer/community organizers running Swiss-system tournaments and leagues for
-trading-card-game events (primarily Magic: The Gathering), for a specific local
-community (the East Bay MTG scene) that already coordinates over Discord
-alongside in-person play. Players in that community are the other user group:
-they register, get paired, and report results, mostly without ever opening the
-web app.
+trading-card-game events (primarily Magic: The Gathering), that usually coordinate over Discord alongside in-person play. Players are the other user group: they register, get paired, and report results, optionally without ever opening the web app.
 
 ## Product Purpose
 
@@ -36,7 +32,7 @@ platform (EventLink) doesn't do.
 ## Operating Context
 
 In-person Swiss events (one-day, multi-week league, or draft) run by a
-volunteer organizer, typically at a local game store or similar community
+volunteer organizer, typically at a bar, home, or similar community
 venue. Organizers work from the web app (pairing rounds, editing results,
 managing the waitlist); players interact primarily via the Discord bot
 (`/cparty`), with the web app as a secondary/optional surface for viewing

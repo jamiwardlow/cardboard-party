@@ -68,6 +68,11 @@ Firestore is never hit — mock `routes.events.get_event`, `routes.events.save_e
 etc. with `unittest.mock.patch` as needed. `GOOGLE_CLOUD_PROJECT` is unset at test
 startup so `gcp_secrets.get_secret` returns `''` without calling Secret Manager.
 
+`tests/e2e/` holds Playwright browser tests. They require `playwright install` (done
+once after `pip install -r requirements-test.txt`) and spin up a live in-process Flask
+server. CI **excludes** them (`--ignore=tests/e2e`); run locally with
+`python -m pytest tests/e2e -v`.
+
 **Environments:** prod and staging run the *same code*, differing only by
 environment config — `AVATARS_BUCKET` (GCS bucket, `storage.py`), `CANONICAL_HOST`
 (set only in prod's `app.yaml`), and the per-project OAuth client + Secret Manager
@@ -101,6 +106,16 @@ calls to a JSON API.
   `routes/events.py` and `discord_actions.py` to post round pairings and send result DMs.
 - **`discord_notify.py`** — round-label helpers (`_round_label`, `fmt_time`) shared
   between the web app and the bot. Originally sent webhook notifications; that is retired.
+- **`discord_identity.py`** — pure functions for matching a Discord user to a Cardboard
+  Party account: first by stored numeric `discord_id`, then by normalised handle
+  candidates (username and display name). `resolve_discord_identity` returns
+  `(google_id, handle_set)` and is the entry point for any Discord interaction that
+  needs to identify its invoker.
+- **`discord_match.py`** — open-match lookup and result reporting for Discord. Pure
+  functions: `discord_open_matches` lists a user's current open matches across all
+  events (used by the `/report` picker); `report_result_via_discord` records a result
+  from the reporter's perspective. Uses `discord_identity` to resolve the reporter
+  before touching any match.
 - **`event_actions.py`** — transport-free registration mutations: `register_player`,
   `unregister_player`, `join_waitlist`, `leave_waitlist`. Each returns `(result, None)`
   on success or `(None, error_str)` on failure. Called by both `routes/events.py` and
@@ -110,6 +125,16 @@ calls to a JSON API.
   `_is_full`, `_self_registration_blocked`, `_validate_result`, `make_player_entry`,
   `auto_check_in`, etc.). Imported by both `routes/events.py` and `discord_actions.py`
   to avoid circular imports between them.
+- **`event_announcements.py`** — Discord event-card posting and refresh. No Flask
+  context. `announce_event_to_channel` posts a card with a Register button and persists
+  `discord_announce` on the event; `refresh_event_announcement` edits the posted card
+  whenever registration status changes (open / full / closed).
+- **`event_view.py`** — `build_event_view(event, current_user)` enriches the raw event
+  dict before it is returned by any API endpoint: computes standings, strips sensitive
+  fields (`guest_token`, `discord_id`; replaces decklist content with `has_decklist` /
+  `decklist_status` flags), applies `delay_pairings` / `delay_standings` visibility
+  rules, and populates `can_manage`, `is_full`, `my_waitlist`, and co-organizer names.
+  Every route that returns event state to clients should call this.
 - **`event_queries.py`** — semantic query functions over `db.list_events()`. Callers
   should import named queries from here rather than calling `list_events()` with inline filters.
 - **`routes/event_fields.py`** — `clean_event_fields(raw, partial=False)` validates and
