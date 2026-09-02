@@ -60,7 +60,7 @@
   --font-body:    'Space Grotesk', system-ui, sans-serif;
   --font-mono:    'Space Mono', ui-monospace, monospace;
 
-  font-size: 16px;
+  font-size: 18px;
 }
 
 body { font-family: var(--font-body);
