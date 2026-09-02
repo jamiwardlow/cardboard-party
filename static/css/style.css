@@ -259,6 +259,7 @@ h2 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 400;
 .section-head { display: flex; align-items: center; justify-content: space-between;
                 gap: 0.75rem; flex-wrap: wrap; margin: 1.5rem 0 0.6rem; }
 .section-head h2 { margin: 0; }
+.rounds-heading { font-size: 1.1rem; padding-left: 0.5rem; }
 
 .events-list-heading { font-size: 1.15rem; }
 .round-actions-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
