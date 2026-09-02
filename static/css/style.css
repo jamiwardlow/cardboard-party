@@ -661,7 +661,7 @@ h2 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 400;
 .modal textarea { resize: vertical; line-height: 1.5; }
 .modal input:focus, .modal select:focus, .modal textarea:focus
                 { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
-.modal-actions  { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.25rem; }
+.modal-actions  { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.6rem; margin-top: 0.25rem; }
 .form-discord-link { text-align: left; margin: 0.9rem 0 0; font-size: 0.9rem; }
 
 .pairing-row        { display: flex; align-items: center; gap: 0.6rem;
@@ -679,7 +679,7 @@ h2 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 400;
                         font-size: 1.1rem; font-weight: 500; }
 .result-modal-players .vs-label { color: var(--muted); font-size: 0.75rem; flex-shrink: 0;
                                   font-family: var(--font-pixel); }
-.result-modal-players span      { flex: 1; }
+.result-modal-players span      { flex: 1; min-width: 0; }
 .result-modal-players span:last-child { text-align: right; }
 
 .result-grid        { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
