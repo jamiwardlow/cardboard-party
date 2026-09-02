@@ -890,8 +890,8 @@ h2 { font-family: var(--font-display); font-size: 0.9rem; font-weight: 400;
 .decklist-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .decklist-table th, .decklist-table td { padding: 0.5rem 0.75rem;
                    border-bottom: 1px solid var(--border); text-align: left; }
-.decklist-table th { background: var(--bg3); color: var(--muted); font-size: 0.66rem;
-                     font-family: var(--font-display);
+.decklist-table th { background: var(--bg3); color: var(--muted); font-size: 0.9rem;
+                     font-family: var(--font-display); font-weight: normal;
                      text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
 .decklist-table th[onclick] { cursor: pointer; user-select: none; }
 .decklist-table tbody tr:hover td { background: var(--accent-soft); }
