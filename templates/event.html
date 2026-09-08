@@ -868,7 +868,7 @@ function renderOwnerActions() {
     // Swiss is done — offer a cut to playoff (sizes that fit the field), else
     // the event is simply complete.
     const active = state.players.filter(p => !p.dropped).length;
-    const sizes  = [4, 8, 16].filter(n => n <= active);
+    const sizes  = state.structure === 'swiss' ? [] : [4, 8, 16].filter(n => n <= active);
     if (sizes.length) {
       pairBtn.classList.add('hidden');
       // The cut buttons replace the pair-next button here, so they carry the same

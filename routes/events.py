@@ -1240,6 +1240,8 @@ def api_cut_to_top(event_id):
         return jsonify({'error': 'A playoff bracket has already started'}), 400
     if not _swiss_complete(e):
         return jsonify({'error': 'Finish all rounds before cutting to a playoff'}), 400
+    if e.get('structure') == 'swiss':
+        return jsonify({'error': 'This event is set to Swiss only — no playoff cut'}), 400
 
     cut_size = (request.json or {}).get('cut_size')
     if cut_size not in CUT_SIZES:
