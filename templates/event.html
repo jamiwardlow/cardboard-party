@@ -634,8 +634,9 @@ function eventStage() {
   const rounds = state.rounds || [];
   if (!rounds.length) return 'notstarted';
   const last = rounds[rounds.length - 1];
+  if (state.status === 'finished') return 'completed';
   if (isBracketRound(last)) return (last.length === 1 && last[0].winner_id) ? 'completed' : 'inprogress';
-  if (state.status === 'finished' || swissComplete()) return 'completed';
+  if (swissComplete()) return 'completed';
   return 'inprogress';
 }
 

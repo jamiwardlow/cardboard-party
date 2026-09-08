@@ -206,11 +206,12 @@ function bracketRoundName(matchCount) {
 // paired-round heuristic only if the flag is somehow missing.
 function isComplete(e) {
   if (typeof e.complete === 'boolean') return e.complete;
+  if (e.status === 'finished') return true;
   const rounds = e.rounds || [];
   const last = rounds[rounds.length - 1];
   if (isBracketRound(last)) return last.length === 1 && !!last[0].winner_id;
   const done = rounds.length;
-  return e.status === 'finished' || (done > 0 && done >= expectedRounds(e));
+  return done > 0 && done >= expectedRounds(e);
 }
 
 // 'HH:MM' (24h) → friendly 12-hour time, mirroring the server's time12 filter.

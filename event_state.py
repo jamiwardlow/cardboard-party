@@ -81,11 +81,11 @@ def _event_complete(event: dict) -> bool:
     rounds = event.get('rounds') or []
     if not rounds:
         return False
+    if event.get('status') == 'finished':
+        return True
     last = rounds[-1]
     if _is_bracket_round(last):
         return len(last) == 1 and bool(last[0].get('winner_id'))
-    if event.get('status') == 'finished':
-        return True
     return _swiss_complete(event)
 
 
