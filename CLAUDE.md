@@ -15,6 +15,22 @@ After completing any meaningful unit of work:
 2. **Push to GitHub** (`git push origin main`).
 3. **Deploy to staging** (`gcloud app deploy staging.yaml --project=cardboard-party-staging`) and verify the change works before considering the task done.
 
+### Visual changes
+
+Any CSS/layout/visual change must be **looked at**, not inferred. Before reporting one
+done, screenshot the affected element and compare it against the intent:
+
+```bash
+python3 scripts/mobile_preview.py /events/e2e-test-event-001 /tmp/after.png
+```
+
+That script runs the app in-process (no OAuth, no live Firestore, same pattern as
+`tests/e2e/conftest.py`) and shoots an iPhone-13 viewport. For desktop or interactive
+states — modals, accordions, hover — drive the app with the browser tools instead.
+
+Describing a pixel bug in prose and guessing at CSS is how one mis-centred `vs` label
+turned into three commits and three deploys. Do not report a visual fix you have not seen.
+
 Do not batch unrelated changes into one commit. Do not deploy to prod unless explicitly asked.
 
 ## Commands
