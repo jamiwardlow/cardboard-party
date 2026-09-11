@@ -229,7 +229,7 @@ login); the client-side cropper in `player.html` sends a pre-cropped 512² JPEG.
 
 ## Frontend security conventions
 
-The dynamic pages (`index.html`, `event.html`) render by building HTML strings and
+The dynamic pages (`index.html`, `static/js/event.js`) render by building HTML strings and
 assigning to `innerHTML`. Player names, discord handles, and event names/formats are all
 free-text, so **any interpolation of user data into `innerHTML` must go through
 `escapeHtml()`** (defined in `static/js/app.js`) — otherwise you reintroduce stored XSS.
@@ -237,18 +237,3 @@ Server-rendered Jinja (`player.html`, `admin.html`, etc.) auto-escapes, so it's 
 default there. The OAuth flow uses a `state` nonce (CSRF) and only honors a post-login
 `next` if `_is_safe_redirect` says it's same-host (no open redirects); session cookies are
 `HttpOnly` + `SameSite=Lax`, and `Secure` in production.
-
-
-## Agent skills
-
-### Issue tracker
-
-Issues live in GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context layout — `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
