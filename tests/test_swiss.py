@@ -308,3 +308,34 @@ def test_r2_10player_pod_avoids_rematch():
                  and m['player2_id'] in prior.get(m['player1_id'], set())]
     assert not rematches, f'round 2 repeated a round-1 pairing: {rematches}'
     assert len(_ids(r2)) == 5
+
+
+# ── pair_round: backtrack instead of forcing a rematch ────────────────────────
+
+def test_pair_round_backtracks_out_of_a_forced_rematch():
+    """7-player Premodern monthly (cardboardparty.gg event 3BJUQ00rvX0VNSqzpXKS).
+
+    Going into round 3 the 3-point bracket is todd/sweet/tucker/thomas, of whom
+    only tucker and thomas have met. Greedy takes todd-sweet first and strands
+    tucker-thomas into a round-1 rematch; a rematch-free pairing existed inside
+    the same point bracket.
+    """
+    names = {'grant': 'Grant Freeman', 'jake': 'JAKE_SPEED', 'todd': 'DontKillTheTodd',
+             'sweet': 'Sweet_roll_thief', 'tucker': 'Tucker', 'thomas': 'doubting',
+             'sal': 'Sal F'}
+    players = [{'id': k, 'name': v, 'dropped': False} for k, v in names.items()]
+    bye = {'player1_id': 'jake', 'player2_id': BYE_PLAYER_ID, 'winner_id': 'jake',
+           'result': '2-0-0', 'is_bye': True}
+    r1 = [_win('grant', 'todd'), _win('sweet', 'sal'), _win('tucker', 'thomas'), bye]
+    r2 = [_win('jake', 'tucker'), _win('grant', 'sweet'), _win('thomas', 'sal'),
+          dict(bye, player1_id='todd', winner_id='todd')]
+
+    r3 = pair_round(players, [r1, r2])
+
+    from swiss import _opponent_history
+    prior = _opponent_history([r1, r2])
+    assert not [m for m in r3 if not m.get('is_bye')
+                and m['player2_id'] in prior.get(m['player1_id'], set())]
+    # Sal (0 points, no prior bye) still takes the bye, and the top two still meet.
+    assert any(m.get('is_bye') and m['player1_id'] == 'sal' for m in r3)
+    assert frozenset(['grant', 'jake']) in _ids(r3)

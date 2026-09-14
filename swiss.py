@@ -78,29 +78,52 @@ def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = Fa
 
 def _pair(players: list[dict], points: dict, opp_hist: dict) -> list[dict]:
     """
-    Greedy Swiss pairing: iterate down the sorted list, pair each unpaired
-    player with the highest-ranked unpaired player they haven't faced.
-    Falls back to allowing repeat matches if necessary (shouldn't happen in
-    short tournaments).
-    """
-    unpaired = list(players)
-    pairings  = []
+    Swiss pairing: walk down the sorted list pairing each player with the
+    highest-ranked opponent they haven't faced, backtracking whenever a choice
+    strands a later player with no legal opponent. Only if *no* rematch-free
+    pairing of the field exists do we fall back to allowing repeats.
 
+    Greedy alone isn't enough: with A,B,C,D left and only C-D having met, the
+    first pass takes A-B and leaves C-D forced into a rematch even though
+    A-C/B-D was available.
+    """
+    # ponytail: exponential in the worst case (a field with no valid pairing at
+    # all); the failed-subset memo keeps real events cheap. Swap in a proper
+    # max-weight matching if a 100+ player event ever stalls here.
+    failed: set = set()
+
+    def solve(unpaired: list[dict]):
+        if len(unpaired) < 2:
+            return []
+        key = frozenset(p['id'] for p in unpaired)
+        if key in failed:
+            return None
+        p1, rest = unpaired[0], unpaired[1:]
+        for i, p2 in enumerate(rest):
+            if p2['id'] in opp_hist.get(p1['id'], set()):
+                continue
+            tail = solve(rest[:i] + rest[i + 1:])
+            if tail is not None:
+                return [_make_pairing(p1, p2)] + tail
+        failed.add(key)
+        return None
+
+    pairings = solve(list(players))
+    if pairings is not None:
+        return pairings
+
+    # Everyone has played everyone (or close enough): greedy, repeats allowed.
+    unpaired = list(players)
+    pairings = []
     while len(unpaired) >= 2:
         p1 = unpaired.pop(0)
-        paired = False
-
         for i, p2 in enumerate(unpaired):
             if p2['id'] not in opp_hist.get(p1['id'], set()):
                 unpaired.pop(i)
-                pairings.append(_make_pairing(p1, p2))
-                paired = True
                 break
-
-        if not paired:
-            # Fallback: pair with next player regardless of history
-            p2 = unpaired.pop(0)
-            pairings.append(_make_pairing(p1, p2))
+        else:
+            p2 = unpaired.pop(0)   # forced rematch
+        pairings.append(_make_pairing(p1, p2))
 
     return pairings
 
