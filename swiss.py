@@ -535,6 +535,13 @@ def pair_draft_r2(players: list[dict], rounds: list[list[dict]],
         remaining.sort(key=lambda p: (-points[p['id']], p['name']))
         pairings.extend(_pair(remaining, points, opp_hist))
 
+    # An odd number of round-1 matches (10, 14, ... players, or a drop) leaves one
+    # match's two players as the entire fallback pool, so they're forced to replay
+    # each other. Plain Swiss beats a rematch: throw the pod pairing away.
+    if any(not m.get('is_bye') and m['player2_id'] in opp_hist.get(m['player1_id'], set())
+           for m in pairings):
+        return pair_round(players, rounds, best_of=best_of)
+
     return pairings
 
 

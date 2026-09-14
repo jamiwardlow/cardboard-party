@@ -291,3 +291,20 @@ def test_draft_r1_bye_result_bo1():
     rnd = pair_draft_r1(players, best_of=1)
     bye = next(m for m in rnd if m.get('is_bye'))
     assert bye['result'] == '1-0-0'
+
+
+# ── pair_draft_r2: never force a round-1 rematch ──────────────────────────────
+
+def test_r2_10player_pod_avoids_rematch():
+    """10 players = 5 r1 matches; the leftover group must not replay itself."""
+    players = _players(10)
+    p = {pl['seat']: pl['id'] for pl in players}
+    r1 = [_win(p[i], p[i + 5]) for i in range(1, 6)]
+    r2 = pair_draft_r2(players, [r1])
+
+    from swiss import _opponent_history
+    prior = _opponent_history([r1])
+    rematches = [m for m in r2 if not m.get('is_bye')
+                 and m['player2_id'] in prior.get(m['player1_id'], set())]
+    assert not rematches, f'round 2 repeated a round-1 pairing: {rematches}'
+    assert len(_ids(r2)) == 5
