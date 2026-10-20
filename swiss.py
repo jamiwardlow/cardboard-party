@@ -268,6 +268,20 @@ def apply_pairing_edit(current_round: list, new_pairings: list, players: list[di
     return new_pairings, changed, None
 
 
+def rematch_warnings(prior_rounds: list, old_round: list, new_round: list,
+                     players: list[dict]) -> list[str]:
+    """Non-blocking: 'A vs B' for each pair newly introduced by an edit that already
+    met in an earlier round. Pairs the round already had aren't re-flagged."""
+    names = {p['id']: p['name'] for p in players}
+    hist = _opponent_history(prior_rounds)
+    had = {frozenset((m['player1_id'], m['player2_id'])) for m in old_round}
+    return [f"{names.get(m['player1_id'], '?')} vs {names.get(m['player2_id'], '?')}"
+            for m in new_round
+            if not m.get('is_bye')
+            and m['player2_id'] in hist.get(m['player1_id'], ())
+            and frozenset((m['player1_id'], m['player2_id'])) not in had]
+
+
 def _bye_candidates(players: list[dict], points: dict, bye_hist: set) -> list[str]:
     """Bye recipients in preference order: players without a bye first, each group
     lowest-ranked first."""

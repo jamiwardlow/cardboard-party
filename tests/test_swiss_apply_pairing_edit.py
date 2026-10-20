@@ -59,3 +59,12 @@ def test_adds_a_pairing_for_players_not_already_in_the_round():
     assert len(new_round) == 3
     assert any({m['player1_id'], m['player2_id']} == {'p5', 'p6'} for m in new_round)
     assert {'p5', 'p6'} <= set(changed)
+
+
+def test_rematch_warnings_flags_only_new_repeat_pairs():
+    from swiss import rematch_warnings
+    m = lambda a, b: {'player1_id': a, 'player2_id': b}
+    players = [{'id': i, 'name': i.upper()} for i in 'abcd']
+    prior = [[m('a', 'b'), m('c', 'd')]]
+    assert rematch_warnings(prior, [m('a', 'c'), m('b', 'd')], [m('a', 'b'), m('c', 'd')], players) == ['A vs B', 'C vs D']
+    assert rematch_warnings(prior, [m('a', 'b'), m('c', 'd')], [m('a', 'b'), m('c', 'd')], players) == []

@@ -16,7 +16,7 @@ from db import (create_event, get_event, save_event, list_events, delete_event,
                 add_event_log, list_event_log, promote_waitlist_entry)
 from swiss import (pair_round, pair_draft_r1, pair_draft_r2, compute_standings, default_num_rounds,
                    make_bracket, next_bracket_round, CUT_SIZES, DRAW_RESULTS, id_safe_players, player_match_record,
-                   assign_tables, apply_pairing_edit)
+                   assign_tables, apply_pairing_edit, rematch_warnings)
 from routes.auth import get_current_user, login_required, discord_login_enabled
 from gcp_secrets import get_secret
 import discord_api
@@ -1776,12 +1776,13 @@ def api_edit_pairings(event_id, round_num):
     if err:
         return jsonify({'error': err}), 400
 
+    rematches = rematch_warnings(e['rounds'][:idx], e['rounds'][idx], new_round, e['players'])
     e['rounds'][idx] = new_round
     save_event(event_id, {'rounds': e['rounds']})
     # DM the players whose opponent or table actually changed, so they know to move.
     if changed:
         discord_api.dm_pairing_changed(e, round_num, changed, request.host_url)
-    return jsonify({'round_num': round_num, 'pairings': new_round})
+    return jsonify({'round_num': round_num, 'pairings': new_round, 'rematches': rematches})
 
 
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/matches/<int:match_idx>/table',

@@ -2288,8 +2288,12 @@ async function saveEditedPairings() {
     method: 'PUT', headers: {'Content-Type':'application/json'},
     body: JSON.stringify(payload),
   });
-  if (res.ok) { closeEditModal(); await init(); }
-  else { const e = await res.json(); editNote(e.error || 'Save failed.'); }
+  if (res.ok) {
+    const { rematches = [] } = await res.json();
+    closeEditModal(); await init();
+    if (rematches.length)
+      await alertDialog(`Saved. Heads up — these players have already met: ${rematches.join('; ')}.`);
+  } else { const e = await res.json(); editNote(e.error || 'Save failed.'); }
 }
 
 init();
