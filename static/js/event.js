@@ -1624,7 +1624,7 @@ function renderPlayers() {
     // Show the Discord handle inline on the row (organisers included) — a blank
     // where a handle would be flags who won't get the bot's notifications.
     const discord = p.discord
-      ? `<span class="player-discord">${escapeHtml(p.discord)}</span>` : '';
+      ? `<span class="player-discord${canManage() ? ' hide-mobile' : ''}">${escapeHtml(p.discord)}</span>` : '';
     const isDraft = (state.format || '').toLowerCase() === 'draft';
     const seatBadge = isDraft && p.seat ? `<span class="seat-badge">Seat ${p.seat}</span>` : '';
     const profileLink = p.google_id
