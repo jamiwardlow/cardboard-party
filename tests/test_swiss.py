@@ -339,3 +339,39 @@ def test_pair_round_backtracks_out_of_a_forced_rematch():
     # Sal (0 points, no prior bye) still takes the bye, and the top two still meet.
     assert any(m.get('is_bye') and m['player1_id'] == 'sal' for m in r3)
     assert frozenset(['grant', 'jake']) in _ids(r3)
+
+
+# ── Rematch avoidance: bye choice and minimum repeats ──────────────────────────
+
+def _met(a, b):
+    return {'player1_id': a, 'player2_id': b, 'winner_id': a, 'is_bye': False}
+
+
+def _rematches(pairings, rounds):
+    seen = {frozenset((m['player1_id'], m['player2_id'])) for r in rounds for m in r}
+    return [m for m in pairings if not m.get('is_bye')
+            and frozenset((m['player1_id'], m['player2_id'])) in seen]
+
+
+def test_bye_goes_to_whoever_avoids_a_rematch():
+    ps = [{'id': i, 'name': i} for i in 'abcde']
+    # Everyone is level on points, so 'a' is the default bye — but b,c,d,e have
+    # met in every pairing, so that bye forces a rematch. Another bye avoids it.
+    rounds = [[_met('b', 'c'), _met('d', 'e')], [_met('b', 'd'), _met('c', 'e')],
+              [_met('b', 'e'), _met('a', 'c')]]
+    for r in rounds:
+        for m in r:
+            m['winner_id'] = None
+            m['result'] = 'draw'
+    out = pair_round(ps, rounds)
+    assert not _rematches(out, rounds)
+    assert next(m for m in out if m.get('is_bye'))['player1_id'] != 'a'
+
+
+def test_all_played_everyone_still_pairs_everyone():
+    # Everyone has played everyone: both matches are unavoidable rematches.
+    ps = [{'id': i, 'name': i} for i in 'abcd']
+    rounds = [[_met('a', 'b'), _met('c', 'd')], [_met('a', 'c'), _met('b', 'd')],
+              [_met('a', 'd'), _met('b', 'c')]]
+    out = pair_round(ps, rounds)
+    assert len(out) == 2 and len(_rematches(out, rounds)) == 2

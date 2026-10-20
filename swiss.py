@@ -54,13 +54,22 @@ def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = Fa
     else:
         active.sort(key=lambda p: (-points[p['id']], p['name']))
 
-    # Handle bye for odd player count
+    # Handle bye for odd player count. The bye recipient is chosen together with
+    # the pairing: walk candidates in preference order and keep the first one that
+    # leaves the fewest rematches, so a bye never forces a rematch another bye avoids.
     bye_player_id: Optional[str] = None
     if len(active) % 2 == 1:
-        bye_player_id = _choose_bye(active, points, bye_hist)
-        active = [p for p in active if p['id'] != bye_player_id]
-
-    pairings = _pair(active, points, opp_hist)
+        best = None
+        for cand in _bye_candidates(active, points, bye_hist):
+            rest = [p for p in active if p['id'] != cand]
+            result = _pair(rest, opp_hist)
+            if best is None or result[1] < best[1][1]:
+                best = (cand, result)
+            if result[1] == 0:
+                break
+        bye_player_id, (pairings, _) = best
+    else:
+        pairings, _ = _pair(active, opp_hist)
 
     if bye_player_id:
         wins_needed = best_of // 2 + 1
@@ -76,56 +85,49 @@ def pair_round(players: list[dict], rounds: list[list[dict]], shuffle: bool = Fa
     return pairings
 
 
-def _pair(players: list[dict], points: dict, opp_hist: dict) -> list[dict]:
+def _pair(players: list[dict], opp_hist: dict) -> tuple[list[dict], int]:
     """
     Swiss pairing: walk down the sorted list pairing each player with the
     highest-ranked opponent they haven't faced, backtracking whenever a choice
-    strands a later player with no legal opponent. Only if *no* rematch-free
-    pairing of the field exists do we fall back to allowing repeats.
+    strands a later player with no legal opponent. If no rematch-free pairing
+    exists, allow as few rematches as possible (1, then 2, ...).
 
     Greedy alone isn't enough: with A,B,C,D left and only C-D having met, the
     first pass takes A-B and leaves C-D forced into a rematch even though
     A-C/B-D was available.
+
+    Returns (pairings, number_of_rematches).
     """
     # ponytail: exponential in the worst case (a field with no valid pairing at
     # all); the failed-subset memo keeps real events cheap. Swap in a proper
     # max-weight matching if a 100+ player event ever stalls here.
     failed: set = set()
 
-    def solve(unpaired: list[dict]):
+    def solve(unpaired: list[dict], budget: int):
         if len(unpaired) < 2:
             return []
-        key = frozenset(p['id'] for p in unpaired)
+        key = (frozenset(p['id'] for p in unpaired), budget)
         if key in failed:
             return None
         p1, rest = unpaired[0], unpaired[1:]
-        for i, p2 in enumerate(rest):
-            if p2['id'] in opp_hist.get(p1['id'], set()):
-                continue
-            tail = solve(rest[:i] + rest[i + 1:])
+        seen = opp_hist.get(p1['id'], set())
+        # Legal opponents first (in rank order), then rematches if budget allows.
+        order = [i for i, p in enumerate(rest) if p['id'] not in seen]
+        if budget:
+            order += [i for i, p in enumerate(rest) if p['id'] in seen]
+        for i in order:
+            cost = rest[i]['id'] in seen
+            tail = solve(rest[:i] + rest[i + 1:], budget - cost)
             if tail is not None:
-                return [_make_pairing(p1, p2)] + tail
+                return [_make_pairing(p1, rest[i])] + tail
         failed.add(key)
         return None
 
-    pairings = solve(list(players))
-    if pairings is not None:
-        return pairings
-
-    # Everyone has played everyone (or close enough): greedy, repeats allowed.
-    unpaired = list(players)
-    pairings = []
-    while len(unpaired) >= 2:
-        p1 = unpaired.pop(0)
-        for i, p2 in enumerate(unpaired):
-            if p2['id'] not in opp_hist.get(p1['id'], set()):
-                unpaired.pop(i)
-                break
-        else:
-            p2 = unpaired.pop(0)   # forced rematch
-        pairings.append(_make_pairing(p1, p2))
-
-    return pairings
+    for budget in range(len(players) // 2 + 1):
+        pairings = solve(list(players), budget)
+        if pairings is not None:
+            return pairings, budget
+    return [], 0   # unreachable: a budget of n/2 always succeeds
 
 
 def _make_pairing(p1: dict, p2: dict) -> dict:
@@ -266,16 +268,16 @@ def apply_pairing_edit(current_round: list, new_pairings: list, players: list[di
     return new_pairings, changed, None
 
 
+def _bye_candidates(players: list[dict], points: dict, bye_hist: set) -> list[str]:
+    """Bye recipients in preference order: players without a bye first, each group
+    lowest-ranked first."""
+    ranked = sorted(players, key=lambda p: (p['id'] in bye_hist, points[p['id']], p['name']))
+    return [p['id'] for p in ranked]
+
+
 def _choose_bye(players: list[dict], points: dict, bye_hist: set) -> str:
-    """
-    Pick the bye recipient: lowest-ranked player who hasn't had a bye.
-    If everyone has had a bye, pick the lowest-ranked overall.
-    """
-    eligible = [p for p in players if p['id'] not in bye_hist]
-    pool = eligible if eligible else players
-    # lowest-ranked = last in points-sorted list
-    pool_sorted = sorted(pool, key=lambda p: (points[p['id']], p['name']))
-    return pool_sorted[0]['id']
+    """Most-preferred bye recipient (see _bye_candidates), ignoring pairing."""
+    return _bye_candidates(players, points, bye_hist)[0]
 
 
 def _compute_points(players: list[dict], rounds: list[list[dict]]) -> dict:
@@ -556,7 +558,7 @@ def pair_draft_r2(players: list[dict], rounds: list[list[dict]],
                 'is_bye': True, 'table': None,
             })
         remaining.sort(key=lambda p: (-points[p['id']], p['name']))
-        pairings.extend(_pair(remaining, points, opp_hist))
+        pairings.extend(_pair(remaining, opp_hist)[0])
 
     # An odd number of round-1 matches (10, 14, ... players, or a drop) leaves one
     # match's two players as the entire fallback pool, so they're forced to replay
