@@ -11,7 +11,8 @@ def _ev(**kw):
 
 
 def _get(c, n):
-    with patch('routes.events.get_event', return_value=_ev()):
+    with patch('routes.events.get_event', return_value=_ev()), \
+         patch('event_queries.list_events', return_value=[]):
         return c.get(f'/events/evt1/rounds/{n}/pairings/print')
 
 
