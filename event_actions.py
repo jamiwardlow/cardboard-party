@@ -11,6 +11,7 @@ import uuid
 
 from db import get_event, save_event, set_player_dropped
 from event_state import (
+    entry_code_ok,
     _is_full, _now_iso, _self_registration_blocked,
     auto_check_in, make_player_entry,
 )
@@ -27,8 +28,7 @@ def register_player(event_id: str, *, name: str, google_id=None, discord: str = 
     blocked = _self_registration_blocked(e)
     if blocked:
         return None, blocked
-    event_code = e.get('entry_code')
-    if event_code and str(entry_code or '').strip() != event_code:
+    if not entry_code_ok(e, entry_code):
         return None, 'Incorrect entry code'
     if _is_full(e):
         cap = e.get('registration_cap', 0)
@@ -101,8 +101,7 @@ def join_waitlist(event_id: str, *, google_id: str = None, discord_id: str = Non
     blocked = _self_registration_blocked(e)
     if blocked:
         return None, blocked
-    event_code = e.get('entry_code')
-    if event_code and str(entry_code or '').strip() != event_code:
+    if not entry_code_ok(e, entry_code):
         return None, 'Incorrect entry code'
     if not _is_full(e):
         return None, 'This event still has open spots — register normally.'

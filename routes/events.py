@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 from event_state import (_now_iso, _slugify, _assign_draft_seat,
                          _self_registration_blocked, _validate_result,
                          _is_bracket_round, _swiss_complete, _event_complete,
-                         auto_check_in, make_player_entry, pairings_held_back)
+                         auto_check_in, make_player_entry, pairings_held_back, entry_code_ok)
 from player_actions import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
 from event_actions import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
@@ -68,8 +68,7 @@ def _log_action(event_id: str, action: str, detail: str = '', target: str = '', 
 
 def _entry_code_error(event: dict, data: dict) -> str | None:
     """If the event requires an entry code, check the supplied one. None if OK."""
-    code = event.get('entry_code')
-    if code and str((data or {}).get('entry_code') or '').strip() != code:
+    if not entry_code_ok(event, (data or {}).get('entry_code')):
         return 'Incorrect entry code'
     return None
 
@@ -879,6 +878,7 @@ def api_event_log(event_id):
     return jsonify(list_event_log(event_id))
 
 @events_bp.route('/api/events/<event_id>/join', methods=['POST'])
+@limiter.limit('10 per minute')
 def api_join_guest(event_id):
     """Self-join without a Google account. Creates a guest player and returns a
     private self-report token (also usable as a magic link) so they can report
@@ -1046,6 +1046,7 @@ def api_undrop_player(event_id, player_id):
     return jsonify({'ok': True})
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/rename', methods=['POST'])
+@limiter.limit('30 per minute')
 def api_rename_player(event_id, player_id):
     """Change the name shown for a player on this event (e.g. a real name for a
     larger event). Allowed for a manager, or for the player editing their own
@@ -1329,6 +1330,7 @@ def api_my_decklist(event_id):
 
 
 @events_bp.route('/api/events/<event_id>/decklist/import-moxfield', methods=['POST'])
+@limiter.limit('10 per minute')
 def api_import_moxfield(event_id):
     """Convert a public Moxfield deck URL to decklist text for the requester to
     review and save (we store the text, so it stays authoritative)."""
@@ -1346,6 +1348,7 @@ def api_import_moxfield(event_id):
 
 
 @events_bp.route('/api/events/<event_id>/players/<player_id>/decklist/import-moxfield', methods=['POST'])
+@limiter.limit('10 per minute')
 @login_required
 def api_organizer_import_moxfield(event_id, player_id):
     """Organiser: import a Moxfield deck URL for a specific player."""
@@ -1888,6 +1891,7 @@ def api_repair_round(event_id, round_num):
 # ── API: results ───────────────────────────────────────────────────────────────
 
 @events_bp.route('/api/events/<event_id>/rounds/<int:round_num>/results', methods=['POST'])
+@limiter.limit('60 per minute')
 def api_record_result(event_id, round_num):
     # No @login_required: guests report their own matches via a self-report token.
     e = get_event(event_id)

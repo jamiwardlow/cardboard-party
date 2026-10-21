@@ -4,6 +4,7 @@ Imported by both routes/events.py and discord_actions.py, so they live here to
 avoid a circular import between those two modules.
 """
 import datetime
+import hmac
 import re
 import uuid
 
@@ -154,3 +155,9 @@ def _validate_result(match: dict, winner_id, result, best_of: int = 3) -> str | 
     if winner_id != expected:
         return 'Winner does not match the score'
     return None
+
+
+def entry_code_ok(event: dict, supplied) -> bool:
+    """True if the event has no entry code or `supplied` matches it (constant-time)."""
+    code = event.get('entry_code')
+    return not code or hmac.compare_digest(str(supplied or '').strip().encode(), str(code).encode())
