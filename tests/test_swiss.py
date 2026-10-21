@@ -375,3 +375,17 @@ def test_all_played_everyone_still_pairs_everyone():
               [_met('a', 'd'), _met('b', 'c')]]
     out = pair_round(ps, rounds)
     assert len(out) == 2 and len(_rematches(out, rounds)) == 2
+
+
+def test_r2_10player_rematch_keeps_other_pod_pairings():
+    """Leftover 5v10 would rematch; release one group to Swiss but keep the other pods."""
+    players = _players(10)
+    p = {pl['seat']: pl['id'] for pl in players}
+    r1 = [_win(p[i], p[i + 5]) for i in range(1, 6)]
+    r2 = pair_draft_r2(players, [r1])
+    pairs = _ids(r2)
+    played = _ids(r1)
+    assert len(pairs) == 5 and not pairs & played
+    # odd group (1v6, 3v8) stays intact: winners meet, losers meet
+    assert frozenset([p[1], p[3]]) in pairs
+    assert frozenset([p[6], p[8]]) in pairs

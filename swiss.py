@@ -547,41 +547,47 @@ def pair_draft_r2(players: list[dict], rounds: list[list[dict]],
     odd_g = [m for m in r1_summaries if m['lower_seat'] % 2 == 1]
     even_g = [m for m in r1_summaries if m['lower_seat'] % 2 == 0]
 
-    pairings: list[dict] = []
-    covered: set = set()
-
+    pod_sets: list[list[dict]] = []  # one entry per complete 4-player group
     for group in (odd_g, even_g):
         for i in range(0, len(group) - 1, 2):
             m1, m2 = group[i], group[i + 1]
             ids = [m1['winner'], m1['loser'], m2['winner'], m2['loser']]
             if not all(pid in active_ids for pid in ids):
                 continue  # a player dropped; leave them for the fallback
-            pairings.append(_make_pairing(player_by_id[m1['winner']], player_by_id[m2['winner']]))
-            pairings.append(_make_pairing(player_by_id[m1['loser']], player_by_id[m2['loser']]))
-            covered.update(ids)
+            pod_sets.append([
+                _make_pairing(player_by_id[m1['winner']], player_by_id[m2['winner']]),
+                _make_pairing(player_by_id[m1['loser']], player_by_id[m2['loser']]),
+            ])
 
-    remaining = [p for p in active if p['id'] not in covered]
-    if remaining:
+    def swiss_pool(pool_ids: set) -> list[dict]:
+        remaining = [p for p in active if p['id'] in pool_ids]
+        out: list[dict] = []
         if len(remaining) % 2 == 1:
             bye_id = _choose_bye(remaining, points, bye_hist)
             remaining = [p for p in remaining if p['id'] != bye_id]
             wins_needed = best_of // 2 + 1
-            pairings.append({
+            out.append({
                 'player1_id': bye_id, 'player2_id': BYE_PLAYER_ID,
                 'winner_id': bye_id, 'result': f'{wins_needed}-0-0',
                 'is_bye': True, 'table': None,
             })
         remaining.sort(key=lambda p: (-points[p['id']], p['name']))
-        pairings.extend(_pair(remaining, opp_hist)[0])
+        out.extend(_pair(remaining, opp_hist)[0])
+        return out
 
-    # An odd number of round-1 matches (10, 14, ... players, or a drop) leaves one
-    # match's two players as the entire fallback pool, so they're forced to replay
-    # each other. Plain Swiss beats a rematch: throw the pod pairing away.
-    if any(not m.get('is_bye') and m['player2_id'] in opp_hist.get(m['player1_id'], set())
-           for m in pairings):
-        return pair_round(players, rounds, best_of=best_of)
+    # An odd number of round-1 matches (10, 14, ... players, or a drop) can leave a pool
+    # that is forced to replay. Plain Swiss beats a rematch, so release pod groups back
+    # into the Swiss pool one at a time (keeping the rest) until nothing rematches.
+    for released in range(len(pod_sets) + 1):
+        kept = pod_sets[:len(pod_sets) - released]
+        covered = {m[k] for pod in kept for m in pod for k in ('player1_id', 'player2_id')}
+        pool_ids = {p['id'] for p in active} - covered
+        swiss = swiss_pool(pool_ids) if pool_ids else []
+        if not any(not m.get('is_bye') and m['player2_id'] in opp_hist.get(m['player1_id'], set())
+                   for m in swiss):
+            return [m for pod in kept for m in pod] + swiss
 
-    return pairings
+    return pair_round(players, rounds, best_of=best_of)
 
 
 def pair_draft_r1(players: list[dict], bracket: bool = False,
