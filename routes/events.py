@@ -174,13 +174,19 @@ def _can_report_match(event: dict, match: dict, data: dict) -> bool:
     gp = _find_player_by_guest_token(event, token)
     return bool(gp and gp['id'] in sides)
 
+def _auto_starts_timer(event: dict) -> bool:
+    """Simple events always auto-start a configured round timer; advanced events opt in."""
+    return bool(event.get('round_timer_minutes')
+                and (event.get('auto_start_timer') or not event.get('advanced')))
+
+
 def _new_round_updates(event: dict) -> dict:
     """Fields to set whenever a new round is created: reset the round timer and,
     where delivery is delayed, re-hide pairings/standings until the organiser
     releases them.
 
-    The timer normally waits for the organiser's Start-timer button. With the
-    opt-in `auto_start_timer`, it instead starts the moment pairings go live: now
+    Advanced events wait for the organiser's Start-timer button unless they opt in
+    via `auto_start_timer`; simple events always auto-start. The timer then starts the moment pairings go live: now
     if they post immediately, or on release if delayed (see api_release_delivery),
     so the clock never runs while players can't yet see their pairings."""
     u = {'round_started_at': ''}
@@ -188,8 +194,7 @@ def _new_round_updates(event: dict) -> dict:
         u['pairings_released'] = False
     if event.get('delay_standings'):
         u['standings_released'] = False
-    if (event.get('auto_start_timer') and event.get('round_timer_minutes')
-            and not event.get('delay_pairings')):
+    if _auto_starts_timer(event) and not event.get('delay_pairings'):
         u['round_started_at'] = _now_iso()
     return u
 
@@ -1502,7 +1507,7 @@ def api_release_delivery(event_id):
     if what == 'pairings' and not was_released and e.get('rounds'):
         round_num = len(e['rounds'])
         # Opt-in auto-start: with delayed pairings, the clock begins on release.
-        if e.get('auto_start_timer') and e.get('round_timer_minutes'):
+        if _auto_starts_timer(e):
             now = _now_iso()
             save_event(event_id, {'round_started_at': now})
             e['round_started_at'] = now
