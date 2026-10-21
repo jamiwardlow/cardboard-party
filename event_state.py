@@ -24,6 +24,13 @@ def _active_count(event: dict) -> int:
     return len([p for p in event.get('players', []) if not p.get('dropped')])
 
 
+def pairings_held_back(event: dict) -> bool:
+    """True while the latest round's pairings are delayed and not yet released.
+    Non-managers must not see that round anywhere (API, list, print)."""
+    return bool(event.get('delay_pairings') and not event.get('pairings_released', True)
+                and event.get('rounds'))
+
+
 def _is_full(event: dict) -> bool:
     """True when a cap is set and active participants have reached it."""
     cap = event.get('registration_cap', 0)

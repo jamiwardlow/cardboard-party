@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 from event_state import (_now_iso, _slugify, _assign_draft_seat,
                          _self_registration_blocked, _validate_result,
                          _is_bracket_round, _swiss_complete, _event_complete,
-                         auto_check_in, make_player_entry)
+                         auto_check_in, make_player_entry, pairings_held_back)
 from player_actions import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
 from event_actions import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
@@ -512,7 +512,8 @@ def submit_mtggoldfish_page(event_id):
 @events_bp.route('/events/<event_id>/rounds/<int:round_num>/pairings/print')
 def print_pairings(event_id, round_num):
     """A clean, print-friendly pairings sheet for one round, sorted by table number
-    (byes and unassigned matches last). Public, like the event page. Renders the
+    (byes and unassigned matches last). Public, like the event page, except a
+    delayed, unreleased round is 404 for non-managers. Renders the
     table column only when the event uses table assignments."""
     from discord_notify import _round_label
     event = get_event(event_id)
@@ -521,6 +522,8 @@ def print_pairings(event_id, round_num):
     rounds = event.get('rounds', [])
     idx = round_num - 1
     if not (0 <= idx < len(rounds)):
+        return 'Round not found', 404
+    if round_num == len(rounds) and pairings_held_back(event) and not _can_manage(event):
         return 'Round not found', 404
     rnd = rounds[idx]
     names = {p['id']: p['name'] for p in event.get('players', [])}
@@ -614,8 +617,7 @@ def api_list_events():
         rounds = e.get('rounds') or []
         # Don't leak delayed pairings here either — hide the latest round from
         # non-managers until it's released.
-        pairings_hidden = (e.get('delay_pairings') and not e.get('pairings_released', True)
-                           and rounds and not _can_manage(e))
+        pairings_hidden = pairings_held_back(e) and not _can_manage(e)
         if pairings_hidden:
             rounds = rounds[:-1]
         slim = {k: e.get(k) for k in _LIST_FIELDS}
