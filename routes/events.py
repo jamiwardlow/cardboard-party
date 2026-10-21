@@ -597,7 +597,7 @@ def users_page():
 # slim players/rounds (below), not the whole event document — the full rounds
 # (every match) and player snapshots are large and unused by the listing, so
 # trimming them cuts payload and serialization as the event count grows.
-_LIST_FIELDS = ('id', 'name', 'owner_id', 'co_organizer_ids', 'game', 'event_type', 'format', 'date',
+_LIST_FIELDS = ('id', 'name', 'game', 'event_type', 'format', 'date',
                 'start_time', 'location', 'lat', 'lng', 'description', 'entry_cost',
                 'registration', 'registration_cap', 'status', 'num_rounds', 'tags',
                 'test_mode')
@@ -621,6 +621,9 @@ def api_list_events():
         if pairings_hidden:
             rounds = rounds[:-1]
         slim = {k: e.get(k) for k in _LIST_FIELDS}
+        # Booleans only — owner/co-organizer IDs (incl. pending:<email>) must not be public.
+        slim['is_organizer'] = bool(uid) and (uid == e.get('owner_id')
+                                              or uid in e.get('co_organizer_ids', []))
         # Completion is computed server-side (the slim rounds below drop `result`,
         # so the client can't tell a finished round from an unscored one).
         slim['complete'] = _event_complete(e)

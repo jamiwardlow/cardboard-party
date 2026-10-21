@@ -152,8 +152,7 @@ async function init() {
   if (me.signed_in) {
     document.getElementById('my-sections').classList.remove('hidden');
 
-    const organized  = events.filter(e =>
-      e.owner_id === me.user.id || (e.co_organizer_ids || []).includes(me.user.id));
+    const organized  = events.filter(e => e.is_organizer);
     // Any event you're a (non-dropped) player in counts as registered — including
     // ones you also organize, so adding yourself shows up here as expected.
     const registered = events.filter(e =>
