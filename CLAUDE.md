@@ -58,6 +58,10 @@ gcloud app browse --project=cardboard-party
 # Staging (separate project, isolated Firestore/bucket) — see DEPLOYING.md
 gcloud app deploy staging.yaml --project=cardboard-party-staging
 
+# Re-register Discord slash commands (run per env whenever the command set changes;
+# reads DISCORD_BOT_TOKEN / DISCORD_APP_ID like the app does)
+python register_commands.py
+
 # Seed staging Firestore with sample events (safe — refuses to run against prod)
 GOOGLE_CLOUD_PROJECT=cardboard-party-staging python seed_staging.py
 ```
@@ -97,6 +101,9 @@ See **DEPLOYING.md** for the full setup and the `--no-promote` safe-deploy flow.
 
 ## Architecture
 
+For UI work, `DESIGN.md` (visual system: 8-bit cartridge theme, tokens) and `PRODUCT.md`
+(product context) are the source of truth — read them before changing styles.
+
 All HTML is rendered server-side via Jinja templates and driven client-side by `fetch()`
 calls to a JSON API.
 
@@ -127,6 +134,9 @@ calls to a JSON API.
   `unregister_player`, `join_waitlist`, `leave_waitlist`), each returning `(result, None)`
   or `(None, error_str)`. Called by both `routes/events.py` and `discord_actions.py`;
   transport-specific side effects (DMs, announcements) stay with the caller.
+- **`player_actions.py`** — transport-free *organiser* player management (add, remove, pin
+  table, draft seat, shuffle). Unlike `event_actions.py` it takes an already-loaded event and
+  does not persist — the caller saves.
 - **`event_state.py`** — pure predicates/utilities over the event dict (slugify,
   fullness checks, result validation, player-entry building, auto check-in). Lives here,
   not in `routes/events.py`, so `discord_actions.py` can import it without a circular import.
