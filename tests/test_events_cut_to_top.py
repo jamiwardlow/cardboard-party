@@ -26,9 +26,9 @@ def _completed_swiss_event(**overrides):
 
 def _cut(auth_client, event):
     with patch('routes.events.get_event', return_value=event), \
-         patch('routes.events.save_event') as mock_save, \
-         patch('routes.events.discord_api.announce_round'), \
-         patch('routes.events.discord_api.dm_round_pairings'):
+         patch('round_actions.save_event') as mock_save, \
+         patch('round_actions.discord_api.announce_round'), \
+         patch('round_actions.discord_api.dm_round_pairings'):
         resp = auth_client.post('/api/events/evt1/cut', json={'cut_size': 4})
     return resp, mock_save
 

@@ -37,6 +37,7 @@ from event_state import (_now_iso, _slugify, _assign_draft_seat,
                          _self_registration_blocked,
                          _is_bracket_round, _swiss_complete, _event_complete,
                          auto_check_in, make_player_entry, pairings_held_back, entry_code_ok)
+from round_actions import pair_next_round, cut_to_top, repair_round, _auto_starts_timer
 from result_actions import record_result, edit_result, delete_result
 from player_actions import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
 from event_actions import (register_player, unregister_player,
@@ -173,43 +174,6 @@ def _can_report_match(event: dict, match: dict, data: dict) -> bool:
     token = request.headers.get('X-Guest-Token') or (data or {}).get('guest_token')
     gp = _find_player_by_guest_token(event, token)
     return bool(gp and gp['id'] in sides)
-
-def _auto_starts_timer(event: dict) -> bool:
-    """Simple events always auto-start a configured round timer; advanced events opt in."""
-    return bool(event.get('round_timer_minutes')
-                and (event.get('auto_start_timer') or not event.get('advanced')))
-
-
-def _new_round_updates(event: dict) -> dict:
-    """Fields to set whenever a new round is created: reset the round timer and,
-    where delivery is delayed, re-hide pairings/standings until the organiser
-    releases them.
-
-    Advanced events wait for the organiser's Start-timer button unless they opt in
-    via `auto_start_timer`; simple events always auto-start. The timer then starts the moment pairings go live: now
-    if they post immediately, or on release if delayed (see api_release_delivery),
-    so the clock never runs while players can't yet see their pairings."""
-    u = {'round_started_at': ''}
-    if event.get('delay_pairings'):
-        u['pairings_released'] = False
-    if event.get('delay_standings'):
-        u['standings_released'] = False
-    if _auto_starts_timer(event) and not event.get('delay_pairings'):
-        u['round_started_at'] = _now_iso()
-    return u
-
-
-def _deliver_pairings(event: dict, round_num: int, base_url: str):
-    """Announce a round's pairings to the linked Discord channel and DM each player.
-    Withheld when 'Delay pairings' is on — a freshly paired round is then unreleased,
-    so delivery waits until the organiser releases it (see api_release_delivery),
-    keeping Discord in step with the web view that already hides delayed pairings."""
-    if event.get('delay_pairings'):
-        return
-    discord_api.announce_round(event, round_num, base_url)
-    discord_api.dm_round_pairings(event, round_num, base_url)
-
-
 
 # ── Pages ──────────────────────────────────────────────────────────────────────
 
@@ -1156,88 +1120,10 @@ def api_pair_round(event_id):
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
 
-    # If a playoff bracket is underway, "pair" advances it to the next round by
-    # pairing the winners. Every match needs a winner first (single elimination
-    # has no draws — a drawn match must be resolved to a decisive result).
-    if e['rounds'] and _is_bracket_round(e['rounds'][-1]):
-        last = e['rounds'][-1]
-        if len(last) <= 1:
-            return jsonify({'error': 'The playoff is already complete'}), 400
-        if any(m.get('winner_id') is None for m in last):
-            return jsonify({'error': 'Every playoff match needs a winner before advancing '
-                                     '(resolve any draws first)'}), 400
-        new_round = next_bracket_round(last)
-        assign_tables(new_round, e['players'], e)
-        e['rounds'].append(new_round)
-        ru = _new_round_updates(e)
-        save_event(event_id, {'rounds': e['rounds'], **ru})
-        e.update(ru)   # so _deliver_pairings sees an auto-started timer
-        round_num = len(e['rounds'])
-        _deliver_pairings(e, round_num, request.host_url)
-        return jsonify({'round_num': round_num, 'pairings': new_round})
-
-    if e['rounds'] and e.get('event_type') != 'League':
-        last = e['rounds'][-1]
-        unfinished = [m for m in last
-                      if not m.get('is_bye')
-                      and m.get('winner_id') is None
-                      and m.get('result') not in DRAW_RESULTS]
-        if unfinished:
-            return jsonify({'error': 'Previous round has unrecorded results'}), 400
-    num_rounds = e['num_rounds'] or default_num_rounds(len(e['players']))
-    if len(e['rounds']) >= num_rounds:
-        return jsonify({'error': 'All rounds already paired'}), 400
-    # When check-in is required, only checked-in players are paired.
-    players_to_pair = e['players']
-    if e.get('require_check_in'):
-        players_to_pair = [p for p in e['players'] if p.get('checked_in')]
-        if len([p for p in players_to_pair if not p.get('dropped')]) < 2:
-            return jsonify({'error': 'Need at least 2 checked-in players to pair'}), 400
-    fmt_lower = (e.get('format') or '').lower()
-    is_draft_r1 = fmt_lower == 'draft' and not e['rounds']
-    is_draft_r2 = fmt_lower == 'draft' and len(e['rounds']) == 1
-
-    if is_draft_r1:
-        # Seats are normally assigned at registration. Fill any gaps for players
-        # who joined before this feature was added.
-        active = [p for p in players_to_pair if not p.get('dropped')]
-        unseated = [p for p in active if not isinstance(p.get('seat'), int)]
-        if unseated:
-            random.shuffle(unseated)
-            used = {p['seat'] for p in active if isinstance(p.get('seat'), int)}
-            seat = 1
-            for p in unseated:
-                while seat in used:
-                    seat += 1
-                for ep in e['players']:
-                    if ep['id'] == p['id']:
-                        ep['seat'] = seat
-                        break
-                p['seat'] = seat
-                used.add(seat)
-                seat += 1
-        is_single_elim = e.get('structure') == 'single_elim'
-        new_round = pair_draft_r1(players_to_pair, bracket=is_single_elim,
-                                  best_of=e.get('best_of', 3))
-    elif is_draft_r2:
-        new_round = pair_draft_r2(players_to_pair, e['rounds'], best_of=e.get('best_of', 3))
-    else:
-        new_round = pair_round(players_to_pair, e['rounds'], best_of=e.get('best_of', 3))
-
-    assign_tables(new_round, e['players'], e)
-    e['rounds'].append(new_round)
-    updates = {'rounds': e['rounds'], 'status': 'active', 'registration': 'closed',
-               **_new_round_updates(e)}
-    if is_draft_r1:
-        updates['players'] = e['players']   # persist seat assignments
-    save_event(event_id, updates)
-    e.update(updates)   # reflect status/registration + any auto-started timer in-memory
-    refresh_event_announcement(e)
-
-    round_num  = len(e['rounds'])
-    _deliver_pairings(e, round_num, request.host_url)
-
-    return jsonify({'round_num': round_num, 'pairings': new_round})
+    result, err = pair_next_round(e, request.host_url)
+    if err:
+        return jsonify({'error': err}), 400
+    return jsonify(result)
 
 
 @events_bp.route('/api/events/<event_id>/cut', methods=['POST'])
@@ -1248,31 +1134,10 @@ def api_cut_to_top(event_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    if e['rounds'] and _is_bracket_round(e['rounds'][-1]):
-        return jsonify({'error': 'A playoff bracket has already started'}), 400
-    if not _swiss_complete(e):
-        return jsonify({'error': 'Finish all rounds before cutting to a playoff'}), 400
-    if e.get('structure') == 'swiss':
-        return jsonify({'error': 'This event is set to Swiss only — no playoff cut'}), 400
-
-    cut_size = (request.json or {}).get('cut_size')
-    if cut_size not in CUT_SIZES:
-        return jsonify({'error': 'Cut size must be 4, 8, or 16'}), 400
-    active = [p for p in e['players'] if not p.get('dropped')]
-    if cut_size > len(active):
-        return jsonify({'error': f'Only {len(active)} active players — '
-                                 f'not enough for a top {cut_size}'}), 400
-
-    standings = compute_standings(e['players'], e['rounds'])
-    new_round, seeds = make_bracket(standings, cut_size)
-    assign_tables(new_round, e['players'], e)
-    e['rounds'].append(new_round)
-    save_event(event_id, {'rounds': e['rounds'], 'cut_size': cut_size, 'cut_seeds': seeds,
-                          **_new_round_updates(e)})
-
-    round_num = len(e['rounds'])
-    _deliver_pairings(e, round_num, request.host_url)
-    return jsonify({'round_num': round_num, 'cut_size': cut_size, 'pairings': new_round})
+    result, err = cut_to_top(e, (request.json or {}).get('cut_size'), request.host_url)
+    if err:
+        return jsonify({'error': err}), 400
+    return jsonify(result)
 
 
 @events_bp.route('/api/events/<event_id>/timer', methods=['POST'])
@@ -1871,22 +1736,11 @@ def api_repair_round(event_id, round_num):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    idx = round_num - 1
-    if idx != len(e['rounds']) - 1:
-        return jsonify({'error': 'Only the latest round can be re-paired'}), 400
-    if _is_bracket_round(e['rounds'][idx]):
-        return jsonify({'error': 'Playoff rounds cannot be re-paired'}), 400
-    # shuffle=True so a re-pair yields a *different* valid pairing (the initial
-    # pair is deterministic, so re-pairing it unchanged would reproduce it exactly).
-    new_round = pair_round(e['players'], e['rounds'][:idx], shuffle=True, best_of=e.get('best_of', 3))
-    assign_tables(new_round, e['players'], e)
-    e['rounds'][idx] = new_round
-    save_event(event_id, {'rounds': e['rounds'], **_new_round_updates(e)})
-
-    _deliver_pairings(e, round_num, request.host_url)
-
+    result, err = repair_round(e, round_num, request.host_url)
+    if err:
+        return jsonify({'error': err}), 400
     _log_action(event_id, 'repair', f're-paired round {round_num}')
-    return jsonify({'round_num': round_num, 'pairings': new_round})
+    return jsonify(result)
 
 
 # ── API: results ───────────────────────────────────────────────────────────────

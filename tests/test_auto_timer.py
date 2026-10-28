@@ -1,4 +1,4 @@
-from routes.events import _new_round_updates
+from round_actions import _new_round_updates
 
 
 def test_simple_event_autostarts_timer():
