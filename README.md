@@ -64,7 +64,7 @@ Firestore is never touched in tests. Browser tests live in `tests/e2e/`. They ne
 | `swiss.py` | Pure pairing, standings, and bracket logic |
 | `db.py` | All Firestore access |
 | `routes/` | Auth, event pages and API, Discord interactions |
-| `event_actions.py`, `player_actions.py`, `discord_actions.py` | Transport-free mutations shared by web and Discord |
+| `player_lifecycle.py`, `discord_actions.py` | Transport-free mutations shared by web and Discord |
 | `event_view.py` | Builds the event payload returned to clients |
 | `templates/`, `static/` | Jinja templates, JS, and CSS |
 

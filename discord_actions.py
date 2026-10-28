@@ -19,7 +19,7 @@ from db import (get_event, save_event, list_events, list_users,
 from event_state import (_slugify, _assign_draft_seat, _is_full,
                          _self_registration_blocked, _now_iso,
                          make_player_entry)
-from event_actions import (register_player, unregister_player,
+from player_lifecycle import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
 from swiss import compute_standings, DRAW_RESULTS
 from event_announcements import refresh_event_announcement, registration_card_status

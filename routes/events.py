@@ -39,9 +39,9 @@ from event_state import (_now_iso, _slugify, _assign_draft_seat,
                          auto_check_in, make_player_entry, pairings_held_back, entry_code_ok)
 from round_actions import pair_next_round, cut_to_top, repair_round, _auto_starts_timer
 from result_actions import record_result, edit_result, delete_result
-from player_actions import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
-from event_actions import (register_player, unregister_player,
-                           join_waitlist, leave_waitlist)
+from player_lifecycle import (register_player, unregister_player,
+                              join_waitlist, leave_waitlist,
+                              add_player, remove_player, set_fixed_table, set_seat, shuffle_seats)
 import event_queries
 from event_announcements import refresh_event_announcement, announce_event_to_channel
 from event_view import build_event_view, players_missing_discord_handle, redact_players

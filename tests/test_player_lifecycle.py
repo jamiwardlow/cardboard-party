@@ -1,8 +1,8 @@
 """
-Tests for event_actions.py — the transport-free registration mutation layer.
+Tests for player_lifecycle.py — the transport-free registration mutation layer.
 
 All tests call functions directly (no Flask client, no Firestore).
-db calls are mocked at the event_actions module level.
+db calls are mocked at the player_lifecycle module level.
 """
 from unittest.mock import patch, MagicMock, call
 import pytest
@@ -26,11 +26,11 @@ def make_player(name='Alice', google_id='gid_alice', discord_id=None,
 
 
 def _patch(event, save=None, drop=None):
-    """Context manager that patches all db calls in event_actions."""
+    """Context manager that patches all db calls in player_lifecycle."""
     return (
-        patch('event_actions.get_event', return_value=event),
-        patch('event_actions.save_event', save or MagicMock()),
-        patch('event_actions.set_player_dropped', drop or MagicMock()),
+        patch('player_lifecycle.get_event', return_value=event),
+        patch('player_lifecycle.save_event', save or MagicMock()),
+        patch('player_lifecycle.set_player_dropped', drop or MagicMock()),
     )
 
 
@@ -39,14 +39,14 @@ def _patch(event, save=None, drop=None):
 class TestRegisterPlayer:
 
     def _call(self, event, save=None, **kw):
-        from event_actions import register_player
-        with patch('event_actions.get_event', return_value=event), \
-             patch('event_actions.save_event', save or MagicMock()):
+        from player_lifecycle import register_player
+        with patch('player_lifecycle.get_event', return_value=event), \
+             patch('player_lifecycle.save_event', save or MagicMock()):
             return register_player('evt1', name='Bob', google_id='gid_bob', **kw)
 
     def test_returns_error_when_event_not_found(self):
-        from event_actions import register_player
-        with patch('event_actions.get_event', return_value=None):
+        from player_lifecycle import register_player
+        with patch('player_lifecycle.get_event', return_value=None):
             player, err = register_player('evt1', name='Bob', google_id='gid_bob')
         assert player is None
         assert 'no longer exists' in err
@@ -79,9 +79,9 @@ class TestRegisterPlayer:
     def test_blocks_when_already_registered(self):
         existing = make_player(google_id='gid_bob')
         evt = minimal_event(players=[existing])
-        from event_actions import register_player
-        with patch('event_actions.get_event', return_value=evt), \
-             patch('event_actions.save_event', MagicMock()):
+        from player_lifecycle import register_player
+        with patch('player_lifecycle.get_event', return_value=evt), \
+             patch('player_lifecycle.save_event', MagicMock()):
             player, err = register_player('evt1', name='Bob', google_id='gid_bob')
         assert player is None
         assert 'already registered' in err.lower()
@@ -124,9 +124,9 @@ class TestRegisterPlayer:
         def capture(eid, fields):
             saved.update(fields)
 
-        from event_actions import register_player
-        with patch('event_actions.get_event', return_value=evt), \
-             patch('event_actions.save_event', capture):
+        from player_lifecycle import register_player
+        with patch('player_lifecycle.get_event', return_value=evt), \
+             patch('player_lifecycle.save_event', capture):
             player, err = register_player(
                 'evt1', name='Bob', google_id='gid_bob', discord_id='did_bob',
             )
@@ -136,9 +136,9 @@ class TestRegisterPlayer:
     def test_sets_discord_handle_on_reactivation_when_missing(self):
         dropped = make_player(name='Bob', google_id='gid_bob', dropped=True, discord='')
         evt = minimal_event(players=[dropped])
-        from event_actions import register_player
-        with patch('event_actions.get_event', return_value=evt), \
-             patch('event_actions.save_event', MagicMock()):
+        from player_lifecycle import register_player
+        with patch('player_lifecycle.get_event', return_value=evt), \
+             patch('player_lifecycle.save_event', MagicMock()):
             player, err = register_player(
                 'evt1', name='Bob', google_id='gid_bob', discord='newhandle',
             )
@@ -163,15 +163,15 @@ class TestRegisterPlayer:
 class TestUnregisterPlayer:
 
     def _call(self, event, save=None, drop=None, **kw):
-        from event_actions import unregister_player
-        with patch('event_actions.get_event', return_value=event), \
-             patch('event_actions.save_event', save or MagicMock()), \
-             patch('event_actions.set_player_dropped', drop or MagicMock()):
+        from player_lifecycle import unregister_player
+        with patch('player_lifecycle.get_event', return_value=event), \
+             patch('player_lifecycle.save_event', save or MagicMock()), \
+             patch('player_lifecycle.set_player_dropped', drop or MagicMock()):
             return unregister_player('evt1', **kw)
 
     def test_returns_error_when_event_not_found(self):
-        from event_actions import unregister_player
-        with patch('event_actions.get_event', return_value=None):
+        from player_lifecycle import unregister_player
+        with patch('player_lifecycle.get_event', return_value=None):
             result, err = unregister_player('evt1', google_id='gid_bob')
         assert result is None
         assert 'no longer exists' in err
@@ -237,9 +237,9 @@ class TestUnregisterPlayer:
 class TestJoinWaitlist:
 
     def _call(self, event, save=None, **kw):
-        from event_actions import join_waitlist
-        with patch('event_actions.get_event', return_value=event), \
-             patch('event_actions.save_event', save or MagicMock()):
+        from player_lifecycle import join_waitlist
+        with patch('player_lifecycle.get_event', return_value=event), \
+             patch('player_lifecycle.save_event', save or MagicMock()):
             return join_waitlist('evt1', name='Bob', google_id='gid_bob', **kw)
 
     def _full_event(self, extra_waitlist=None):
@@ -295,9 +295,9 @@ class TestJoinWaitlist:
         def capture(eid, fields):
             saved.update(fields)
 
-        from event_actions import join_waitlist
-        with patch('event_actions.get_event', return_value=evt), \
-             patch('event_actions.save_event', capture):
+        from player_lifecycle import join_waitlist
+        with patch('player_lifecycle.get_event', return_value=evt), \
+             patch('player_lifecycle.save_event', capture):
             result, err = join_waitlist(
                 'evt1', name='Bob', google_id='gid_bob', discord_id='did_bob',
                 extra_fields={'added_by_organizer': True},
@@ -313,14 +313,14 @@ class TestJoinWaitlist:
 class TestLeaveWaitlist:
 
     def _call(self, event, save=None, **kw):
-        from event_actions import leave_waitlist
-        with patch('event_actions.get_event', return_value=event), \
-             patch('event_actions.save_event', save or MagicMock()):
+        from player_lifecycle import leave_waitlist
+        with patch('player_lifecycle.get_event', return_value=event), \
+             patch('player_lifecycle.save_event', save or MagicMock()):
             return leave_waitlist('evt1', **kw)
 
     def test_returns_error_when_event_not_found(self):
-        from event_actions import leave_waitlist
-        with patch('event_actions.get_event', return_value=None):
+        from player_lifecycle import leave_waitlist
+        with patch('player_lifecycle.get_event', return_value=None):
             result, err = leave_waitlist('evt1', google_id='gid_bob')
         assert result is None
         assert 'no longer exists' in err

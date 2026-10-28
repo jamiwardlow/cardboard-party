@@ -1,10 +1,10 @@
 """
-Tests for player_actions.py — organiser player-management mutations.
+Tests for the organiser half of player_lifecycle.py — organiser player-management mutations.
 
 All tests call functions directly against a plain dict (no Flask, no mocks).
 """
 from tests.conftest import minimal_event
-from player_actions import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
+from player_lifecycle import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
 
 
 def _player(pid, name, **kw):

@@ -130,13 +130,12 @@ calls to a JSON API.
   entry point any Discord interaction uses to identify its invoker.
 - **`discord_match.py`** — open-match lookup and result reporting for Discord; resolves
   the reporter via `discord_identity` before touching a match.
-- **`event_actions.py`** — transport-free registration mutations (`register_player`,
-  `unregister_player`, `join_waitlist`, `leave_waitlist`), each returning `(result, None)`
-  or `(None, error_str)`. Called by both `routes/events.py` and `discord_actions.py`;
-  transport-specific side effects (DMs, announcements) stay with the caller.
-- **`player_actions.py`** — transport-free *organiser* player management (add, remove, pin
-  table, draft seat, shuffle). Unlike `event_actions.py` it takes an already-loaded event and
-  does not persist — the caller saves.
+- **`player_lifecycle.py`** — transport-free player lifecycle; owns the full check, waitlist
+  fallback and waitlist-entry shape. Self-service (`register_player`, `unregister_player`,
+  `join_waitlist`, `leave_waitlist`) load + save by event id; organiser (`add_player`,
+  `remove_player`, `set_fixed_table`, `set_seat`, `shuffle_seats`) take an already-loaded event
+  and do not persist — the caller saves. All return `(result, None)` or `(None, error_str)`.
+  Transport-specific side effects (DMs, announcements, logging) stay with the caller.
 - **`event_state.py`** — pure predicates/utilities over the event dict (slugify,
   fullness checks, result validation, player-entry building, auto check-in). Lives here,
   not in `routes/events.py`, so `discord_actions.py` can import it without a circular import.
