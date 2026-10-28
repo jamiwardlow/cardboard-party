@@ -34,9 +34,10 @@ import uuid
 
 logger = logging.getLogger(__name__)
 from event_state import (_now_iso, _slugify, _assign_draft_seat,
-                         _self_registration_blocked, _validate_result,
+                         _self_registration_blocked,
                          _is_bracket_round, _swiss_complete, _event_complete,
                          auto_check_in, make_player_entry, pairings_held_back, entry_code_ok)
+from result_actions import record_result, edit_result, delete_result
 from player_actions import add_player, remove_player, set_fixed_table, set_seat, shuffle_seats
 from event_actions import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
@@ -1910,20 +1911,10 @@ def api_record_result(event_id, round_num):
     match = rnd[match_index]
     if not _can_report_match(e, match, data):
         return jsonify({'error': 'You can only report results for your own matches'}), 403
-    if match.get('is_bye'):
-        return jsonify({'error': 'Cannot record a result for a bye'}), 400
-    if result == '0-0-3' and e.get('intentional_draws_frowned'):
-        return jsonify({'error': 'Intentional draws are not allowed for this event'}), 400
-    err = _validate_result(match, winner_id, result, e.get('best_of', 3))
+    # Tells both players over Discord (turns their pairing DM into a result card).
+    _, err = record_result(e, idx, match_index, winner_id, result, request.host_url)
     if err:
         return jsonify({'error': err}), 400
-    match['winner_id'] = winner_id
-    match['result']    = result
-    save_event(event_id, {'rounds': e['rounds']})
-    # Tell both players over Discord: turn their pairing DM into a result card
-    # (outcome + event link + a disabled "Result reported" button), or send a fresh
-    # card if they have none. Covers TO/web entry, not just an opponent reporting.
-    discord_api.notify_result(e, idx, match_index, request.host_url)
     # Log it, naming the reporter (signed-in user, or the guest who holds the token).
     u = get_current_user()
     actor = u['name'] if u else None
@@ -2075,17 +2066,9 @@ def api_edit_result(event_id, round_num, match_index):
     winner_id = data.get('winner_id')
     result    = data.get('result')
 
-    if rnd[match_index].get('is_bye'):
-        return jsonify({'error': 'Cannot edit a bye result'}), 400
-    if result == '0-0-3' and e.get('intentional_draws_frowned'):
-        return jsonify({'error': 'Intentional draws are not allowed for this event'}), 400
-    err = _validate_result(rnd[match_index], winner_id, result, e.get('best_of', 3))
+    _, err = edit_result(e, idx, match_index, winner_id, result, request.host_url)
     if err:
         return jsonify({'error': err}), 400
-
-    rnd[match_index]['winner_id'] = winner_id
-    rnd[match_index]['result']    = result
-    save_event(event_id, {'rounds': e['rounds']})
     names = {p['id']: p['name'] for p in e['players']}
     m = rnd[match_index]
     summ = 'draw' if result in DRAW_RESULTS else (result or '')
@@ -2112,16 +2095,11 @@ def api_delete_result(event_id, round_num, match_index):
         return jsonify({'error': 'Invalid match_index'}), 400
 
     match = rnd[match_index]
-    if match.get('is_bye'):
-        return jsonify({'error': 'Cannot delete a bye result'}), 400
-    if match.get('winner_id') is None and match.get('result') not in DRAW_RESULTS:
-        return jsonify({'error': 'No result to delete'}), 400
-
+    was, err = delete_result(e, idx, match_index)
+    if err:
+        return jsonify({'error': err}), 400
     names = {p['id']: p['name'] for p in e['players']}
-    summ = 'draw' if match['result'] in DRAW_RESULTS else (match['result'] or '')
-    match['winner_id'] = None
-    match['result']    = None
-    save_event(event_id, {'rounds': e['rounds']})
+    summ = 'draw' if was['result'] in DRAW_RESULTS else (was['result'] or '')
     _log_action(event_id, 'result',
                 f"deleted round {round_num} result: {names.get(match.get('player1_id'), '?')} vs "
                 f"{names.get(match.get('player2_id'), '?')} (was {summ})")

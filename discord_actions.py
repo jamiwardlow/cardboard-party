@@ -17,7 +17,7 @@ from db import (get_event, save_event, list_events, list_users,
                 add_event_log, record_invite, recent_invite_count,
                 target_invited_since, is_invite_opted_out, is_admin)
 from event_state import (_slugify, _assign_draft_seat, _is_full,
-                         _self_registration_blocked, _now_iso, _validate_result,
+                         _self_registration_blocked, _now_iso,
                          make_player_entry)
 from event_actions import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)

@@ -41,9 +41,9 @@ class TestReportResultViaDiscord:
         from discord_match import report_result_via_discord
         with patch('discord_match.get_event', return_value=event), \
              patch('discord_identity.list_users', return_value=[]), \
-             patch('discord_match.save_event', MagicMock()), \
+             patch('result_actions.save_event', MagicMock()), \
              patch('discord_match.add_event_log', MagicMock()), \
-             patch('discord_match.discord_api'):
+             patch('result_actions.discord_api'):
             return report_result_via_discord('evt1', 0, 0, discord_id, code, **kw)
 
     def test_records_a_win(self):

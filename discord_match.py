@@ -2,9 +2,9 @@
 Discord match layer — open-match lookup and result reporting for Discord interactions.
 No Flask context: pure functions over plain dicts.
 """
-import discord_api
-from db import get_event, save_event, add_event_log, list_events
-from event_state import _validate_result, _now_iso
+from db import get_event, add_event_log, list_events
+from event_state import _now_iso
+from result_actions import record_result
 from swiss import DRAW_RESULTS
 from discord_identity import resolve_discord_identity, normalize_handle
 
@@ -126,15 +126,10 @@ def report_result_via_discord(event_id, round_idx, match_idx, discord_id, code, 
         hi, lo = max(mine, theirs), min(mine, theirs)
         score_str = f'{hi}–{lo}–{draws}' if draws else f'{hi}–{lo}'
         summary = f"you {'won' if kind == 'win' else 'lost'} {score_str}"
-    err = _validate_result(e['rounds'][round_idx][match_idx], winner_id, result, best_of)
+    _, err = record_result(e, round_idx, match_idx, winner_id, result, base_url,
+                           exclude_player_id=ctx['player_id'])
     if err:
         return None, err
-    m = e['rounds'][round_idx][match_idx]
-    m['winner_id'] = winner_id
-    m['result'] = result
-    save_event(event_id, {'rounds': e['rounds']})
-    discord_api.notify_result(e, round_idx, match_idx, base_url,
-                              exclude_player_id=ctx['player_id'])
     names = {p['id']: p['name'] for p in e['players']}
     reporter = names.get(ctx['player_id'], display or 'A player')
     _log_discord(event_id, reporter, 'result',
