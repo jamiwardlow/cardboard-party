@@ -10,7 +10,7 @@ import time
 import requests
 
 from gcp_secrets import get_secret
-from discord_notify import _round_label, fmt_time
+from discord_notify import describe_round, fmt_time
 
 API = 'https://discord.com/api/v10'
 
@@ -449,7 +449,7 @@ def _pairings_embed(event: dict, round_num: int, end_unix=None):
         # Discord renders <t:…:R> as a live, client-updating relative time.
         lines.append(f"\n⏱ **Round ends** <t:{end_unix}:R>")
     return _embed("\n".join(lines), color=BRAND_PURPLE,
-                  title=f"{event.get('name', 'Event')} — {_round_label(round_num, rnd)} pairings")
+                  title=f"{event.get('name', 'Event')} — {describe_round(round_num, rnd)} pairings")
 
 
 def announce_round(event: dict, round_num: int, base_url: str = ''):
@@ -542,7 +542,7 @@ def _dm_result_recorded(event, round_idx, match_idx, exclude_player_id, base_url
     if m.get('is_bye'):
         return
     players = {p['id']: p for p in event.get('players', [])}
-    label = _round_label(round_idx + 1, rnd)
+    label = describe_round(round_idx + 1, rnd)
     ename = event.get('name', 'Event')
     event_url = f"{base_url.rstrip('/')}/events/{event['id']}" if base_url else ''
     link = ([{'type': 1, 'components': [
@@ -606,7 +606,7 @@ def _notify_result(event, round_idx, match_idx, base_url, exclude_player_id=None
         return
     m = rnd[match_idx]
     players = {p['id']: p for p in event.get('players', [])}
-    label = _round_label(round_idx + 1, rnd)
+    label = describe_round(round_idx + 1, rnd)
     link_btn = _link_btn(base_url, event['id'])
     info = event.get('discord_pairing_dms') or {}
     dms = (info.get('dms') or {}) if info.get('round_num') == round_idx + 1 else {}
@@ -687,7 +687,7 @@ def _dm_round_pairings(event: dict, round_num: int, base_url: str):
         return
     rnd = rounds[round_num - 1]
     players = {p['id']: p for p in event.get('players', [])}
-    label = _round_label(round_num, rnd)
+    label = describe_round(round_num, rnd)
     ename = event.get('name', 'Event')
     link_btn = _link_btn(base_url, event['id'])
 
@@ -743,7 +743,7 @@ def _edit_match_dms(event: dict, round_num: int, match_idx: int, dms: dict, base
     rnd = event['rounds'][round_num - 1]
     m = rnd[match_idx]
     players = {p['id']: p for p in event.get('players', [])}
-    label = _round_label(round_num, rnd)
+    label = describe_round(round_num, rnd)
     link_btn = _link_btn(base_url, event['id'])
     # A reported match keeps its disabled 'Result reported' row; otherwise the
     # Report row — so editing the embed (for the new table) doesn't revert it.
@@ -773,7 +773,7 @@ def _dm_pairing_changed(event, round_num, changed_pids, base_url):
         return
     rnd = rounds[round_num - 1]
     players = {p['id']: p for p in event.get('players', [])}
-    label = _round_label(round_num, rnd)
+    label = describe_round(round_num, rnd)
     ename = event.get('name', 'Event')
     link_btn = _link_btn(base_url, event['id'])
     info = event.get('discord_pairing_dms') or {}

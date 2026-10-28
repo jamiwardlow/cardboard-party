@@ -4,7 +4,7 @@ Flask-free: accepts plain dicts, returns the enriched dict.
 """
 from db import get_user_profile, is_admin
 from swiss import compute_standings, default_num_rounds, id_safe_players
-from event_state import _is_full, pairings_held_back
+from event_state import is_full, pairings_held_back
 
 
 def _active_waitlist(event: dict) -> list[dict]:
@@ -95,7 +95,7 @@ def build_event_view(event: dict, current_user: dict | None = None) -> dict:
     e['co_organizers'] = co_org_names
     e['entry_code_required'] = bool(e.get('entry_code'))
     enrich_players_discord(e)
-    e['is_full'] = _is_full(e)
+    e['is_full'] = is_full(e)
     active_wl = _active_waitlist(e)
     mine = next((w for w in active_wl if w.get('google_id') == uid), None) if uid else None
     e['my_waitlist'] = ({'status': 'waitlisted',

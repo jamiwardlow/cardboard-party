@@ -17,10 +17,10 @@ import random
 import uuid
 
 from db import get_event, save_event, set_player_dropped
-from routes.event_fields import _MAX_TABLE
+from event_state import MAX_TABLE
 from event_state import (
     entry_code_ok,
-    _is_full, _now_iso, _self_registration_blocked,
+    is_full, now_iso, self_registration_blocked,
     auto_check_in, make_player_entry,
 )
 
@@ -33,7 +33,7 @@ def _waitlist_record(name, *, google_id=None, email='', discord='', **extra) -> 
         'email':     email,
         'discord':   discord,
         'status':    'waitlisted',
-        'joined_at': _now_iso(),
+        'joined_at': now_iso(),
         **extra,
     }
 
@@ -46,12 +46,12 @@ def register_player(event_id: str, *, name: str, google_id=None, discord: str = 
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    blocked = _self_registration_blocked(e)
+    blocked = self_registration_blocked(e)
     if blocked:
         return None, blocked
     if not entry_code_ok(e, entry_code):
         return None, 'Incorrect entry code'
-    if _is_full(e):
+    if is_full(e):
         cap = e.get('registration_cap', 0)
         return None, f'This event is full ({cap} players max).'
     existing = next(
@@ -119,12 +119,12 @@ def join_waitlist(event_id: str, *, google_id: str = None, discord_id: str = Non
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    blocked = _self_registration_blocked(e)
+    blocked = self_registration_blocked(e)
     if blocked:
         return None, blocked
     if not entry_code_ok(e, entry_code):
         return None, 'Incorrect entry code'
-    if not _is_full(e):
+    if not is_full(e):
         return None, 'This event still has open spots — register normally.'
     if any(not p.get('dropped') and
            ((google_id and p.get('google_id') == google_id)
@@ -181,7 +181,7 @@ def add_player(event: dict, *, name: str, google_id=None, discord: str = '',
     email from the user directory before calling."""
     if google_id and any(p.get('google_id') == google_id for p in event['players']):
         return None, 'That player is already in this event'
-    if _is_full(event):
+    if is_full(event):
         waitlist = event.get('waitlist') or []
         if google_id and any(w.get('google_id') == google_id and w.get('status') == 'waitlisted'
                              for w in waitlist):
@@ -225,8 +225,8 @@ def set_fixed_table(event: dict, player_id: str, raw_table) -> tuple:
             n = int(raw_table)
         except (TypeError, ValueError):
             return None, 'Table must be a number'
-        if not (1 <= n <= _MAX_TABLE):
-            return None, f'Table must be between 1 and {_MAX_TABLE}'
+        if not (1 <= n <= MAX_TABLE):
+            return None, f'Table must be between 1 and {MAX_TABLE}'
         table = n
     if table is None:
         player.pop('fixed_table', None)

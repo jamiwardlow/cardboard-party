@@ -16,8 +16,8 @@ from db import (get_event, save_event, list_events, list_users,
                 get_user_profile, save_user_profile, set_player_dropped,
                 add_event_log, record_invite, recent_invite_count,
                 target_invited_since, is_invite_opted_out, is_admin)
-from event_state import (_slugify, _assign_draft_seat, _is_full,
-                         _self_registration_blocked, _now_iso,
+from event_state import (slugify, assign_draft_seat, is_full,
+                         self_registration_blocked, now_iso,
                          make_player_entry)
 from player_lifecycle import (register_player, unregister_player,
                            join_waitlist, leave_waitlist)
@@ -187,7 +187,7 @@ def fix_discord_handles():
 
 def _log_discord(event_id: str, actor_name: str, action: str, detail: str = ''):
     """Event-log entry for a Discord-driven action (no web session to attribute)."""
-    add_event_log(event_id, {'at': _now_iso(), 'action': action, 'detail': detail,
+    add_event_log(event_id, {'at': now_iso(), 'action': action, 'detail': detail,
                              'actor_id': '', 'actor_name': actor_name or 'A Discord user'})
 
 def _dm_discord_reg_confirmation(discord_id: str, event: dict, event_id: str, host_url: str = ''):
@@ -265,7 +265,7 @@ def invite_player_via_discord(event_id: str, inviter_id: str, target_id: str,
     e = get_event(event_id)
     if not e:
         return None, 'That event no longer exists.'
-    blocked = _self_registration_blocked(e)
+    blocked = self_registration_blocked(e)
     if blocked:
         return None, blocked
     if e.get('entry_code'):

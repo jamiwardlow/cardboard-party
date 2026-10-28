@@ -6,7 +6,7 @@ line. Each function returns `(match, None)` or `(None, error_str)`.
 """
 import discord_api
 from db import save_event
-from event_state import _validate_result
+from event_state import validate_result
 from swiss import DRAW_RESULTS
 
 
@@ -35,7 +35,7 @@ def _checked(event, round_idx, match_idx, winner_id, result, verb):
         return None, f'Cannot {verb} a result for a bye'
     if result == '0-0-3' and event.get('intentional_draws_frowned'):
         return None, 'Intentional draws are not allowed for this event'
-    err = _validate_result(match, winner_id, result, event.get('best_of', 3))
+    err = validate_result(match, winner_id, result, event.get('best_of', 3))
     return (None, err) if err else (match, None)
 
 

@@ -4,14 +4,14 @@ No Flask context: pure functions over plain dicts.
 """
 import discord_api
 from db import get_event, save_event
-from event_state import _self_registration_blocked
+from event_state import self_registration_blocked
 
 
 def registration_card_status(event: dict):
     """(state, note) for an announced event card — mirrors the self-registration
     gates so the posted card can show open / full / closed. state is
     'open' | 'full' | 'closed'."""
-    blocked = _self_registration_blocked(event)
+    blocked = self_registration_blocked(event)
     if blocked:
         return 'closed', blocked
     if event.get('entry_code'):

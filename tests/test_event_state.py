@@ -1,7 +1,7 @@
 """An explicit 'finished' status force-completes an event even when its last
 round is an abandoned, unresolved playoff bracket round."""
 
-from event_state import _event_complete
+from event_state import event_complete
 
 
 def _bracket_event(status=None):
@@ -17,8 +17,8 @@ def _bracket_event(status=None):
 
 
 def test_unresolved_bracket_round_is_not_complete_by_default():
-    assert _event_complete(_bracket_event()) is False
+    assert event_complete(_bracket_event()) is False
 
 
 def test_finished_status_overrides_an_unresolved_bracket_round():
-    assert _event_complete(_bracket_event(status='finished')) is True
+    assert event_complete(_bracket_event(status='finished')) is True

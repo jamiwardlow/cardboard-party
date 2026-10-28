@@ -8,7 +8,7 @@ Permission model:
 """
 
 from flask import Blueprint, request, jsonify, render_template, abort, session
-from db import (create_event, get_event, save_event, list_events, delete_event,
+from db import (merge_profiles, create_event, get_event, save_event, list_events, delete_event,
                 set_player_dropped, set_player_field,
                 get_admins, is_admin, add_admin, remove_admin,
                 get_user_profile, save_user_profile, delete_user_profile, list_users,
@@ -33,23 +33,24 @@ import time
 import uuid
 
 logger = logging.getLogger(__name__)
-from event_state import (_now_iso, _slugify, _assign_draft_seat,
-                         _self_registration_blocked,
-                         _is_bracket_round, _swiss_complete, _event_complete,
+from event_state import (MAX_TABLE, now_iso, slugify, assign_draft_seat,
+                         self_registration_blocked,
+                         is_bracket_round, swiss_complete, event_complete,
                          auto_check_in, make_player_entry, pairings_held_back, entry_code_ok)
-from round_actions import pair_next_round, cut_to_top, repair_round, _auto_starts_timer
+from round_actions import pair_next_round, cut_to_top, repair_round, auto_starts_timer
 from result_actions import record_result, edit_result, delete_result
 from player_lifecycle import (register_player, unregister_player,
                               join_waitlist, leave_waitlist,
                               add_player, remove_player, set_fixed_table, set_seat, shuffle_seats)
 import event_queries
+from discord_notify import describe_round
 from event_announcements import refresh_event_announcement, announce_event_to_channel
 from event_view import build_event_view, players_missing_discord_handle, redact_players
 from routes.event_fields import (clean_event_fields, TOURNAMENT_TAGS, STRUCTURES,
-                                  COMMS_FIELDS, _COMMS_MAX, _MAX_TABLE,
+                                  COMMS_FIELDS, COMMS_MAX,
                                   REGISTRATION_TYPES, PROXY_POLICIES,
-                                  _clean_tags, _clean_comms, _clean_table_list,
-                                  _clean_table_labels, _bounded_table, _coord,
+                                  clean_tags, clean_comms, clean_table_list,
+                                  clean_table_labels, bounded_table, coord,
                                   _normalize_payment_url)
 
 from limiter import limiter
@@ -65,7 +66,7 @@ def _log_action(event_id: str, action: str, detail: str = '', target: str = '', 
     unless `actor_name` is given (for guest/self-report flows with no web session)."""
     u = get_current_user() or {}
     add_event_log(event_id, {
-        'at': _now_iso(), 'action': action, 'detail': detail, 'target': target,
+        'at': now_iso(), 'action': action, 'detail': detail, 'target': target,
         'actor_id': u.get('id', ''), 'actor_name': actor_name or u.get('name', '') or 'Someone'})
 
 def _entry_code_error(event: dict, data: dict) -> str | None:
@@ -248,7 +249,7 @@ def api_public_player_decklist(event_id, player_id):
     closed, released = bool(e.get('closed_decklists')), bool(e.get('decklists_released'))
     if closed and not released:
         return jsonify({'error': 'Not found'}), 404
-    if not closed and not _event_complete(e):
+    if not closed and not event_complete(e):
         return jsonify({'error': 'Not found'}), 404
     p = next((x for x in e['players'] if x['id'] == player_id), None)
     if not p:
@@ -479,7 +480,6 @@ def print_pairings(event_id, round_num):
     (byes and unassigned matches last). Public, like the event page, except a
     delayed, unreleased round is 404 for non-managers. Renders the
     table column only when the event uses table assignments."""
-    from discord_notify import _round_label
     event = get_event(event_id)
     if not event:
         return 'Event not found', 404
@@ -504,7 +504,7 @@ def print_pairings(event_id, round_num):
     rows.sort(key=lambda r: (r['table'] is None, r['table'] or 0))
     return render_template('print_pairings.html', event=event, rows=rows,
                            tables_enabled=bool(event.get('tables_enabled')),
-                           round_label=_round_label(round_num, rnd))
+                           round_label=describe_round(round_num, rnd))
 
 @events_bp.route('/admin')
 @login_required
@@ -590,7 +590,7 @@ def api_list_events():
                                               or uid in e.get('co_organizer_ids', []))
         # Completion is computed server-side (the slim rounds below drop `result`,
         # so the client can't tell a finished round from an unscored one).
-        slim['complete'] = _event_complete(e)
+        slim['complete'] = event_complete(e)
         # Slim players → only what the cards/filters need (active count, the "my
         # registered" check). No snapshots/decklists/tokens, so nothing to redact.
         slim['players'] = [{'google_id': p.get('google_id'), 'dropped': p.get('dropped', False)}
@@ -799,7 +799,7 @@ def api_promote_waitlist(event_id, wid):
             checked_in=auto_check_in(e),
         )
 
-    status, player = promote_waitlist_entry(event_id, wid, build_player, promoter, _now_iso())
+    status, player = promote_waitlist_entry(event_id, wid, build_player, promoter, now_iso())
     if status == 'gone':
         return jsonify({'error': 'That event no longer exists.'}), 404
     if status == 'missing':
@@ -826,7 +826,7 @@ def api_remove_waitlist(event_id, wid):
     if rec.get('status') != 'waitlisted':
         return jsonify({'error': 'That entry is no longer active.'}), 400
     rec['status'] = 'removed'
-    rec['removed_at'] = _now_iso()
+    rec['removed_at'] = now_iso()
     save_event(event_id, {'waitlist': waitlist})
     _log_action(event_id, 'waitlist_remove',
                 f"Removed {rec.get('name', 'a player')} from the waitlist", target=rec.get('name', ''))
@@ -852,7 +852,7 @@ def api_join_guest(event_id):
     e = get_event(event_id)
     if not e:
         return jsonify({'error': 'Not found'}), 404
-    blocked = _self_registration_blocked(e)
+    blocked = self_registration_blocked(e)
     if blocked:
         return jsonify({'error': blocked}), 400
     code_err = _entry_code_error(e, request.json or {})
@@ -1148,7 +1148,7 @@ def api_restart_timer(event_id):
     if not e:
         return jsonify({'error': 'Not found'}), 404
     _require_manage(e)
-    now = _now_iso()
+    now = now_iso()
     save_event(event_id, {'round_started_at': now})
     e['round_started_at'] = now
     discord_api.update_round_pairings(e, request.host_url)   # show the live countdown on the pairings card
@@ -1180,7 +1180,7 @@ def api_my_decklist(event_id):
                                    _print_policy(e)) if text.strip() else None
     if validation and validation.get('status') == 'errors':
         return jsonify({'error': 'Fix the errors before saving.', 'validation': validation}), 422
-    dl = {'text': text, 'name': name, 'updated_at': _now_iso(),
+    dl = {'text': text, 'name': name, 'updated_at': now_iso(),
           'validation': validation} if text.strip() else None
     had = bool((p.get('decklist') or {}).get('text', '').strip())
     if set_player_field(event_id, p['id'], 'decklist', dl) is None:
@@ -1261,7 +1261,7 @@ def api_player_decklist(event_id, player_id):
                                    _print_policy(e)) if text.strip() else None
     if validation and validation.get('status') == 'errors':
         return jsonify({'error': 'Fix the errors before saving.', 'validation': validation}), 422
-    dl = {'text': text, 'name': name, 'updated_at': _now_iso(),
+    dl = {'text': text, 'name': name, 'updated_at': now_iso(),
           'validation': validation} if text.strip() else None
     if set_player_field(event_id, player_id, 'decklist', dl) is None:
         return jsonify({'error': 'Could not save the decklist.'}), 400
@@ -1328,7 +1328,7 @@ def api_decklists_table(event_id):
     if not can_manage:
         if e.get('closed_decklists') and not e.get('decklists_released'):
             return jsonify({'error': 'Decklists not yet public'}), 403
-    complete = _event_complete(e)
+    complete = event_complete(e)
     rank_map = {}
     if complete:
         standings = compute_standings(e['players'], e.get('rounds', []))
@@ -1381,8 +1381,8 @@ def api_release_delivery(event_id):
     if what == 'pairings' and not was_released and e.get('rounds'):
         round_num = len(e['rounds'])
         # Opt-in auto-start: with delayed pairings, the clock begins on release.
-        if _auto_starts_timer(e):
-            now = _now_iso()
+        if auto_starts_timer(e):
+            now = now_iso()
             save_event(event_id, {'round_started_at': now})
             e['round_started_at'] = now
         discord_api.announce_round(e, round_num, request.host_url)
@@ -1647,7 +1647,7 @@ def api_edit_pairings(event_id, round_num):
     idx = round_num - 1
     if idx < 0 or idx >= len(e['rounds']):
         return jsonify({'error': 'Round not found'}), 404
-    if _is_bracket_round(e['rounds'][idx]):
+    if is_bracket_round(e['rounds'][idx]):
         return jsonify({'error': 'Playoff pairings are set by the bracket and cannot be edited'}), 400
     new_pairings = request.json or []
 
@@ -1695,8 +1695,8 @@ def api_set_match_table(event_id, round_num, match_idx):
             n = int(raw)
         except (TypeError, ValueError):
             return jsonify({'error': 'Table must be a number'}), 400
-        if not (1 <= n <= _MAX_TABLE):
-            return jsonify({'error': f'Table must be between 1 and {_MAX_TABLE}'}), 400
+        if not (1 <= n <= MAX_TABLE):
+            return jsonify({'error': f'Table must be between 1 and {MAX_TABLE}'}), 400
         table = n
     # Warn (don't block) if another match in this round is already on that table —
     # the organiser can override with an explicit confirm.
@@ -1981,31 +1981,6 @@ def api_get_profile():
 # Player entries are never deleted — matches reference them by their per-event id —
 # so merges/deletes only re-point or clear the entry's account link (google_id).
 
-def _merge_profiles(source_id: str, target_id: str) -> dict:
-    """Re-point every event entry from `source_id` to `target_id`, backfill any
-    profile fields the target is missing from the source, then delete the source
-    profile. A shared-event collision just leaves two target-linked entries (safe —
-    deleting an entry would break its matches)."""
-    reassigned = 0
-    for e in list_events():
-        changed = False
-        for p in e.get('players', []):
-            if p.get('google_id') == source_id:
-                p['google_id'] = target_id
-                changed = True
-                reassigned += 1
-        if changed:
-            save_event(e['id'], {'players': e['players']})
-    src, tgt = get_user_profile(source_id), get_user_profile(target_id)
-    fill = {k: src[k] for k in ('discord', 'discord_id', 'discord_picture',
-                                'google_picture', 'avatar_url', 'avatar_object',
-                                'email', 'about', 'pronouns', 'pronunciation', 'name')
-            if src.get(k) and not tgt.get(k)}
-    if fill:
-        save_user_profile(target_id, fill)
-    delete_user_profile(source_id)
-    return {'reassigned': reassigned}
-
 def _delete_profile(profile_id: str) -> dict:
     """Delete the profile doc and unlink its event entries (google_id → None),
     keeping each as a named non-account player so results are preserved."""
@@ -2054,7 +2029,7 @@ def api_merge_profile(profile_id):
         return jsonify({'error': 'Choose a different profile to merge into.'}), 400
     if profile_id == user['id']:
         return jsonify({'error': "You can't merge your own account."}), 400
-    return jsonify({'ok': True, **_merge_profiles(profile_id, target_id)})
+    return jsonify({'ok': True, **merge_profiles(profile_id, target_id)})
 
 @events_bp.route('/api/profiles/<profile_id>', methods=['DELETE'])
 @login_required

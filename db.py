@@ -310,3 +310,29 @@ def promote_waitlist_entry(event_id: str, wid: str, build_player, promoter: dict
         return ('ok', player)
 
     return _apply(transaction)
+
+
+def merge_profiles(source_id: str, target_id: str) -> dict:
+    """Re-point every event entry from `source_id` to `target_id`, backfill any
+    profile fields the target is missing from the source, then delete the source
+    profile. A shared-event collision just leaves two target-linked entries (safe —
+    deleting an entry would break its matches)."""
+    reassigned = 0
+    for e in list_events():
+        changed = False
+        for p in e.get('players', []):
+            if p.get('google_id') == source_id:
+                p['google_id'] = target_id
+                changed = True
+                reassigned += 1
+        if changed:
+            save_event(e['id'], {'players': e['players']})
+    src, tgt = get_user_profile(source_id), get_user_profile(target_id)
+    fill = {k: src[k] for k in ('discord', 'discord_id', 'discord_picture',
+                                'google_picture', 'avatar_url', 'avatar_object',
+                                'email', 'about', 'pronouns', 'pronunciation', 'name')
+            if src.get(k) and not tgt.get(k)}
+    if fill:
+        save_user_profile(target_id, fill)
+    delete_user_profile(source_id)
+    return {'reassigned': reassigned}

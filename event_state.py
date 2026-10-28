@@ -10,13 +10,15 @@ import uuid
 
 from swiss import DRAW_RESULTS, default_num_rounds
 
+MAX_TABLE = 999
 
-def _now_iso() -> str:
+
+def now_iso() -> str:
     """Current UTC time as an ISO string (used to stamp round-timer starts)."""
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def _slugify(name: str) -> str:
+def slugify(name: str) -> str:
     return re.sub(r'[^a-z0-9]+', '_', name.lower()).strip('_')
 
 
@@ -32,13 +34,13 @@ def pairings_held_back(event: dict) -> bool:
                 and event.get('rounds'))
 
 
-def _is_full(event: dict) -> bool:
+def is_full(event: dict) -> bool:
     """True when a cap is set and active participants have reached it."""
     cap = event.get('registration_cap', 0)
     return bool(cap) and _active_count(event) >= cap
 
 
-def _self_registration_blocked(event: dict) -> str | None:
+def self_registration_blocked(event: dict) -> str | None:
     """Why a player can't self-register right now, or None if they can. Covers the
     manual open/closed toggle, invite-only type, and the scheduled date window.
     (Organisers adding players bypass this — it gates self-service only.)"""
@@ -56,7 +58,7 @@ def _self_registration_blocked(event: dict) -> str | None:
     return None
 
 
-def _assign_draft_seat(player: dict, event: dict) -> None:
+def assign_draft_seat(player: dict, event: dict) -> None:
     """Stamp the next available seat number onto player if this is a Draft event."""
     if (event.get('format') or '').lower() != 'draft':
         return
@@ -67,14 +69,14 @@ def _assign_draft_seat(player: dict, event: dict) -> None:
     player['seat'] = seat
 
 
-def _is_bracket_round(rnd: list) -> bool:
+def is_bracket_round(rnd: list) -> bool:
     """A round belongs to the single-elimination playoff if its matches are tagged."""
     return bool(rnd) and rnd[0].get('stage') == 'bracket'
 
 
-def _swiss_complete(event: dict) -> bool:
+def swiss_complete(event: dict) -> bool:
     """True once every Swiss round has been paired and fully scored."""
-    swiss = [r for r in event['rounds'] if not _is_bracket_round(r)]
+    swiss = [r for r in event['rounds'] if not is_bracket_round(r)]
     num_rounds = event.get('num_rounds') or default_num_rounds(len(event['players']))
     if len(swiss) < num_rounds:
         return False
@@ -83,7 +85,7 @@ def _swiss_complete(event: dict) -> bool:
                for m in last)
 
 
-def _event_complete(event: dict) -> bool:
+def event_complete(event: dict) -> bool:
     """True once the event is finished — a decided playoff final, an explicit
     'finished' status, or all Swiss rounds paired and fully scored."""
     rounds = event.get('rounds') or []
@@ -92,9 +94,9 @@ def _event_complete(event: dict) -> bool:
     if event.get('status') == 'finished':
         return True
     last = rounds[-1]
-    if _is_bracket_round(last):
+    if is_bracket_round(last):
         return len(last) == 1 and bool(last[0].get('winner_id'))
-    return _swiss_complete(event)
+    return swiss_complete(event)
 
 
 def auto_check_in(event: dict) -> bool:
@@ -109,7 +111,7 @@ def make_player_entry(name: str, event: dict, *, google_id=None, discord: str = 
     """Build a new player dict with a generated id and draft seat (if applicable).
     Use auto_check_in(event) as checked_in for organiser-added players."""
     player = {
-        'id':         _slugify(name) + '_' + uuid.uuid4().hex[:8],
+        'id':         slugify(name) + '_' + uuid.uuid4().hex[:8],
         'name':       name,
         'google_id':  google_id,
         'discord':    discord,
@@ -120,14 +122,14 @@ def make_player_entry(name: str, event: dict, *, google_id=None, discord: str = 
         player['discord_id'] = discord_id
     if guest_token is not None:
         player['guest_token'] = guest_token
-    _assign_draft_seat(player, event)
+    assign_draft_seat(player, event)
     return player
 
 
 _RESULT_RE = re.compile(r'^(\d+)-(\d+)(?:-(\d+))?$')
 
 
-def _validate_result(match: dict, winner_id, result, best_of: int = 3) -> str | None:
+def validate_result(match: dict, winner_id, result, best_of: int = 3) -> str | None:
     """Validate a reported result against a match. Returns an error string, or None
     if valid. Enforces that the winner matches the score (result is recorded from
     player1's perspective, i.e. 'p1games-p2games' or 'p1games-p2games-draws'), so

@@ -2,7 +2,7 @@
 
 import pytest
 from swiss import pair_draft_r1, pair_draft_r2, pair_round, BYE_PLAYER_ID
-from event_state import _validate_result
+from event_state import validate_result
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -187,62 +187,62 @@ def test_r3_1_1_players_avoid_rematches():
             f"{p1} and {p2} already played each other"
 
 
-# ── _validate_result: best_of enforcement ─────────────────────────────────────
+# ── validate_result: best_of enforcement ─────────────────────────────────────
 
 def _match(p1='p1', p2='p2'):
     return {'player1_id': p1, 'player2_id': p2}
 
 
 def test_bo3_valid_2_0():
-    assert _validate_result(_match(), 'p1', '2-0', best_of=3) is None
+    assert validate_result(_match(), 'p1', '2-0', best_of=3) is None
 
 def test_bo3_valid_2_1():
-    assert _validate_result(_match(), 'p1', '2-1', best_of=3) is None
+    assert validate_result(_match(), 'p1', '2-1', best_of=3) is None
 
 def test_bo3_valid_0_2_p2_wins():
-    assert _validate_result(_match(), 'p2', '0-2', best_of=3) is None
+    assert validate_result(_match(), 'p2', '0-2', best_of=3) is None
 
 def test_bo3_rejects_1_0():
-    assert _validate_result(_match(), 'p1', '1-0', best_of=3) is not None
+    assert validate_result(_match(), 'p1', '1-0', best_of=3) is not None
 
 def test_bo3_rejects_5_3():
-    assert _validate_result(_match(), 'p1', '5-3', best_of=3) is not None
+    assert validate_result(_match(), 'p1', '5-3', best_of=3) is not None
 
 def test_bo3_draw_accepted():
-    assert _validate_result(_match(), None, 'draw', best_of=3) is None
+    assert validate_result(_match(), None, 'draw', best_of=3) is None
 
 def test_bo1_valid_1_0():
-    assert _validate_result(_match(), 'p1', '1-0', best_of=1) is None
+    assert validate_result(_match(), 'p1', '1-0', best_of=1) is None
 
 def test_bo1_valid_0_1_p2_wins():
-    assert _validate_result(_match(), 'p2', '0-1', best_of=1) is None
+    assert validate_result(_match(), 'p2', '0-1', best_of=1) is None
 
 def test_bo1_rejects_2_0():
-    assert _validate_result(_match(), 'p1', '2-0', best_of=1) is not None
+    assert validate_result(_match(), 'p1', '2-0', best_of=1) is not None
 
 def test_bo1_rejects_2_1():
-    assert _validate_result(_match(), 'p1', '2-1', best_of=1) is not None
+    assert validate_result(_match(), 'p1', '2-1', best_of=1) is not None
 
 def test_bo1_draw_accepted():
-    assert _validate_result(_match(), None, 'draw', best_of=1) is None
+    assert validate_result(_match(), None, 'draw', best_of=1) is None
 
 def test_validate_result_winner_mismatch_rejected():
-    assert _validate_result(_match(), 'p2', '2-0', best_of=3) is not None
+    assert validate_result(_match(), 'p2', '2-0', best_of=3) is not None
 
 def test_bo3_valid_1_0_1_p1_wins():
-    assert _validate_result(_match(), 'p1', '1-0-1', best_of=3) is None
+    assert validate_result(_match(), 'p1', '1-0-1', best_of=3) is None
 
 def test_bo3_valid_0_1_1_p2_wins():
-    assert _validate_result(_match(), 'p2', '0-1-1', best_of=3) is None
+    assert validate_result(_match(), 'p2', '0-1-1', best_of=3) is None
 
 def test_bo3_1_0_1_winner_mismatch_rejected():
-    assert _validate_result(_match(), 'p2', '1-0-1', best_of=3) is not None
+    assert validate_result(_match(), 'p2', '1-0-1', best_of=3) is not None
 
 def test_bo1_rejects_1_0_1():
-    assert _validate_result(_match(), 'p1', '1-0-1', best_of=1) is not None
+    assert validate_result(_match(), 'p1', '1-0-1', best_of=1) is not None
 
 def test_bo3_rejects_score_exceeding_best_of():
-    assert _validate_result(_match(), 'p1', '1-0-3', best_of=3) is not None
+    assert validate_result(_match(), 'p1', '1-0-3', best_of=3) is not None
 
 
 # ── pair_round: rematch fallback ──────────────────────────────────────────────

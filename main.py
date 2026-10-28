@@ -4,7 +4,7 @@ from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 from flask import Flask, request, redirect, jsonify
 from routes.auth import auth_bp
-from routes.events import events_bp
+from routes.events import events_bp, has_public_decklists
 from routes.discord import discord_bp
 from gcp_secrets import get_secret
 from discord_notify import fmt_time
@@ -137,7 +137,6 @@ MAPS_API_KEY = get_secret('MAPS_API_KEY')
 
 @app.context_processor
 def inject_globals():
-    from routes.events import has_public_decklists
     return {'asset_v': _ASSET_VERSION, 'maps_api_key': MAPS_API_KEY,
             'has_public_decklists': has_public_decklists()}
 

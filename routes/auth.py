@@ -16,7 +16,7 @@ from flask import (Blueprint, redirect, request, session,
 from db import (get_admins, add_admin, remove_admin,
                 get_user_profile, save_user_profile,
                 find_user_by_discord_id, find_user_by_email,
-                resolve_pending_co_organizer)
+                resolve_pending_co_organizer, merge_profiles)
 from gcp_secrets import get_secret
 
 from limiter import limiter
@@ -278,8 +278,7 @@ def discord_callback():
         # its event history into this account — this is how a bot-registered player
         # claims their past events after signing in with Google and linking Discord.
         if other:
-            from routes.events import _merge_profiles
-            _merge_profiles(other, link_account)
+            merge_profiles(other, link_account)
         updates = {'discord_id': did, 'discord': username}
         if avatar:
             updates['discord_picture'] = avatar

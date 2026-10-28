@@ -11,6 +11,7 @@ Returns (cleaned, errors) where errors maps field name → error message string.
 import datetime
 from urllib.parse import urlparse
 from decklist import VALIDATION_FORMATS
+from event_state import MAX_TABLE
 
 TOURNAMENT_TAGS = ['Weekly Play', 'Prerelease', 'Regional Championship Qualifier',
                    'Spotlight Series']
@@ -19,24 +20,23 @@ REGISTRATION_TYPES = ('open', 'invite_only')
 PROXY_POLICIES = ('unlimited', 'limited', 'custom')
 BEST_OF_OPTIONS = (1, 3)
 COMMS_FIELDS = ('rules', 'schedule', 'prizes', 'contact')
-_COMMS_MAX = 5000
-_MAX_TABLE = 999
+COMMS_MAX = 5000
 
 
-def _clean_tags(raw) -> list:
+def clean_tags(raw) -> list:
     chosen = set(raw or [])
     return [t for t in TOURNAMENT_TAGS if t in chosen]
 
 
-def _clean_comms(data: dict) -> dict:
+def clean_comms(data: dict) -> dict:
     out = {}
     for f in COMMS_FIELDS:
         if f in data:
-            out[f] = str(data.get(f) or '')[:_COMMS_MAX]
+            out[f] = str(data.get(f) or '')[:COMMS_MAX]
     return out
 
 
-def _clean_table_list(raw) -> list:
+def clean_table_list(raw) -> list:
     """Sorted, de-duplicated, bounded list of table numbers (reserved/unavailable)."""
     out = set()
     for v in (raw or []):
@@ -44,12 +44,12 @@ def _clean_table_list(raw) -> list:
             n = int(v)
         except (TypeError, ValueError):
             continue
-        if 1 <= n <= _MAX_TABLE:
+        if 1 <= n <= MAX_TABLE:
             out.add(n)
     return sorted(out)
 
 
-def _clean_table_labels(raw) -> dict:
+def clean_table_labels(raw) -> dict:
     """{str(table_number): label} map, numeric keys validated, labels trimmed/capped."""
     out = {}
     if isinstance(raw, dict):
@@ -59,17 +59,17 @@ def _clean_table_labels(raw) -> dict:
             except (TypeError, ValueError):
                 continue
             label = str(v or '').strip()[:40]
-            if 1 <= n <= _MAX_TABLE and label:
+            if 1 <= n <= MAX_TABLE and label:
                 out[str(n)] = label
     return out
 
 
-def _bounded_table(v, lo):
-    """An int table number within [lo, _MAX_TABLE], else the floor `lo`."""
-    return v if isinstance(v, int) and lo <= v <= _MAX_TABLE else lo
+def bounded_table(v, lo):
+    """An int table number within [lo, MAX_TABLE], else the floor `lo`."""
+    return v if isinstance(v, int) and lo <= v <= MAX_TABLE else lo
 
 
-def _coord(v, lo: float, hi: float):
+def coord(v, lo: float, hi: float):
     """A float latitude/longitude within [lo, hi], else None."""
     try:
         f = float(v)
@@ -140,10 +140,10 @@ def clean_event_fields(raw: dict, partial: bool = False) -> tuple[dict, dict]:
         c['location'] = str(_get('location') or '').strip()[:200]
 
     if _has('lat'):
-        c['lat'] = _coord(_get('lat'), -90, 90)
+        c['lat'] = coord(_get('lat'), -90, 90)
 
     if _has('lng'):
-        c['lng'] = _coord(_get('lng'), -180, 180)
+        c['lng'] = coord(_get('lng'), -180, 180)
 
     if _has('place_id'):
         c['place_id'] = str(_get('place_id') or '').strip()[:300]
@@ -228,7 +228,7 @@ def clean_event_fields(raw: dict, partial: bool = False) -> tuple[dict, dict]:
     for field in ('description', 'entry_cost', 'drop_policy_text', 'refund_policy_text',
                   'rules', 'schedule', 'prizes', 'contact'):
         if _has(field):
-            c[field] = str(_get(field) or '')[:_COMMS_MAX]
+            c[field] = str(_get(field) or '')[:COMMS_MAX]
 
     # ── Date/time string fields ────────────────────────────────────────────────
     for field in ('decklist_deadline', 'registration_start', 'registration_end',
@@ -238,20 +238,20 @@ def clean_event_fields(raw: dict, partial: bool = False) -> tuple[dict, dict]:
 
     # ── Table assignments ──────────────────────────────────────────────────────
     if _has('table_start'):
-        c['table_start'] = _bounded_table(_get('table_start'), 1)
+        c['table_start'] = bounded_table(_get('table_start'), 1)
 
     if _has('table_end'):
-        c['table_end'] = _bounded_table(_get('table_end'), 0)
+        c['table_end'] = bounded_table(_get('table_end'), 0)
 
     if _has('tables_excluded'):
-        c['tables_excluded'] = _clean_table_list(_get('tables_excluded'))
+        c['tables_excluded'] = clean_table_list(_get('tables_excluded'))
 
     if _has('table_labels'):
-        c['table_labels'] = _clean_table_labels(_get('table_labels'))
+        c['table_labels'] = clean_table_labels(_get('table_labels'))
 
     # ── Tags ───────────────────────────────────────────────────────────────────
     if _has('tags'):
-        c['tags'] = _clean_tags(_get('tags'))
+        c['tags'] = clean_tags(_get('tags'))
 
     # ── Payment URL (only field that produces a validation error) ─────────────
     if _has('payment_url'):

@@ -22,7 +22,7 @@ def fmt_time(hhmm: str) -> str:
     return f"{h % 12 or 12}:{m:02d} {'AM' if h < 12 else 'PM'}"
 
 
-def _round_label(round_num: int, pairings: list) -> str:
+def describe_round(round_num: int, pairings: list) -> str:
     """Human label for a round: a Swiss round number, or the playoff bracket
     stage (Finals/Semifinals/Quarterfinals/Top N) when these are bracket matches."""
     if pairings and pairings[0].get('stage') == 'bracket':

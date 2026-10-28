@@ -9,7 +9,7 @@ Callers should import from here rather than calling list_events() directly with
 inline filters.
 """
 from db import list_events
-from event_state import _self_registration_blocked, _is_full, _event_complete
+from event_state import self_registration_blocked, is_full, event_complete
 
 
 # ── Predicates ────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ def is_decklist_public(event: dict) -> bool:
     released = bool(event.get('decklists_released'))
     if closed and not released:
         return False
-    if not closed and not _event_complete(event):
+    if not closed and not event_complete(event):
         return False
     return True
 
@@ -60,9 +60,9 @@ def registerable_for_discord(owner_gid: str = None, include_full: bool = False,
             continue
         if e.get('test_mode') or e.get('entry_code'):
             continue
-        if _self_registration_blocked(e):
+        if self_registration_blocked(e):
             continue
-        if not include_full and _is_full(e):
+        if not include_full and is_full(e):
             continue
         out.append(e)
     out.sort(key=lambda e: e.get('date', ''))

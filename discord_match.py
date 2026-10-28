@@ -3,14 +3,14 @@ Discord match layer — open-match lookup and result reporting for Discord inter
 No Flask context: pure functions over plain dicts.
 """
 from db import get_event, add_event_log, list_events
-from event_state import _now_iso
+from event_state import now_iso
 from result_actions import record_result
 from swiss import DRAW_RESULTS
 from discord_identity import resolve_discord_identity, normalize_handle
 
 
 def _log_discord(event_id: str, actor_name: str, action: str, detail: str = ''):
-    add_event_log(event_id, {'at': _now_iso(), 'action': action, 'detail': detail,
+    add_event_log(event_id, {'at': now_iso(), 'action': action, 'detail': detail,
                              'actor_id': '', 'actor_name': actor_name or 'A Discord user'})
 
 

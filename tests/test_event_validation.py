@@ -1,7 +1,7 @@
 """
 Event field validation tests.
 
-'description' and 'entry_cost' must be capped at _COMMS_MAX (5000) characters
+'description' and 'entry_cost' must be capped at COMMS_MAX (5000) characters
 on both event creation and event update, matching the cap already applied to
 rules / schedule / prizes / contact.
 """
@@ -9,7 +9,7 @@ rules / schedule / prizes / contact.
 from unittest.mock import patch
 from tests.conftest import minimal_event
 
-_OVER = 'x' * 6000   # 6000 chars > _COMMS_MAX (5000)
+_OVER = 'x' * 6000   # 6000 chars > COMMS_MAX (5000)
 _MAX = 5000
 
 

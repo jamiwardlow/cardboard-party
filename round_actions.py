@@ -9,13 +9,13 @@ import random
 import discord_api
 from db import save_event
 from event_announcements import refresh_event_announcement
-from event_state import _now_iso, _is_bracket_round, _swiss_complete
+from event_state import now_iso, is_bracket_round, swiss_complete
 from swiss import (pair_round, pair_draft_r1, pair_draft_r2, compute_standings,
                    default_num_rounds, make_bracket, next_bracket_round,
                    assign_tables, CUT_SIZES, DRAW_RESULTS)
 
 
-def _auto_starts_timer(event: dict) -> bool:
+def auto_starts_timer(event: dict) -> bool:
     """Simple events always auto-start a configured round timer; advanced events opt in."""
     return bool(event.get('round_timer_minutes')
                 and (event.get('auto_start_timer') or not event.get('advanced')))
@@ -35,8 +35,8 @@ def _new_round_updates(event: dict) -> dict:
         u['pairings_released'] = False
     if event.get('delay_standings'):
         u['standings_released'] = False
-    if _auto_starts_timer(event) and not event.get('delay_pairings'):
-        u['round_started_at'] = _now_iso()
+    if auto_starts_timer(event) and not event.get('delay_pairings'):
+        u['round_started_at'] = now_iso()
     return u
 
 
@@ -83,7 +83,7 @@ def _seat_unseated(event, players_to_pair):
 def pair_next_round(event: dict, base_url: str):
     """Pair the next Swiss/draft round, or advance a running playoff bracket."""
     rounds = event['rounds']
-    if rounds and _is_bracket_round(rounds[-1]):
+    if rounds and is_bracket_round(rounds[-1]):
         # Single elimination has no draws — every match needs a decisive winner.
         last = rounds[-1]
         if len(last) <= 1:
@@ -135,9 +135,9 @@ def pair_next_round(event: dict, base_url: str):
 def cut_to_top(event: dict, cut_size, base_url: str):
     """Start a single-elimination playoff for the top `cut_size` players."""
     rounds = event['rounds']
-    if rounds and _is_bracket_round(rounds[-1]):
+    if rounds and is_bracket_round(rounds[-1]):
         return None, 'A playoff bracket has already started'
-    if not _swiss_complete(event):
+    if not swiss_complete(event):
         return None, 'Finish all rounds before cutting to a playoff'
     if event.get('structure') == 'swiss':
         return None, 'This event is set to Swiss only — no playoff cut'
@@ -161,7 +161,7 @@ def repair_round(event: dict, round_num: int, base_url: str):
     idx = round_num - 1
     if idx != len(rounds) - 1:
         return None, 'Only the latest round can be re-paired'
-    if _is_bracket_round(rounds[idx]):
+    if is_bracket_round(rounds[idx]):
         return None, 'Playoff rounds cannot be re-paired'
     # shuffle=True so a re-pair yields a *different* valid pairing (the initial
     # pair is deterministic, so re-pairing it unchanged would reproduce it exactly).
