@@ -128,7 +128,7 @@ def clean_event_fields(raw: dict, partial: bool = False) -> tuple[dict, dict]:
         c['event_type'] = _get('event_type', 'One-day')
 
     if _has('format'):
-        c['format'] = _get('format', 'Limited: Draft')
+        c['format'] = _get('format', 'Draft')
 
     if _has('date'):
         c['date'] = _get('date', str(datetime.date.today()))

@@ -326,7 +326,7 @@
 {% block scripts %}
 <script>
 const EVENT_ID = {{ event.id | tojson }};
-const EE_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 'Commander', 'Pauper', 'Limited', 'Draft', 'Sealed', 'Premodern', 'Canlander', 'Custom'];
+const EE_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 'Commander', 'Pauper', 'Draft', 'Sealed', 'Premodern', 'Canlander', 'Custom'];
 const DECKLIST_FORMATS = ['Standard', 'Pioneer', 'Modern', 'Legacy', 'Vintage', 'Pauper', 'Premodern', 'Canlander', 'Commander'];
 let eeAdvanced = {{ event.advanced | tojson }};
 const ACTIVE_COUNT = {{ active_count }};
